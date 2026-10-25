@@ -4,7 +4,9 @@ import type {
   HabitRule,
   MindSession,
   MovementSnack,
+  NudgeEvent,
   NudgePolicy,
+  ScheduledEvent,
   Settings,
   WaterEntry,
 } from '@/src/domain/models';
@@ -18,6 +20,10 @@ export interface TrackerState {
   water: WaterEntry[];
   snacks: MovementSnack[];
   mind: MindSession[];
+  /** What happened to recent nudges (fired / done / snoozed…), pruned to 7 days. */
+  nudgeEvents: NudgeEvent[];
+  /** Pending one-off nudges created in-app (Sugar Shield follow-up); pruned once past. */
+  events: ScheduledEvent[];
   settings: Settings;
   /** Epoch ms until which the live nudge is snoozed. */
   nudgeSnoozedUntil?: number;

@@ -43,6 +43,7 @@ export default function TodayScreen() {
   const remaining = formatVolume(water.remainingMl, units);
 
   const lastWater = state.water.filter((w) => w.day === today).sort((a, b) => b.at - a.at)[0];
+  const shield = state.habits.find((h) => h.presetId === 'sugar-shield' && !h.archived);
   const lastSnack = state.snacks.filter((x) => x.day === today).sort((a, b) => b.at - a.at)[0];
   const lastMind = state.mind.filter((x) => x.day === today).sort((a, b) => b.endAt - a.endAt)[0];
 
@@ -154,6 +155,9 @@ export default function TodayScreen() {
         timestamp={lastSnack ? formatClock(minutesOfDay(lastSnack.at, zone)) : undefined}
         chart={{ values: snackSeries(state, today, 7), goal: summary.snacksTarget }}
         onPress={() => router.push('/habits')}
+        footer={
+          shield ? <PillButton label="Sugar Shield — squats before something sweet" Leading={UI.Cookie} color={c.gold} kind="ghost" onPress={() => router.push('/shield')} /> : undefined
+        }
       />
 
       <SummaryCard

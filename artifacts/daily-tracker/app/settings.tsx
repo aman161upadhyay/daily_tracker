@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Alert, Platform, StyleSheet, Switch, TextInput, View } from 'react-native';
 import Constants from 'expo-constants';
+import { RemindersCard } from '@/components/settings/RemindersCard';
+import { WidgetPickerCard } from '@/components/settings/WidgetPickerCard';
 import { Card } from '@/components/ui/Card';
 import { UI } from '@/components/ui/icons';
 import { Chip, Divider, PillButton, Row, SectionHeader, Segmented, Stepper } from '@/components/ui/primitives';
@@ -117,9 +119,12 @@ export default function SettingsScreen() {
         </Setting>
       </Card>
 
-      <SectionHeader title="Nudges" />
+      <SectionHeader title="Reminders" />
+      <RemindersCard />
+
+      <SectionHeader title="Nudge cadence" />
       <Card>
-        <Setting label="Active hours" hint="Nudges only inside this window">
+        <Setting label="Active hours" hint="Automatic nudges only inside this window; fixed times you set yourself are kept">
           <View style={{ gap: 10 }}>
             <Row style={{ justifyContent: 'space-between' }}>
               <Txt role="body" tone="secondary">
@@ -148,6 +153,9 @@ export default function SettingsScreen() {
           <Stepper value={s.dailyNudgeCap} onChange={(dailyNudgeCap) => actions.updateSettings({ dailyNudgeCap })} min={2} max={24} label="daily nudge cap" />
         </Setting>
       </Card>
+
+      <SectionHeader title="Widget" />
+      <WidgetPickerCard />
 
       <SectionHeader title="Day & cycle" />
       <Card>

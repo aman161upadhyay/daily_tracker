@@ -12,6 +12,7 @@ import { useColors } from '@/hooks/useColors';
 import type { MindKind } from '@/src/domain/models';
 import { now } from '@/src/domain/time/clock';
 import { formatMinSec } from '@/src/domain/time/format';
+import { cancelMindEnd, scheduleMindEnd } from '@/src/services/notifications';
 import { useTracker } from '@/src/state/TrackerProvider';
 
 const MEDITATION_PRESETS = [5, 10, 13, 20];
@@ -33,6 +34,17 @@ export default function MindScreen() {
 
   const totalMs = (kind === 'BREATHING' ? BREATHING_MINUTES : minutes) * 60_000;
   const remainingMs = Math.max(0, totalMs - elapsedMs);
+
+  // The end bell is a scheduled notification, so it rings even if the screen locks mid-session.
+  useEffect(() => {
+    if (!running) {
+      void cancelMindEnd();
+      return;
+    }
+    void scheduleMindEnd(now() + remainingMs, Math.round(totalMs / 60_000), kind).catch(() => {});
+    return () => void cancelMindEnd();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running]);
 
   useEffect(() => {
     if (!running) return;

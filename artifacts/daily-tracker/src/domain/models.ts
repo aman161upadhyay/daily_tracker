@@ -7,7 +7,7 @@
  * remove them.
  */
 
-export type Category = 'hydration' | 'movement' | 'mind' | 'cycle' | 'body' | 'fuel';
+export type Category = 'hydration' | 'movement' | 'mind' | 'cycle' | 'body' | 'fuel' | 'craft';
 
 export type HabitType = 'YES_NO' | 'COUNT' | 'AMOUNT' | 'TIMER';
 
@@ -57,6 +57,9 @@ export type HabitIcon =
   | 'journal'
   | 'heart'
   | 'leaf'
+  | 'book'
+  | 'pen'
+  | 'code'
   | 'check';
 
 export interface Habit {
@@ -129,6 +132,33 @@ export interface MindSession {
   minutes: number;
 }
 
+/** What happened to a scheduled nudge; kept for 7 days to drive caps, snoozes and "already fired" slots. */
+export type NudgeEventKind = 'FIRED' | 'DONE' | 'SNOOZED' | 'SWAPPED' | 'DISMISSED';
+
+export interface NudgeEvent {
+  id: string;
+  /** Deterministic planner id of the nudge this event belongs to. */
+  nudgeId: string;
+  habitIds: string[];
+  at: number;
+  zone: string;
+  day: string;
+  kind: NudgeEventKind;
+  /** For SNOOZED: when the nudge should fire instead. */
+  untilMs?: number;
+}
+
+/** A one-off nudge created by an in-app event (e.g. the Sugar Shield post-meal walk). */
+export interface ScheduledEvent {
+  id: string;
+  habitId: string;
+  at: number;
+  zone: string;
+  day: string;
+  title: string;
+  body: string;
+}
+
 export interface NudgePolicy {
   habitId: string;
   kind: NudgeKind;
@@ -175,6 +205,14 @@ export interface Settings {
   onboardingDone: boolean;
   /** Millilitres added by one tap of the water "+" button / widget. */
   tapSizeMl: number;
+  /** Master switch for scheduled notifications (the OS permission is separate). */
+  remindersEnabled: boolean;
+  /** Off mode (travel, sick day): no nudges until this epoch ms. */
+  offUntil?: number;
+  /** "Your week" summary notification; weekday 0 = Monday … 6 = Sunday, minute after midnight. */
+  weeklySummary: { enabled: boolean; weekday: number; minute: number };
+  /** Habits the home-screen widget shows, in order (first = big tile). Empty = pick automatically. */
+  widgetHabitIds: string[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -192,6 +230,9 @@ export const DEFAULT_SETTINGS: Settings = {
   cycle: { avgCycleDays: 28, periodDays: 5, history: [] },
   onboardingDone: false,
   tapSizeMl: 250,
+  remindersEnabled: true,
+  weeklySummary: { enabled: true, weekday: 6, minute: 18 * 60 },
+  widgetHabitIds: [],
 };
 
 export const SNACK_LABELS: Record<SnackType, { label: string; defaultReps?: number; defaultSeconds?: number; unit: string }> = {

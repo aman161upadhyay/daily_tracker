@@ -11,6 +11,9 @@ original Kotlin spec being ported (this plan wins where they disagree).
   linked to it (`git fetch`/`git push` work through Replit's GitHub proxy; no tokens in the shell).
 - Commit in small named steps; **push after every milestone and at the end of every working session**,
   and before any risky refactor. Tag milestones `v0.<n>` (`v0.0` = M0 skeleton). Never force-push `main`.
+- Commits are authored as **Aman Upadhyay `<aman161upadhyay@users.noreply.github.com>`** (repo-local
+  `git config user.name/user.email`; set it again if the workspace is recreated). The first two commits
+  (M0/M1) carry the agent's name and stay as they are — no history rewrite.
 - Never commit keystores, `local.properties`, generated `android/`/`ios/` folders, `.env`, real health data,
   or Replit workspace state (`.conversation/`, `attached_assets/`, `.agents/*` except `.agents/memory/`).
 
@@ -33,7 +36,12 @@ original Kotlin spec being ported (this plan wins where they disagree).
 - `constants/colors.ts` + `constants/typography.ts` are the tokens; `hooks/useColors.ts` the theme hook;
   `components/ui/` primitives (`Txt`, `Card`, `PressableScale`, `Screen`, `Sheet`, `icons.tsx`);
   `components/tracker/` the Health-style widgets (rings, summary cards, habit rows, charts, heatmap, evidence).
-- `app/` Expo Router: `(tabs)/{index,habits,body,cycle}`, `habit/[id]`, modals `settings` and `mind`.
+- `app/` Expo Router: `(tabs)/{index,habits,body,cycle}`, `habit/[id]`, modals `settings`, `mind` and `shield` (Sugar Shield).
+- Nudges: `src/domain/nudges/planner.ts` (pure plan) → `src/services/notifications[.native].ts` (OS diff-sync, channels,
+  categories) ← `components/system/NudgeScheduler.tsx` (in-app) and `src/services/nudgeTasks[.native].ts` (headless:
+  button presses with the app closed, 3-hourly re-plan). Button presses become reducer actions only through
+  `src/state/commands.ts`, which both paths share. Web/Expo Go: planner runs, OS parts are honest no-ops.
+  Device-only behaviour is listed in `docs/DEVICE_CHECKLIST.md`.
 - Icons: Phosphor, imported only through `components/ui/icons.tsx` using
   `require('phosphor-react-native/src/icons/<Name>').<Name>Icon` (the root import would bundle every icon; the
   package only exports `.` and `./src/icons/*`). Add new icons there, never import Phosphor elsewhere.

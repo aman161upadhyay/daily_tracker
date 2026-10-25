@@ -3,7 +3,7 @@
  * `persist` writes only the rows that changed between two states (items are
  * immutable, so identity tells us what changed).
  */
-import type { Habit, HabitEntry, HabitRule, MindSession, MovementSnack, NudgePolicy } from '@/src/domain/models';
+import type { Habit, HabitEntry, HabitRule, MindSession, MovementSnack, NudgeEvent, NudgePolicy, ScheduledEvent } from '@/src/domain/models';
 import type { WaterEntry } from '@/src/domain/models';
 import type { TrackerState } from '@/src/state/types';
 import { diffById, normalizeSettings, StorageError, type TrackerStore } from '../store';
@@ -175,6 +175,44 @@ const MIND: Table<MindSession> = {
   orderBy: 'start_at, rowid',
 };
 
+const NUDGE_EVENT: Table<NudgeEvent> = {
+  name: 'nudge_event',
+  columns: ['id', 'nudge_id', 'habit_ids_json', 'at', 'zone', 'day', 'kind', 'until_ms'],
+  keyColumns: ['id'],
+  key: (e) => e.id,
+  toRow: (e) => [e.id, e.nudgeId, JSON.stringify(e.habitIds), e.at, e.zone, e.day, e.kind, opt(e.untilMs)],
+  fromRow: (r) =>
+    compact<NudgeEvent>({
+      id: str(r, 'id'),
+      nudgeId: str(r, 'nudge_id'),
+      habitIds: JSON.parse(str(r, 'habit_ids_json')) as string[],
+      at: num(r, 'at'),
+      zone: str(r, 'zone'),
+      day: str(r, 'day'),
+      kind: str(r, 'kind') as NudgeEvent['kind'],
+      untilMs: optNum(r, 'until_ms'),
+    }),
+  orderBy: 'at, rowid',
+};
+
+const EVENT: Table<ScheduledEvent> = {
+  name: 'scheduled_event',
+  columns: ['id', 'habit_id', 'at', 'zone', 'day', 'title', 'body'],
+  keyColumns: ['id'],
+  key: (e) => e.id,
+  toRow: (e) => [e.id, e.habitId, e.at, e.zone, e.day, e.title, e.body],
+  fromRow: (r) => ({
+    id: str(r, 'id'),
+    habitId: str(r, 'habit_id'),
+    at: num(r, 'at'),
+    zone: str(r, 'zone'),
+    day: str(r, 'day'),
+    title: str(r, 'title'),
+    body: str(r, 'body'),
+  }),
+  orderBy: 'at, rowid',
+};
+
 function upsertSql<T>(t: Table<T>): string {
   const placeholders = t.columns.map(() => '?').join(', ');
   const updates = t.columns.filter((c) => !t.keyColumns.includes(c)).map((c) => `${c} = excluded.${c}`);
@@ -206,7 +244,7 @@ export class SqliteStore implements TrackerStore {
     const kv = await this.readKv();
     const settingsJson = kv.get(KV_SETTINGS);
     if (settingsJson === undefined) return null;
-    const [habits, rules, policies, entries, water, snacks, mind] = await Promise.all([
+    const [habits, rules, policies, entries, water, snacks, mind, nudgeEvents, events] = await Promise.all([
       this.readAll(HABIT),
       this.readAll(RULE),
       this.readAll(POLICY),
@@ -214,6 +252,8 @@ export class SqliteStore implements TrackerStore {
       this.readAll(WATER),
       this.readAll(SNACK),
       this.readAll(MIND),
+      this.readAll(NUDGE_EVENT),
+      this.readAll(EVENT),
     ]);
     const snooze = kv.get(KV_SNOOZE);
     const swap = kv.get(KV_SWAP);
@@ -226,6 +266,8 @@ export class SqliteStore implements TrackerStore {
       water,
       snacks,
       mind,
+      nudgeEvents,
+      events,
       settings: normalizeSettings(JSON.parse(settingsJson)),
       nudgeSnoozedUntil: snooze === undefined ? undefined : Number(snooze),
       nudgeSwap: swap === undefined ? undefined : (JSON.parse(swap) as TrackerState['nudgeSwap']),
@@ -242,6 +284,8 @@ export class SqliteStore implements TrackerStore {
       await this.sync(WATER, prev.water, next.water);
       await this.sync(SNACK, prev.snacks, next.snacks);
       await this.sync(MIND, prev.mind, next.mind);
+      await this.sync(NUDGE_EVENT, prev.nudgeEvents, next.nudgeEvents);
+      await this.sync(EVENT, prev.events, next.events);
       if (prev.settings !== next.settings) await this.writeKv(KV_SETTINGS, JSON.stringify(next.settings));
       if (prev.nudgeSnoozedUntil !== next.nudgeSnoozedUntil) await this.writeKv(KV_SNOOZE, next.nudgeSnoozedUntil === undefined ? null : String(next.nudgeSnoozedUntil));
       if (prev.nudgeSwap !== next.nudgeSwap) await this.writeKv(KV_SWAP, next.nudgeSwap === undefined ? null : JSON.stringify(next.nudgeSwap));
@@ -250,7 +294,7 @@ export class SqliteStore implements TrackerStore {
 
   async replace(state: TrackerState): Promise<void> {
     await this.db.withTransactionAsync(async () => {
-      for (const t of [HABIT, RULE, POLICY, ENTRY, WATER, SNACK, MIND]) await this.db.execAsync(`DELETE FROM ${t.name}`);
+      for (const t of [HABIT, RULE, POLICY, ENTRY, WATER, SNACK, MIND, NUDGE_EVENT, EVENT]) await this.db.execAsync(`DELETE FROM ${t.name}`);
       await this.db.execAsync('DELETE FROM kv');
       await this.insertAll(HABIT, state.habits);
       await this.insertAll(RULE, state.rules);
@@ -259,6 +303,8 @@ export class SqliteStore implements TrackerStore {
       await this.insertAll(WATER, state.water);
       await this.insertAll(SNACK, state.snacks);
       await this.insertAll(MIND, state.mind);
+      await this.insertAll(NUDGE_EVENT, state.nudgeEvents);
+      await this.insertAll(EVENT, state.events);
       await this.writeKv(KV_SETTINGS, JSON.stringify(state.settings));
       await this.writeKv(KV_SNOOZE, state.nudgeSnoozedUntil === undefined ? null : String(state.nudgeSnoozedUntil));
       await this.writeKv(KV_SWAP, state.nudgeSwap === undefined ? null : JSON.stringify(state.nudgeSwap));

@@ -165,14 +165,16 @@ beat automatic ones**; streaks are recomputed from raw entries, never stored.
 **Done:** a full day of real logging works offline; data survives restarts; 60 tests green.
 **Deferred to M2:** 7-day water pace planner tests already exist; nudges for custom habits; week-start setting.
 
-### M2 — The nudge engine + Mind
-- Notification channels (`nudges`, `water`, `summary`, `cycle`), permission flow, exact-alarm handling and the "Allow exact reminders" settings deep link.
-- `planNudges` with caps, merges, quiet hours, pace-aware water, rotation; deterministic ids; replan on all triggers; 3-hourly background catch-up; boot/time-zone re-plan.
-- Action buttons (Done / Snooze / Swap / +250 ml) and the response task; `nudge_event` logging.
-- Sugar Shield flow (countdown screen + post-meal follow-up).
-- Meditation timer (bells, presets, background-safe via scheduled end notification) and the cyclic-sighing breathing guide (`BreathCircle`).
-- Off mode (travel) and the weekly "Your week" summary notification (Sunday 6 pm).
-**Done when:** on a real workday the phone gets a sensible, non-nagging cadence of nudges that can be completed from the notification; snoozes and caps behave; tests cover the planner's edge cases (active-hours end, cap reached, merge, DST night).
+### M2 — The nudge engine + Mind ✅ (v0.2)
+- `src/domain/nudges/planner.ts`: pure, deterministic `planNudges` (36-h horizon; ids `rot:`/`int:`/`fix:`/`water:`/`event:`/`summary:`/`cycle:` double as OS identifiers). Shared movement rotation across ROTATION + INTERVAL snack habits, advancing per completed snack like the Today card; other INTERVAL habits; FIXED clock times (kept outside active hours — the user's explicit choice); pace-aware water (one interval after the last tap, skipped while on pace, stops at the goal); one-off events; Sunday "Your week"; cycle prompt. 5-min merge, per-habit `maxPerDay` (counting what already fired), daily cap over fired + planned, snooze moves one slot and re-offers the same snack, swap offers the next one, off mode and the master switch. 22 tests incl. both DST nights.
+- Storage v2 migration: `nudge_event` (FIRED/DONE/SNOOZED/SWAPPED/DISMISSED, 7-day retention) and `scheduled_event` tables; settings gained `remindersEnabled`, `offUntil`, `weeklySummary`, `widgetHabitIds`.
+- `src/services/notifications[.native].ts`: channels `nudges`/`water`/`summary`/`cycle`/`mind`, action categories (Done · In 15 min · Swap · +tap ml · Did it), diff-sync of the plan against the OS schedule with a ledger that reports what fired while the app was closed, launch-response replay, exact-alarm settings deep link. Web build is an honest no-op (`unsupported`).
+- `src/state/commands.ts`: the one place a button press becomes reducer actions, used by the in-app listener (`components/system/NudgeScheduler.tsx`) and by the headless tasks (`src/services/nudgeTasks.native.ts`: expo-notifications response task + 3-hourly `expo-background-task` re-plan; both unavailable in Expo Go, available in the dev build). Headless writes set a flag; the provider reloads from SQLite on the next foreground before writing again.
+- Sugar Shield (`app/shield.tsx`): 60-s squat countdown → logs a SUGAR_SHIELD squat and schedules the 20-min "Post-meal walk" event; Today's movement card gets the button. Mind timer schedules its end bell as a notification (cancelled on pause/finish); a tap on the bell logs the session if the app missed the end.
+- Settings: Reminders card (master switch, permission state, exact timing, pause 2 h / rest of today / 3 days, weekly summary time, "Next up" preview from the live plan), Home-screen widget picker (any ≤3 habits; empty = automatic — the widget itself is M3).
+- Craft & learning category (`cat.craft`) with four presets: read before bed, technical reading, write, build with AI.
+**Verified in the browser:** planner + settings + Sugar Shield + widget picker. **Needs the phone** (see `docs/DEVICE_CHECKLIST.md` N1–N12): delivery under Doze, action buttons with the app killed, exact-alarm grant, boot re-plan.
+**Deferred to M3:** week-start setting; per-habit notification sounds; a dedicated "confirm" screen if headless actions prove unreliable.
 
 ### M3 — Widgets + first installed build (laptop)
 - `react-native-android-widget` config; Water 2×2 and 4×1, Move 2×1 (Sugar Shield / Move now); headless click handlers writing through the repositories; widget refresh from every write path.

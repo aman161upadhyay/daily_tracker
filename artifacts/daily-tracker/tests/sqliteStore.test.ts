@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { describe, it } from 'node:test';
 import { JsonStore, MemoryBackend } from '../src/data/jsonStore';
 import type { SqlDriver, SqlValue } from '../src/data/sql/driver';
-import { migrate, SCHEMA_VERSION } from '../src/data/sql/schema';
+import { MIGRATIONS, migrate, SCHEMA_VERSION } from '../src/data/sql/schema';
 import { SqliteStore } from '../src/data/sql/sqliteStore';
 import { diffById, parseState, type TrackerStore } from '../src/data/store';
 import { reducer } from '../src/state/reducer';
@@ -52,6 +52,8 @@ function canon(raw: TrackerState): TrackerState {
     water: byId(s.water),
     snacks: byId(s.snacks),
     mind: byId(s.mind),
+    nudgeEvents: byId(s.nudgeEvents),
+    events: byId(s.events),
   };
 }
 
@@ -125,8 +127,23 @@ describe('schema migrations', () => {
     const tables = driver.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as { name: string }[];
     assert.deepEqual(
       tables.map((t) => t.name),
-      ['habit', 'habit_entry', 'habit_rule', 'kv', 'mind_session', 'movement_snack', 'nudge_policy', 'water_entry'],
+      ['habit', 'habit_entry', 'habit_rule', 'kv', 'mind_session', 'movement_snack', 'nudge_event', 'nudge_policy', 'scheduled_event', 'water_entry'],
     );
+  });
+
+  it('upgrades a v1 database in place and keeps its rows', async () => {
+    const driver = new NodeDriver();
+    // Replay only the first migration, as an M1 install would have.
+    driver.db.exec(MIGRATIONS[0]!);
+    driver.db.exec('PRAGMA user_version = 1');
+    driver.db.exec("INSERT INTO kv (key, value) VALUES ('settings', '{\"name\":\"Aman\"}')");
+    assert.deepEqual(await migrate(driver), { from: 1, to: SCHEMA_VERSION });
+    const store = await SqliteStore.open(driver);
+    const loaded = await store.load();
+    assert.equal(loaded?.settings.name, 'Aman');
+    assert.deepEqual(loaded?.nudgeEvents, []);
+    assert.deepEqual(loaded?.events, []);
+    assert.deepEqual(loaded?.settings.widgetHabitIds, []);
   });
 
   it('refuses a database from a newer app', async () => {
@@ -144,6 +161,17 @@ describe('state parsing', () => {
     const parsed = parseState(saved);
     assert.equal(parsed.settings.onboardingDone, false);
     assert.equal(parsed.settings.tapSizeMl, 250);
+  });
+
+  it('accepts M1 exports that predate the nudge-event lists', () => {
+    const saved = JSON.parse(JSON.stringify(buildEmptyState(TODAY))) as Record<string, unknown>;
+    delete saved.nudgeEvents;
+    delete saved.events;
+    delete (saved.settings as Record<string, unknown>).weeklySummary;
+    const parsed = parseState(saved);
+    assert.deepEqual(parsed.nudgeEvents, []);
+    assert.deepEqual(parsed.events, []);
+    assert.deepEqual(parsed.settings.weeklySummary, { enabled: true, weekday: 6, minute: 18 * 60 });
   });
 
   it('rejects foreign or newer data', () => {

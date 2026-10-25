@@ -1,0 +1,99 @@
+import { useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
+import { useRouter } from 'expo-router';
+import type { NudgeActionKind } from '@/src/domain/nudges/planner';
+import { newId } from '@/src/domain/time/clock';
+import {
+  NOTIFICATIONS_SUPPORTED,
+  addResponseListener,
+  cancelAll,
+  consumeLaunchResponse,
+  getPermission,
+  markHandled,
+  registerBackgroundReplan,
+  type NudgeResponse,
+} from '@/src/services/notifications';
+import { registerResponseTask } from '@/src/services/nudgeTasks';
+import { syncStateToOs } from '@/src/services/replan';
+import { firedActions, nudgeResponseActions, type CommandContext } from '@/src/state/commands';
+import { nudgePlan } from '@/src/state/selectors';
+import { useTracker } from '@/src/state/TrackerProvider';
+
+/**
+ * Keeps the OS notification schedule equal to the planner's output and turns
+ * notification button presses into state changes. Renders nothing.
+ */
+export function NudgeScheduler() {
+  const { state, ready, nowMs, zone, today, dispatch } = useTracker();
+  const router = useRouter();
+  const latest = useRef({ state, today, nowMs, zone });
+  latest.current = { state, today, nowMs, zone };
+
+  const ctx = (): CommandContext => ({ nowMs: Date.now(), zone: latest.current.zone, today: latest.current.today, newId });
+
+  const handle = async (r: NudgeResponse) => {
+    if (!(await markHandled(r.key))) return;
+    const c = ctx();
+    for (const a of nudgeResponseActions(latest.current.state, r.payload, r.action as NudgeActionKind | 'TAP', c)) dispatch(a);
+    if (r.action === 'TAP') {
+      const id = r.payload.habitIds[0];
+      if (r.payload.kind === 'SUMMARY') router.push('/');
+      else if (id) router.push({ pathname: '/habit/[id]', params: { id } });
+    }
+  };
+
+  // Listeners, headless task registration, the response that launched the app.
+  useEffect(() => {
+    if (!NOTIFICATIONS_SUPPORTED || !ready) return;
+    const remove = addResponseListener((r) => void handle(r));
+    void registerResponseTask();
+    void registerBackgroundReplan();
+    void consumeLaunchResponse().then((r) => r && handle(r));
+    return remove;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
+
+  // Re-plan whenever the plan changes (state or the minute), debounced.
+  const plan = ready ? nudgePlan(state, today, nowMs, zone) : null;
+  const planKey = plan ? plan.map((n) => `${n.id}@${n.at}:${n.habitIds.join(',')}:${n.body}`).join('|') : '';
+  const enabled = state.settings.remindersEnabled;
+  const tapMl = state.settings.tapSizeMl;
+  useEffect(() => {
+    if (!NOTIFICATIONS_SUPPORTED || !ready) return;
+    const timer = setTimeout(async () => {
+      try {
+        if (!enabled) {
+          await cancelAll();
+          return;
+        }
+        if ((await getPermission()) !== 'granted') return;
+        const c = ctx();
+        const fired = await syncStateToOs(latest.current.state, c);
+        for (const a of firedActions(latest.current.state, fired, c)) dispatch(a);
+        dispatch({ type: 'PRUNE_EVENTS', beforeMs: c.nowMs - 60 * 60_000 });
+      } catch (err) {
+        console.warn('Notification sync failed', err);
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, planKey, enabled, tapMl]);
+
+  // Permission can change in system settings while we are away: re-sync on foreground.
+  useEffect(() => {
+    if (!NOTIFICATIONS_SUPPORTED) return;
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s !== 'active' || !latest.current.state.settings.remindersEnabled) return;
+      void (async () => {
+        if ((await getPermission()) !== 'granted') return;
+        const c = ctx();
+        const fired = await syncStateToOs(latest.current.state, c);
+        for (const a of firedActions(latest.current.state, fired, c)) dispatch(a);
+      })().catch((err) => console.warn('Notification sync failed', err));
+    });
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return null;
+}

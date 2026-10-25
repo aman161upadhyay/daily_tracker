@@ -90,6 +90,29 @@ export const MIGRATIONS: readonly string[] = [
     value TEXT NOT NULL
   );
   `,
+  // v2 — nudge engine: what happened to each nudge, and one-off in-app events
+  `
+  CREATE TABLE IF NOT EXISTS nudge_event (
+    id TEXT PRIMARY KEY NOT NULL,
+    nudge_id TEXT NOT NULL,
+    habit_ids_json TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    zone TEXT NOT NULL,
+    day TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    until_ms INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS nudge_event_day ON nudge_event (day);
+  CREATE TABLE IF NOT EXISTS scheduled_event (
+    id TEXT PRIMARY KEY NOT NULL,
+    habit_id TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    zone TEXT NOT NULL,
+    day TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL
+  );
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

@@ -369,6 +369,72 @@ export const PRESETS: Preset[] = [
     evidence: 'Guidance',
     sources: [],
   },
+
+  // ── D. Craft & learning (reading, writing, building) ─────────────────────
+  {
+    id: 'read-before-bed',
+    name: 'Read 10 pages',
+    category: 'craft',
+    type: 'COUNT',
+    unit: 'pages',
+    icon: 'book',
+    rule: { cadence: 'DAILY', timesPerPeriod: 1, target: 10 },
+    ruleText: '10 pages a night',
+    policy: { kind: 'FIXED', times: ['21:30'], maxPerDay: 1 },
+    nudgeText: 'At 9:30 PM, before bed',
+    why:
+      'In a 991-person online trial, people assigned to read a book in bed were more likely to report better sleep after a week (42% vs 28%) than those told not to. Ten pages a night is also 3,000+ pages a year.',
+    evidence: 'Emerging',
+    sources: [{ label: 'Finucane et al. 2021, Trials (The People\'s Trial)', url: 'https://trialsjournal.biomedcentral.com/articles/10.1186/s13063-021-05831-3' }],
+  },
+  {
+    id: 'technical-reading',
+    name: 'Technical reading',
+    category: 'craft',
+    type: 'COUNT',
+    unit: 'pages',
+    icon: 'book',
+    rule: { cadence: 'WEEKLY', timesPerPeriod: 5, target: 20 },
+    ruleText: '20 pages on 5 days a week (about 100 a week)',
+    policy: { kind: 'FIXED', times: ['08:30'], maxPerDay: 1 },
+    nudgeText: 'At 8:30 AM on days you have not read yet',
+    why:
+      'Spacing study over several days beats one long session for remembering what you read. Five short sessions a week turn a dense technical book into a predictable 100 pages.',
+    evidence: 'Moderate',
+    sources: [{ label: 'Cepeda et al. 2006, Psychol Bull (spacing meta-analysis)', url: 'https://pubmed.ncbi.nlm.nih.gov/16719566' }],
+  },
+  {
+    id: 'write',
+    name: 'Write',
+    category: 'craft',
+    type: 'TIMER',
+    unit: 'min',
+    icon: 'pen',
+    rule: { cadence: 'DAILY', timesPerPeriod: 1, target: 15 },
+    ruleText: '15 min a day',
+    policy: { kind: 'FIXED', times: ['20:30'], maxPerDay: 1 },
+    nudgeText: 'At 8:30 PM',
+    why:
+      'A daily slot at a fixed time is the habit-formation finding that replicates: planned "when and where" cues roughly double follow-through on goals. Fifteen minutes is small enough to start on a bad day.',
+    evidence: 'Moderate',
+    sources: [{ label: 'Gollwitzer & Sheeran 2006 (implementation intentions meta-analysis)', url: 'https://doi.org/10.1016/S0065-2601(06)38002-1' }],
+  },
+  {
+    id: 'build-with-ai',
+    name: 'Build with AI',
+    category: 'craft',
+    type: 'TIMER',
+    unit: 'min',
+    icon: 'code',
+    rule: { cadence: 'DAILY', timesPerPeriod: 1, target: 20 },
+    ruleText: '20 min a day (Claude Code, Replit, Codex…)',
+    policy: { kind: 'FIXED', times: ['19:30'], maxPerDay: 1 },
+    nudgeText: 'At 7:30 PM',
+    why:
+      'New routines took a median of 66 days to feel automatic in the classic diary study, and missing a single day made little difference — so a short daily build beats an occasional long one.',
+    evidence: 'Emerging',
+    sources: [{ label: 'Lally et al. 2010, Eur J Soc Psychol', url: 'https://onlinelibrary.wiley.com/doi/10.1002/ejsp.674' }],
+  },
 ];
 
 export const PRESET_BY_ID: Record<string, Preset> = Object.fromEntries(PRESETS.map((p) => [p.id, p]));
@@ -380,9 +446,10 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   cycle: 'Cycle',
   body: 'Body',
   fuel: 'Fuel',
+  craft: 'Craft & learning',
 };
 
-export const CATEGORY_ORDER: Category[] = ['hydration', 'movement', 'fuel', 'mind', 'body', 'cycle'];
+export const CATEGORY_ORDER: Category[] = ['hydration', 'movement', 'fuel', 'mind', 'craft', 'body', 'cycle'];
 
 export const EVIDENCE_HELP: Record<EvidenceGrade, string> = {
   Strong: 'Meta-analyses or large cohorts',

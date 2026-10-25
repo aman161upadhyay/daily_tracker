@@ -1,4 +1,4 @@
-import type { Habit, HabitEntry, HabitRule, MindSession, MovementSnack, NudgePolicy, Settings, WaterEntry } from '@/src/domain/models';
+import type { Habit, HabitEntry, HabitRule, MindSession, MovementSnack, NudgeEvent, NudgePolicy, ScheduledEvent, Settings, WaterEntry } from '@/src/domain/models';
 import type { TrackerState } from './types';
 
 export type Action =
@@ -25,6 +25,12 @@ export type Action =
   | { type: 'UPDATE_SETTINGS'; patch: Partial<Settings> }
   | { type: 'SNOOZE'; untilMs: number }
   | { type: 'SWAP'; day: string }
+  /** Record what happened to a planned nudge; events older than `keepFromDay` are dropped. */
+  | { type: 'NUDGE_EVENT'; event: NudgeEvent; keepFromDay: string }
+  | { type: 'SCHEDULE_EVENT'; event: ScheduledEvent }
+  | { type: 'REMOVE_EVENT'; id: string }
+  /** Drop one-off events that are already in the past. */
+  | { type: 'PRUNE_EVENTS'; beforeMs: number }
   | { type: 'PERIOD_START'; day: string }
   | { type: 'PERIOD_END'; day: string };
 
@@ -157,6 +163,22 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
     case 'SWAP': {
       const prev = state.nudgeSwap?.day === action.day ? state.nudgeSwap.offset : 0;
       return { ...state, nudgeSwap: { day: action.day, offset: prev + 1 } };
+    }
+
+    case 'NUDGE_EVENT': {
+      const kept = state.nudgeEvents.filter((e) => e.day >= action.keepFromDay);
+      return { ...state, nudgeEvents: [...kept, action.event] };
+    }
+
+    case 'SCHEDULE_EVENT':
+      return { ...state, events: [...state.events.filter((e) => e.id !== action.event.id), action.event] };
+
+    case 'REMOVE_EVENT':
+      return state.events.some((e) => e.id === action.id) ? { ...state, events: state.events.filter((e) => e.id !== action.id) } : state;
+
+    case 'PRUNE_EVENTS': {
+      const keep = state.events.filter((e) => e.at >= action.beforeMs);
+      return keep.length === state.events.length ? state : { ...state, events: keep };
     }
 
     case 'PERIOD_START': {

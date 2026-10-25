@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { createStore } from '@/src/data/createStore';
+import { consumeHeadlessWrite } from '@/src/services/replan';
 import type { TrackerStore } from '@/src/data/store';
 import type { Cadence, Category, Habit, HabitIcon, HabitRule, HabitType, MindKind, NudgePolicy, Settings, SnackTrigger, SnackType } from '@/src/domain/models';
 import { SNACK_LABELS } from '@/src/domain/models';
@@ -77,6 +78,9 @@ export interface TrackerActions {
   completeOnboarding(choices: OnboardingChoices): void;
   snoozeNudge(minutes: number): void;
   swapNudge(): void;
+  /** One-off nudge created in-app (Sugar Shield follow-up). */
+  scheduleEvent(event: { id: string; habitId: string; inMinutes: number; title: string; body: string }): void;
+  removeEvent(id: string): void;
   startFresh(): void;
   loadSample(): void;
   /** Replace everything with an imported state (already validated). */
@@ -161,11 +165,22 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   }, [state]);
 
   // Clock: refresh every 30 s and whenever the app returns to the foreground.
+  // On foreground, also pick up rows a headless writer (notification button) added while we slept.
   useEffect(() => {
     const tick = () => setNowMs(now());
     const interval = setInterval(tick, 30_000);
     const sub = AppState.addEventListener('change', (s) => {
-      if (s === 'active') tick();
+      if (s !== 'active') return;
+      tick();
+      void (async () => {
+        const store = storeRef.current;
+        if (!store || !(await consumeHeadlessWrite())) return;
+        await queueRef.current;
+        const fresh = await store.load();
+        if (!fresh) return;
+        persistedRef.current = fresh;
+        dispatch({ type: 'HYDRATE', state: fresh });
+      })().catch((err) => console.warn('Reload after background change failed', err));
     });
     return () => {
       clearInterval(interval);
@@ -413,6 +428,13 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
       },
       swapNudge() {
         dispatch({ type: 'SWAP', day: stamp().day });
+      },
+      scheduleEvent(event) {
+        const { at, zone: z, day } = stamp();
+        dispatch({ type: 'SCHEDULE_EVENT', event: { id: event.id, habitId: event.habitId, at: at + event.inMinutes * 60_000, zone: z, day, title: event.title, body: event.body } });
+      },
+      removeEvent(id) {
+        dispatch({ type: 'REMOVE_EVENT', id });
       },
       startFresh() {
         dispatch({ type: 'REPLACE', state: buildEmptyState(stamp().day, { ...stateRef().settings, onboardingDone: true }) });

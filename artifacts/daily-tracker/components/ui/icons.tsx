@@ -34,6 +34,13 @@ const GearSixIcon = require('phosphor-react-native/src/icons/GearSix').GearSixIc
 const HeartbeatIcon = require('phosphor-react-native/src/icons/Heartbeat').HeartbeatIcon as Icon;
 const InfoIcon = require('phosphor-react-native/src/icons/Info').InfoIcon as Icon;
 const LeafIcon = require('phosphor-react-native/src/icons/Leaf').LeafIcon as Icon;
+const BookOpenIcon = require('phosphor-react-native/src/icons/BookOpen').BookOpenIcon as Icon;
+const PencilLineIcon = require('phosphor-react-native/src/icons/PencilLine').PencilLineIcon as Icon;
+const CodeIcon = require('phosphor-react-native/src/icons/Code').CodeIcon as Icon;
+const AirplaneIcon = require('phosphor-react-native/src/icons/Airplane').AirplaneIcon as Icon;
+const BellSlashIcon = require('phosphor-react-native/src/icons/BellSlash').BellSlashIcon as Icon;
+const CookieIcon = require('phosphor-react-native/src/icons/Cookie').CookieIcon as Icon;
+const SquaresFourIcon = require('phosphor-react-native/src/icons/SquaresFour').SquaresFourIcon as Icon;
 const LightningIcon = require('phosphor-react-native/src/icons/Lightning').LightningIcon as Icon;
 const ListChecksIcon = require('phosphor-react-native/src/icons/ListChecks').ListChecksIcon as Icon;
 const MinusIcon = require('phosphor-react-native/src/icons/Minus').MinusIcon as Icon;
@@ -81,6 +88,9 @@ export const HABIT_ICONS: Record<HabitIcon, Icon> = {
   journal: NotePencilIcon,
   heart: HeartbeatIcon,
   leaf: LeafIcon,
+  book: BookOpenIcon,
+  pen: PencilLineIcon,
+  code: CodeIcon,
   check: CheckIcon,
 };
 
@@ -90,7 +100,11 @@ export function HabitGlyph({ icon, ...props }: { icon: HabitIcon } & IconProps) 
 }
 
 export const UI = {
+  Airplane: AirplaneIcon,
   Archive: ArchiveIcon,
+  BellSlash: BellSlashIcon,
+  Cookie: CookieIcon,
+  Widget: SquaresFourIcon,
   ArrowLeft: ArrowLeftIcon,
   Back: ArrowLeftIcon,
   Bell: BellIcon,

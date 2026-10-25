@@ -70,6 +70,7 @@ Not copied: Apple's Sharing tab, medical records, the light-only palette.
 | Cycle | `cat.cycle` | `#E59AB7` |
 | Body (sleep, heart, weight from Health Connect) | `cat.body` | `#E6C76A` |
 | Nutrition-adjacent ("Sugar Shield", post-meal walk) | `cat.fuel` | `#F0A35E` |
+| Craft & learning (reading, writing, building with AI) | `cat.craft` | `#D7E58C` (chartreuse — warm, distinct from both greens) |
 
 ### 2.4 The adherence scale (the "row changes color" requirement)
 

@@ -29,6 +29,7 @@ const category = {
   cycle: '#E59AB7',
   body: '#E6C76A',
   fuel: '#F0A35E',
+  craft: '#D7E58C',
 } as const;
 
 const dark = {

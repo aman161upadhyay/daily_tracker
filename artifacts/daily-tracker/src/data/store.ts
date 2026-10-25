@@ -36,6 +36,8 @@ export function normalizeSettings(raw: Partial<Settings> | undefined): Settings 
     ...DEFAULT_SETTINGS,
     ...base,
     pinned: Array.isArray(base.pinned) ? base.pinned : DEFAULT_SETTINGS.pinned,
+    widgetHabitIds: Array.isArray(base.widgetHabitIds) ? base.widgetHabitIds : [],
+    weeklySummary: { ...DEFAULT_SETTINGS.weeklySummary, ...(base.weeklySummary ?? {}) },
     cycle: { ...DEFAULT_SETTINGS.cycle, ...(base.cycle ?? {}), history: Array.isArray(base.cycle?.history) ? base.cycle.history : [] },
   };
 }
@@ -58,6 +60,9 @@ export function parseState(raw: unknown): TrackerState {
     water: s.water!,
     snacks: s.snacks!,
     mind: s.mind!,
+    // Lists added after the first exports; older files simply lack them.
+    nudgeEvents: Array.isArray(s.nudgeEvents) ? s.nudgeEvents : [],
+    events: Array.isArray(s.events) ? s.events : [],
     settings: normalizeSettings(s.settings),
     ...(s.nudgeSnoozedUntil !== undefined ? { nudgeSnoozedUntil: s.nudgeSnoozedUntil } : {}),
     ...(s.nudgeSwap !== undefined ? { nudgeSwap: s.nudgeSwap } : {}),

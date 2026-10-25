@@ -14,7 +14,10 @@ import {
 import { DarkTheme, Stack, ThemeProvider } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
+// Defines the headless notification tasks before anything else runs (no-op on web).
+import "@/src/services/nudgeTasks";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { NudgeScheduler } from "@/components/system/NudgeScheduler";
 import { UI } from "@/components/ui/icons";
 import { Txt } from "@/components/ui/Txt";
 import colors from "@/constants/colors";
@@ -109,7 +112,12 @@ function RootLayoutNav() {
           name="mind"
           options={{ title: "Mind", presentation: "modal" }}
         />
+        <Stack.Screen
+          name="shield"
+          options={{ title: "Sugar Shield", presentation: "modal" }}
+        />
       </Stack>
+      <NudgeScheduler />
     </View>
   );
 }

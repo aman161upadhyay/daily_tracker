@@ -11,10 +11,12 @@ import {
   type DayRatio,
 } from '@/src/domain/habits/progress';
 import { evaluateStreak, type PeriodResult } from '@/src/domain/habits/streaks';
-import type { Habit, HabitRule, MovementSnack, NudgePolicy, SnackType } from '@/src/domain/models';
+import type { Category, Habit, HabitRule, MovementSnack, NudgePolicy, SnackType } from '@/src/domain/models';
 import { SNACK_LABELS } from '@/src/domain/models';
+import { averageCycleLength, isPeriodOpen, lastPeriodStart, predictedNextStart } from '@/src/domain/cycle/predict';
 import { nextNudge, type NextNudge, type RotationItem } from '@/src/domain/nudges/nextNudge';
-import { addDays, lastNDays, minutesOfDay, weekStartOf } from '@/src/domain/time/trackingDay';
+import { planNudges, type PlanHabit, type PlanInput, type ScheduledNudge } from '@/src/domain/nudges/planner';
+import { addDays, calendarDayOf, dayDiff, lastNDays, minutesOfDay, weekStartOf } from '@/src/domain/time/trackingDay';
 import { waterStatus, type WaterStatus } from '@/src/domain/water/pace';
 import type { TrackerState } from './types';
 
@@ -259,17 +261,27 @@ export function rotationItems(state: TrackerState): RotationItem[] {
 export function liveNudge(state: TrackerState, today: string, nowMs: number, zone: string): NextNudge | null {
   const s = state.settings;
   const nowMin = minutesOfDay(nowMs, zone);
+  const items = rotationItems(state);
   const todaySnacks = state.snacks.filter((x) => x.day === today && x.trigger !== 'SUGAR_SHIELD');
   const last = todaySnacks.reduce<MovementSnack | null>((acc, x) => (!acc || x.at > acc.at ? x : acc), null);
   const lastDoneMin = last ? minutesOfDay(last.at, zone) : undefined;
   const snoozedUntilMin =
     state.nudgeSnoozedUntil && state.nudgeSnoozedUntil > nowMs ? minutesOfDay(state.nudgeSnoozedUntil, zone) : undefined;
   const swap = state.nudgeSwap?.day === today ? state.nudgeSwap.offset : 0;
-  return nextNudge(
+  const legacy = nextNudge(
     { nowMin, activeStartMin: s.activeStartMin, activeEndMin: s.activeEndMin, intervalMin: s.nudgeIntervalMin, lastDoneMin, snoozedUntilMin },
-    rotationItems(state),
+    items,
     todaySnacks.length + swap,
   );
+  if (!legacy || !s.remindersEnabled) return legacy;
+  // Agree with the first pending movement notification (snoozes and swaps made from a notification
+  // are only known to the planner); an overdue slot still shows as "due now" on the card.
+  const planned = nudgePlan(state, today, nowMs, zone).find((n) => n.day === today && (n.kind === 'ROTATION' || n.kind === 'WATER') && n.habitIds.some((id) => items.some((i) => i.habitId === id)));
+  const item = planned && items.find((i) => planned.habitIds.includes(i.habitId));
+  if (!planned || !item) return legacy;
+  if (legacy.inMin === 0) return { ...legacy, item };
+  const dueMin = minutesOfDay(planned.at, zone);
+  return { dueMin, inMin: Math.max(0, dueMin - nowMin), item };
 }
 
 export function snackSuggestion(type: SnackType): string {
@@ -314,7 +326,7 @@ export interface Highlight {
   id: string;
   title: string;
   body: string;
-  category: 'hydration' | 'movement' | 'mind' | 'fuel' | 'body' | 'cycle';
+  category: Category;
   series?: number[];
   habitId?: string;
 }
@@ -402,4 +414,156 @@ export function highlights(state: TrackerState, today: string): Highlight[] {
   }
 
   return out.slice(0, 3);
+}
+
+// ── Nudge plan (notifications) ─────────────────────────────────────────────
+
+function isMovement(habit: Habit): boolean {
+  return !!habit.snackType && !isSugarShield(habit);
+}
+
+/** Epoch ms of the last log that counts for this habit today, if any. */
+export function lastLogMsToday(state: TrackerState, habit: Habit, today: string): number | undefined {
+  let last: number | undefined;
+  const take = (at: number) => {
+    if (last === undefined || at > last) last = at;
+  };
+  if (habit.presetId === 'water') {
+    for (const w of state.water) if (w.day === today) take(w.at);
+    return last;
+  }
+  if (habit.snackType) {
+    for (const x of state.snacks) if (x.day === today && snackCountsFor(habit, x)) take(x.at);
+    return last;
+  }
+  if (habit.mindKind) {
+    for (const m of state.mind) if (m.day === today && m.kind === habit.mindKind) take(m.endAt);
+    return last;
+  }
+  for (const e of state.entries) if (e.day === today && e.habitId === habit.id) take(e.at);
+  return last;
+}
+
+function planHabitOf(state: TrackerState, view: HabitView, today: string): PlanHabit | null {
+  const { habit, rule, policy } = view;
+  if (!policy || policy.kind === 'NONE' || policy.kind === 'EVENT' || policy.kind === 'CYCLE') return null;
+  let donePeriod = false;
+  if (rule.cadence === 'WEEKLY') donePeriod = (view.weekDone ?? 0) >= rule.timesPerPeriod;
+  if (rule.cadence === 'MONTHLY') {
+    const current = view.periods.find((p) => p.start <= today && p.end >= today);
+    donePeriod = !!current && current.done >= current.required;
+  }
+  return compactPlanHabit({
+    id: habit.id,
+    name: habit.name,
+    policy,
+    snackType: habit.snackType,
+    doneToday: view.todayRatio >= 1,
+    donePeriod,
+    todayRatio: view.todayRatio,
+    lastLogMs: lastLogMsToday(state, habit, today),
+    movement: isMovement(habit),
+  });
+}
+
+function compactPlanHabit(h: PlanHabit): PlanHabit {
+  if (h.snackType === undefined) delete h.snackType;
+  if (h.lastLogMs === undefined) delete h.lastLogMs;
+  return h;
+}
+
+/** The weekly "Your week" notification text, rendered from the last 7 days. */
+export function weekSummaryText(state: TrackerState, today: string): { title: string; body: string } {
+  const habits = activeHabits(state);
+  const days = lastNDays(today, 7);
+  let hit = 0;
+  let total = 0;
+  let best: { name: string; streak: number } | null = null;
+  for (const h of habits) {
+    const ratios = habitRatios(state, h, days).filter((r) => r.day >= h.createdDay);
+    total += ratios.length;
+    hit += ratios.filter((r) => r.ratio >= 1).length;
+    const v = habitView(state, h, today);
+    if (v.streak > 0 && (!best || v.streak > best.streak)) best = { name: h.name, streak: v.streak };
+  }
+  const pct = total > 0 ? Math.round((hit / total) * 100) : 0;
+  const streakLine = best ? ` · longest streak: ${best.name} (${best.streak})` : '';
+  return { title: 'Your week', body: total > 0 ? `${hit} of ${total} daily targets hit (${pct}%)${streakLine}.` : 'Add a habit or two and next week has a story.' };
+}
+
+/** Day a period is expected, for the discreet cycle prompt; undefined when nothing is due. */
+export function cycleExpectedDay(state: TrackerState, calendarToday: string): string | undefined {
+  const s = state.settings;
+  if (!s.cycleEnabled) return undefined;
+  const history = s.cycle.history;
+  const last = lastPeriodStart(history);
+  if (!last || isPeriodOpen(history)) return undefined;
+  const expected = predictedNextStart(last, averageCycleLength(history, s.cycle.avgCycleDays));
+  if (dayDiff(calendarToday, expected) < -2) return undefined;
+  return expected;
+}
+
+export function planInputFor(state: TrackerState, today: string, nowMs: number, zone: string): PlanInput {
+  const s = state.settings;
+  const habits: PlanHabit[] = [];
+  for (const h of activeHabits(state)) {
+    if (h.presetId === 'water') continue;
+    const ph = planHabitOf(state, habitView(state, h, today), today);
+    if (ph) habits.push(ph);
+  }
+  const water = waterHabit(state);
+  const waterPolicy = water ? policyFor(state, water.id) : undefined;
+  const todaySnacks = state.snacks.filter((x) => x.day === today && x.trigger !== 'SUGAR_SHIELD');
+  const input: PlanInput = {
+    nowMs,
+    zone,
+    today,
+    settings: {
+      activeStartMin: s.activeStartMin,
+      activeEndMin: s.activeEndMin,
+      dailyNudgeCap: s.dailyNudgeCap,
+      nudgeIntervalMin: s.nudgeIntervalMin,
+      remindersEnabled: s.remindersEnabled,
+      offUntil: s.offUntil,
+      weeklySummary: s.weeklySummary,
+      waterGoalMl: s.waterGoalMl,
+      tapSizeMl: s.tapSizeMl,
+    },
+    habits,
+    rotationCompletedToday: todaySnacks.length,
+    swapOffset: state.nudgeSwap?.day === today ? state.nudgeSwap.offset : 0,
+    events: state.events,
+    nudgeEvents: state.nudgeEvents,
+    weekSummary: weekSummaryText(state, today),
+  };
+  if (water && waterPolicy?.enabled) {
+    const todayWater = state.water.filter((w) => w.day === today);
+    const lastTapMs = todayWater.reduce<number | undefined>((acc, w) => (acc === undefined || w.at > acc ? w.at : acc), undefined);
+    input.water = {
+      habitId: water.id,
+      loggedMl: todayWater.reduce((sum, w) => sum + w.ml, 0),
+      intervalMin: waterPolicy.intervalMin ?? 90,
+      ...(lastTapMs !== undefined ? { lastTapMs } : {}),
+    };
+  }
+  if (state.nudgeSnoozedUntil && state.nudgeSnoozedUntil > nowMs) input.snoozedUntilMs = state.nudgeSnoozedUntil;
+  const expected = cycleExpectedDay(state, calendarTodayOf(nowMs, zone));
+  if (expected) input.cycleExpectedDay = expected;
+  return input;
+}
+
+function calendarTodayOf(nowMs: number, zone: string): string {
+  return calendarDayOf(nowMs, zone);
+}
+
+const planCache = new WeakMap<TrackerState, { minute: number; plan: ScheduledNudge[] }>();
+
+/** Everything that should be scheduled right now; memoized per state and minute. */
+export function nudgePlan(state: TrackerState, today: string, nowMs: number, zone: string): ScheduledNudge[] {
+  const minute = Math.floor(nowMs / 60_000);
+  const cached = planCache.get(state);
+  if (cached && cached.minute === minute) return cached.plan;
+  const plan = planNudges(planInputFor(state, today, nowMs, zone));
+  planCache.set(state, { minute, plan });
+  return plan;
 }

@@ -24,8 +24,8 @@ const CADENCE_OPTIONS: { value: Cadence; label: string }[] = [
   { value: 'MONTHLY', label: 'Monthly' },
 ];
 
-const CATEGORIES: Category[] = ['hydration', 'movement', 'fuel', 'mind', 'body'];
-const ICON_OPTIONS: HabitIcon[] = ['check', 'leaf', 'heart', 'journal', 'barbell', 'drop', 'moon', 'lightning', 'walk', 'stretch', 'meal', 'lotus'];
+const CATEGORIES: Category[] = ['hydration', 'movement', 'fuel', 'mind', 'craft', 'body'];
+const ICON_OPTIONS: HabitIcon[] = ['check', 'leaf', 'heart', 'journal', 'book', 'pen', 'code', 'barbell', 'drop', 'moon', 'lightning', 'walk', 'stretch', 'meal', 'lotus'];
 
 const DEFAULT_UNIT: Record<HabitType, string> = { YES_NO: '', COUNT: 'times', AMOUNT: 'ml', TIMER: 'min' };
 

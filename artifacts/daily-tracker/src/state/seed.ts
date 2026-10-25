@@ -219,6 +219,8 @@ export function buildSampleState(today: string, zone: string, nowMs: number): Tr
     water,
     snacks,
     mind,
+    nudgeEvents: [],
+    events: [],
     settings: { ...settings, cycle: { avgCycleDays: 29, periodDays: 5, history } },
   };
 }
@@ -235,6 +237,8 @@ export function buildEmptyState(today: string, keepSettings?: TrackerState['sett
     water: [],
     snacks: [],
     mind: [],
+    nudgeEvents: [],
+    events: [],
     settings: { ...base, sampleData: false, cycle: { ...base.cycle, history: [] } },
   };
   if (opts.withWater ?? true) {

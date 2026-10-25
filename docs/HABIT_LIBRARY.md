@@ -59,6 +59,19 @@ within 5 minutes of each other merge into one.
 
 ---
 
+## C2. Craft & learning (added in M2 at Aman's request: reading, writing, daily AI build-out)
+
+| Preset | Default rule | Default nudge | Why (in-app copy) | Evidence |
+|---|---|---|---|---|
+| **Read 10 pages before bed** | 10 pages/day (COUNT) | `FIXED` 21:30 | Reading in bed is one of the few wind-downs that reliably displaces the phone; in a large trial, people assigned to read in bed reported better sleep than those who did not. | **Emerging**. Finucane et al. 2021, *Trials* (The Reading Trial, n≈990): https://doi.org/10.1186/s13063-021-05831-3 |
+| **Technical reading, 20 pages** | 5 × 20 pages per week (WEEKLY) | `FIXED` 08:30 | Spacing study sessions across the week beats one long sitting for retention; a short daily block keeps the material fresh. | **Moderate**. Cepeda et al. 2006, *Psychol Bull* (meta-analysis of spacing): https://pubmed.ncbi.nlm.nih.gov/16719566 |
+| **Write for 15 minutes** | 15 min/day (TIMER) | `FIXED` 20:30 | A fixed "when and where" (an implementation intention) roughly doubles the odds of actually doing a planned task. | **Moderate**. Gollwitzer & Sheeran 2006, *Adv Exp Soc Psychol* (meta-analysis, 94 studies): https://doi.org/10.1016/S0065-2601(06)38002-1 |
+| **Build with AI, 20 minutes** | 20 min/day (TIMER; Claude Code, Replit or Codex) | `FIXED` 19:30 | Daily repetition in a stable context is what turns a project into a habit — the median in the classic study was about two months, and missing a single day did not matter much. | **Emerging** (habit formation, not a productivity claim). Lally et al. 2010, *Eur J Soc Psychol*: https://doi.org/10.1002/ejsp.674 |
+
+The widget can show any of these (Settings → Home-screen widget); a tap logs the natural unit (10 pages, the full timer block) — see §F for the honesty rules the "Why" text follows.
+
+---
+
 ## D. Cycle (opt-in; shown only when cycle tracking is on)
 
 | Preset | Default rule | Default nudge | Why | Evidence |
