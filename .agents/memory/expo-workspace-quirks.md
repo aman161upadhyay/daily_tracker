@@ -18,6 +18,20 @@ which fails against react-native-svg 15.15 (`className` on Svg). Working pattern
 tsconfig base, so each test file starts with `/// <reference types="node" />` (with `@types/node` installed);
 do not add `"types": ["node"]` globally — it would leak Node's timer types into RN code.
 
+## Storage: expo-sqlite on native, JSON on web, node:sqlite in tests
+expo-sqlite's web build needs wasm + COOP/COEP headers, so the web preview keeps one JSON document in
+AsyncStorage behind the same `TrackerStore` interface. Tests run the real migration SQL on Node 24's
+built-in `node:sqlite` (`DatabaseSync`, unflagged) through a tiny `SqlDriver` adapter whose method
+signatures must mirror expo-sqlite exactly (`getAllAsync(sql, params)` with params required) or the
+structural typing breaks. `expo install` must be run as `CI=1 pnpm exec expo install <pkgs>` here.
+Decision: no Drizzle/MMKV — hand-written migrations keyed by `PRAGMA user_version` are enough and keep the
+future headless writers (widget taps, notification actions) free to insert single rows.
+
+## Platform-split modules
+Metro picks `x.native.ts` on Android/iOS and `x.ts` on web; tsc type-checks both, and the web file is the one
+`@/…` imports resolve to for typing, so keep the exported API identical (used for `createStore` and `transfer`).
+The new expo-file-system API (`File`, `Paths.cache`, `file.write`, `file.text()`) is sync for writes.
+
 ## Image tooling
 No PIL, no sharp. ImageMagick `magick` is available and was used for app icons (icon/adaptive/splash/favicon).
 
