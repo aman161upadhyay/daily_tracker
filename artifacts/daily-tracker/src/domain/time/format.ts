@@ -1,0 +1,79 @@
+import { parseDay } from './trackingDay';
+
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const WEEKDAYS_LONG = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const WEEKDAYS_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+export function formatNumber(n: number): string {
+  const rounded = Math.round(n);
+  const sign = rounded < 0 ? '-' : '';
+  const digits = Math.abs(rounded).toString();
+  let out = '';
+  for (let i = 0; i < digits.length; i++) {
+    const fromEnd = digits.length - i;
+    out += digits[i];
+    if (fromEnd > 1 && fromEnd % 3 === 1) out += ',';
+  }
+  return sign + out;
+}
+
+/** "Sunday, Oct 25" */
+export function formatDayLong(day: string): string {
+  const { year, month, day: d } = parseDay(day);
+  const js = new Date(Date.UTC(year, month - 1, d)).getUTCDay();
+  const weekday = WEEKDAYS_LONG[(js + 6) % 7];
+  return `${weekday}, ${MONTHS_SHORT[month - 1]} ${d}`;
+}
+
+/** "Oct 25" */
+export function formatDayShort(day: string): string {
+  const { month, day: d } = parseDay(day);
+  return `${MONTHS_SHORT[month - 1]} ${d}`;
+}
+
+/** "Mon" */
+export function formatWeekdayShort(day: string): string {
+  const { year, month, day: d } = parseDay(day);
+  const js = new Date(Date.UTC(year, month - 1, d)).getUTCDay();
+  return WEEKDAYS_SHORT[(js + 6) % 7] ?? '';
+}
+
+/** Minutes after midnight → "9:41 AM" */
+export function formatClock(minutesOfDay: number): string {
+  const m = ((minutesOfDay % 1440) + 1440) % 1440;
+  const h24 = Math.floor(m / 60);
+  const min = m % 60;
+  const suffix = h24 >= 12 ? 'PM' : 'AM';
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${h12}:${min < 10 ? '0' : ''}${min} ${suffix}`;
+}
+
+/** "in 24 min", "in 1 h 10 min", "now" */
+export function formatIn(minutes: number): string {
+  if (minutes <= 0) return 'now';
+  if (minutes < 60) return `in ${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `in ${h} h` : `in ${h} h ${m} min`;
+}
+
+/** 125 → "2:05" */
+export function formatMinSec(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${r < 10 ? '0' : ''}${r}`;
+}
+
+export function mlToOz(ml: number): number {
+  return ml / 29.5735;
+}
+
+export function ozToMl(oz: number): number {
+  return oz * 29.5735;
+}
+
+export function formatVolume(ml: number, units: 'ml' | 'oz'): { value: string; unit: string } {
+  if (units === 'oz') return { value: formatNumber(Math.round(mlToOz(ml))), unit: 'oz' };
+  return { value: formatNumber(ml), unit: 'ml' };
+}

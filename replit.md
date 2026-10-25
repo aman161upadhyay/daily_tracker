@@ -1,29 +1,45 @@
 # Daily Tracker — project instructions
 
 Private Android tracker (habits · water · movement snacks · meditation · opt-in cycle) built with
-**Expo (React Native, TypeScript)**. Read `docs/IMPLEMENTATION_PLAN.md` before the first change;
-`docs/DESIGN_SYSTEM.md` is the only source of colors/type; `docs/HABIT_LIBRARY.md` holds the presets
-and their evidence; `docs/reference/cadence/` is the original Kotlin spec being ported (this plan wins
-where they disagree).
+**Expo SDK 57 (React Native 0.86, TypeScript)** in `artifacts/daily-tracker/`. Read
+`docs/IMPLEMENTATION_PLAN.md` before the first change; `docs/DESIGN_SYSTEM.md` is the only source of
+colors/type; `docs/HABIT_LIBRARY.md` holds the presets and their evidence; `docs/reference/cadence/` is the
+original Kotlin spec being ported (this plan wins where they disagree).
 
 ## Git (requested by Aman)
-- Remote `origin` = https://github.com/aman161upadhyay/daily_tracker.git, branch `main` (private repo).
+- Remote `origin` = https://github.com/aman161upadhyay/daily_tracker.git, branch `main`. The workspace repo is
+  linked to it (`git fetch`/`git push` work through Replit's GitHub proxy; no tokens in the shell).
 - Commit in small named steps; **push after every milestone and at the end of every working session**,
-  and before any risky refactor. Tag milestones `v0.<n>`.
-- Never commit keystores, `local.properties`, generated `android/`/`ios/` folders, `.env`, or real health data.
+  and before any risky refactor. Tag milestones `v0.<n>` (`v0.0` = M0 skeleton). Never force-push `main`.
+- Never commit keystores, `local.properties`, generated `android/`/`ios/` folders, `.env`, real health data,
+  or Replit workspace state (`.conversation/`, `attached_assets/`, `.agents/*` except `.agents/memory/`).
 
-## Commands
-- `npx expo start` — dev server; preview in Expo Go on the phone (widgets/Health Connect are stubbed there).
-- `npm test` — Vitest (domain + repositories); `npx tsc --noEmit` — types. Both green before every push.
+## Commands (run inside `artifacts/daily-tracker/`)
+- Dev server: the `artifacts/daily-tracker: expo` workflow (never `npx expo start` by hand). Web preview at
+  `$REPLIT_EXPO_DEV_DOMAIN`; phone preview via Expo Go (widgets/Health Connect/notifications are stubbed there).
+- `pnpm run typecheck` — `tsc --noEmit`; `pnpm run test` — `node --test` via tsx (`tests/*.test.ts`, node:assert).
+  Both green before every push. Vitest is **not** used (its install is blocked in this workspace).
 - Native builds happen on Aman's laptop (Android Studio): `npx expo prebuild -p android && npx expo run:android`.
+
+## Layout
+- `src/domain/` pure logic (time/tracking day, adherence scale, water pace, nudges, cycle, formatting) — no React,
+  no `Date.now()`; `src/library/presets.ts` the habit library; `src/state/` reducer + selectors + seed +
+  `TrackerProvider` (React context, persisted to AsyncStorage, `sampleData` flag for the demo dataset).
+- `constants/colors.ts` + `constants/typography.ts` are the tokens; `hooks/useColors.ts` the theme hook;
+  `components/ui/` primitives (`Txt`, `Card`, `PressableScale`, `Screen`, `Sheet`, `icons.tsx`);
+  `components/tracker/` the Health-style widgets (rings, summary cards, habit rows, charts, heatmap, evidence).
+- `app/` Expo Router: `(tabs)/{index,habits,body,cycle}`, `habit/[id]`, modals `settings` and `mind`.
+- Icons: Phosphor, imported only through `components/ui/icons.tsx` using
+  `require('phosphor-react-native/src/icons/<Name>').<Name>Icon` (the root import would bundle every icon; the
+  package only exports `.` and `./src/icons/*`). Add new icons there, never import Phosphor elsewhere.
 
 ## Non-negotiables
 1. All time comes from the tracking-day clock (`src/domain/time`); never `Date.now()` in domain logic (injectable clock for tests). Habits/water/snacks use the tracking day (3 am boundary); cycle data and clock-time reminders use the calendar day.
-2. Writes go through repositories/services only (they replan nudges, refresh widgets, update notifications). UI, widgets and notification handlers never touch the DB directly.
-3. Schema changes = a new Drizzle migration, never destructive. Entities are the export format: add fields with defaults, never rename/remove.
-4. Manual entries beat automatic ones. Streaks are recomputed from raw entries, never stored. Habit types never change after creation; rule edits are versioned.
+2. Writes go through the reducer/actions only (they will replan nudges, refresh widgets, update notifications). UI, widgets and notification handlers never touch storage directly.
+3. Persisted state is the export format: add fields with defaults, never rename/remove; bump `TrackerState.version` with a migration in `TrackerProvider` (never drop saved data).
+4. Manual entries beat automatic ones. Streaks are recomputed from raw entries, never stored. Habit types never change after creation; rule edits are versioned by `effectiveFrom`.
 5. Notification channel ids and importance are permanent once shipped; add channels, don't change them. Nudge ids are deterministic so re-planning is idempotent.
 6. Privacy: no analytics, crash reporting, ads or network SDKs. The only network use is opening an evidence link the user taps.
-7. Design: tokens from `docs/DESIGN_SYSTEM.md` only; adherence colors apply to fills, never to text; ≥ 48 dp touch targets with accessibility labels; US English, no exclamation marks in notifications.
-8. Native modules (`src/native/`) must degrade to stubs in Expo Go so the UI always runs there.
+7. Design: tokens from `docs/DESIGN_SYSTEM.md` only; adherence colors apply to fills, never to text; ≥ 48 dp touch targets with accessibility labels; never nest pressables (web renders them as `<button>`); US English, no exclamation marks in notifications.
+8. Native modules (`src/native/`, from M2 on) must degrade to stubs in Expo Go so the UI always runs there.
 9. Keep `docs/` current when behaviour changes; add a device-checklist row for anything that can only be verified on a phone.

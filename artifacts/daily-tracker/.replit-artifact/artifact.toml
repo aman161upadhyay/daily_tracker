@@ -1,0 +1,24 @@
+kind = "mobile"
+previewPath = "/"
+title = "Daily Tracker"
+description = "An offline-first Android habit and health tracker for one person: habits with streaks, water logging with a home-screen widget, interval movement nudges (squats, calf raises, walks, stretches), an evidence-based micro-habit library, meditation and breathing, opt-in cycle tracking, and Health Connect import. Apple Health-style information design in Spotify green with gold frames and a violet flow state."
+version = "1.0.0"
+id = "artifacts/daily-tracker"
+router = "expo-domain"
+
+[[services]]
+name = "expo"
+ensurePreviewReachable = "/status"
+paths = [ "/" ]
+localPort = 22913
+
+[services.development]
+run = "pnpm --filter @workspace/daily-tracker run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/daily-tracker", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/daily-tracker", "run", "serve" ]
+
+[services.env]
+PORT = "22913"
+BASE_PATH = "/"
