@@ -1,18 +1,19 @@
 import React, { useMemo, useState } from 'react';
-import { StyleSheet, TextInput, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { AmountSheet } from '@/components/tracker/AmountSheet';
 import { EvidenceBlock, EvidencePill } from '@/components/tracker/EvidenceBlock';
+import { HabitEditorSheet } from '@/components/tracker/HabitEditorSheet';
 import { HabitRow } from '@/components/tracker/HabitRow';
 import { Card } from '@/components/ui/Card';
 import { UI } from '@/components/ui/icons';
-import { Chip, Dot, IconButton, IconTile, PillButton, Row, SectionHeader, Stepper } from '@/components/ui/primitives';
+import { Dot, IconButton, IconTile, PillButton, Row, SectionHeader } from '@/components/ui/primitives';
 import { PressableScale } from '@/components/ui/PressableScale';
 import { Screen, ScreenHeader } from '@/components/ui/Screen';
 import { Sheet } from '@/components/ui/Sheet';
 import { Txt } from '@/components/ui/Txt';
-import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
-import type { Category, HabitIcon, HabitType } from '@/src/domain/models';
+import type { Category, Habit } from '@/src/domain/models';
 import { CATEGORY_LABELS, CATEGORY_ORDER, PRESETS, type Preset } from '@/src/library/presets';
 import { useHabitViews } from '@/src/state/hooks';
 import { useTracker } from '@/src/state/TrackerProvider';
@@ -23,6 +24,8 @@ export default function HabitsScreen() {
   const { state, actions } = useTracker();
   const views = useHabitViews();
   const [preset, setPreset] = useState<Preset | null>(null);
+  const [amountHabit, setAmountHabit] = useState<Habit | null>(null);
+  const needsAmount = (h: Habit) => h.type === 'AMOUNT' || (h.type === 'TIMER' && !h.mindKind);
   const [customOpen, setCustomOpen] = useState(false);
 
   const grouped = useMemo(() => {
@@ -67,9 +70,9 @@ export default function HabitsScreen() {
                 view={v}
                 last={i === g.items.length - 1}
                 onPress={() => openHabit(v.habit.id)}
-                onIncrement={() => actions.increment(v.habit)}
+                onIncrement={() => (needsAmount(v.habit) ? setAmountHabit(v.habit) : actions.increment(v.habit))}
                 onToggle={() => actions.toggleYesNo(v.habit)}
-                onTimer={() => router.push({ pathname: '/mind', params: { kind: v.habit.mindKind ?? 'MEDITATION' } })}
+                onTimer={() => (needsAmount(v.habit) ? setAmountHabit(v.habit) : router.push({ pathname: '/mind', params: { kind: v.habit.mindKind ?? 'MEDITATION' } }))}
               />
             ))}
           </Card>
@@ -175,105 +178,9 @@ export default function HabitsScreen() {
         ) : null}
       </Sheet>
 
-      <CustomHabitSheet visible={customOpen} onClose={() => setCustomOpen(false)} onCreated={openHabit} />
+      <HabitEditorSheet visible={customOpen} onClose={() => setCustomOpen(false)} onCreated={(h) => openHabit(h.id)} />
+      {amountHabit ? <AmountSheet visible onClose={() => setAmountHabit(null)} habit={amountHabit} /> : null}
     </Screen>
-  );
-}
-
-const TYPE_OPTIONS: { value: HabitType; label: string }[] = [
-  { value: 'YES_NO', label: 'Yes / no' },
-  { value: 'COUNT', label: 'Count' },
-];
-
-const ICON_OPTIONS: HabitIcon[] = ['check', 'leaf', 'heart', 'journal', 'barbell', 'drop', 'moon', 'lightning'];
-
-function CustomHabitSheet({ visible, onClose, onCreated }: { visible: boolean; onClose: () => void; onCreated: (id: string) => void }) {
-  const c = useColors();
-  const { actions } = useTracker();
-  const [name, setName] = useState('');
-  const [type, setType] = useState<HabitType>('YES_NO');
-  const [category, setCategory] = useState<Category>('mind');
-  const [icon, setIcon] = useState<HabitIcon>('check');
-  const [target, setTarget] = useState(3);
-
-  const reset = () => {
-    setName('');
-    setType('YES_NO');
-    setCategory('mind');
-    setIcon('check');
-    setTarget(3);
-  };
-
-  const create = () => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    const habit = actions.addCustomHabit({ name: trimmed, type, category, icon, unit: type === 'COUNT' ? 'times' : '', target: type === 'COUNT' ? target : 1 });
-    reset();
-    onClose();
-    onCreated(habit.id);
-  };
-
-  return (
-    <Sheet visible={visible} title="New habit" onClose={onClose}>
-      <View style={{ gap: 16 }}>
-        <View>
-          <Txt role="footnote" tone="secondary" style={{ marginBottom: 6 }}>
-            Name
-          </Txt>
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder="Floss, read 10 pages…"
-            placeholderTextColor={c.textTertiary}
-            style={[TYPE.body, styles.input, { color: c.text, backgroundColor: c.surface, borderColor: c.hairline }]}
-            accessibilityLabel="Habit name"
-            returnKeyType="done"
-            onSubmitEditing={create}
-          />
-        </View>
-        <View>
-          <Txt role="footnote" tone="secondary" style={{ marginBottom: 6 }}>
-            Type
-          </Txt>
-          <Row gap={8}>
-            {TYPE_OPTIONS.map((o) => (
-              <Chip key={o.value} label={o.label} selected={type === o.value} onPress={() => setType(o.value)} />
-            ))}
-          </Row>
-        </View>
-        {type === 'COUNT' ? (
-          <View>
-            <Txt role="footnote" tone="secondary" style={{ marginBottom: 6 }}>
-              Times a day
-            </Txt>
-            <Stepper value={target} onChange={setTarget} min={1} max={50} label="times a day" />
-          </View>
-        ) : null}
-        <View>
-          <Txt role="footnote" tone="secondary" style={{ marginBottom: 6 }}>
-            Category
-          </Txt>
-          <View style={styles.wrap}>
-            {(['hydration', 'movement', 'fuel', 'mind', 'body'] as Category[]).map((k) => (
-              <Chip key={k} label={CATEGORY_LABELS[k]} color={c.cat[k]} selected={category === k} onPress={() => setCategory(k)} />
-            ))}
-          </View>
-        </View>
-        <View>
-          <Txt role="footnote" tone="secondary" style={{ marginBottom: 6 }}>
-            Icon
-          </Txt>
-          <View style={styles.wrap}>
-            {ICON_OPTIONS.map((k) => (
-              <PressableScale key={k} onPress={() => setIcon(k)} accessibilityRole="button" accessibilityLabel={`Icon ${k}`} accessibilityState={{ selected: icon === k }} style={[styles.iconChoice, { borderColor: icon === k ? c.green : 'transparent' }]}>
-                <IconTile icon={k} color={c.cat[category]} size={40} />
-              </PressableScale>
-            ))}
-          </View>
-        </View>
-        <PillButton label="Create habit" onPress={create} disabled={name.trim().length === 0} Leading={UI.Plus} />
-      </View>
-    </Sheet>
   );
 }
 
@@ -302,21 +209,5 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  input: {
-    minHeight: 48,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-  },
-  wrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  iconChoice: {
-    borderRadius: 14,
-    borderWidth: 2,
-    padding: 1,
   },
 });

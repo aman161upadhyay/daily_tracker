@@ -59,5 +59,11 @@
     "typescript": "~6.0.3",
     "zod": "catalog:",
     "zod-validation-error": "^3.4.0"
+  },
+  "dependencies": {
+    "expo-document-picker": "~57.0.3",
+    "expo-file-system": "~57.0.7",
+    "expo-sharing": "~57.0.24",
+    "expo-sqlite": "~57.0.4"
   }
 }

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Platform } from 'react-native';
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
 import { UI } from '@/components/ui/icons';
 import { FONTS } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
@@ -14,6 +14,9 @@ export default function TabLayout() {
   const c = useColors();
   const { state } = useTracker();
   const cycleOn = state.settings.cycleEnabled;
+
+  // First run: the welcome flow sets everything up before the tabs appear.
+  if (!state.settings.onboardingDone) return <Redirect href="/onboarding" />;
 
   return (
     <Tabs

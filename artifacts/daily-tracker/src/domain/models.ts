@@ -171,6 +171,10 @@ export interface Settings {
   pinned: string[];
   sampleData: boolean;
   cycle: CycleSettings;
+  /** Set once the welcome flow finished (or sample data was chosen). */
+  onboardingDone: boolean;
+  /** Millilitres added by one tap of the water "+" button / widget. */
+  tapSizeMl: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -186,6 +190,8 @@ export const DEFAULT_SETTINGS: Settings = {
   pinned: ['water', 'snacks', 'mind'],
   sampleData: false,
   cycle: { avgCycleDays: 28, periodDays: 5, history: [] },
+  onboardingDone: false,
+  tapSizeMl: 250,
 };
 
 export const SNACK_LABELS: Record<SnackType, { label: string; defaultReps?: number; defaultSeconds?: number; unit: string }> = {

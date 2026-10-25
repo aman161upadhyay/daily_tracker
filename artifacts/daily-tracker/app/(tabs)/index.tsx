@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Alert, Platform, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { AmountSheet } from '@/components/tracker/AmountSheet';
 import { HabitRow } from '@/components/tracker/HabitRow';
 import { HighlightCard } from '@/components/tracker/HighlightCard';
 import { NudgeCard } from '@/components/tracker/NudgeCard';
@@ -13,6 +14,7 @@ import { Chip, Dot, IconButton, PillButton, Row, SectionHeader } from '@/compone
 import { Avatar, Screen, ScreenHeader } from '@/components/ui/Screen';
 import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
+import type { Habit } from '@/src/domain/models';
 import { formatClock, formatDayLong, formatNumber, formatVolume } from '@/src/domain/time/format';
 import { minutesOfDay } from '@/src/domain/time/trackingDay';
 import { PRESET_BY_ID } from '@/src/library/presets';
@@ -29,6 +31,9 @@ export default function TodayScreen() {
   const views = useHabitViews();
   const highlights = useHighlights();
   const [logOpen, setLogOpen] = useState(false);
+  const [amountHabit, setAmountHabit] = useState<Habit | null>(null);
+  /** Amount / custom-minute habits need a value; everything else logs one tap. */
+  const needsAmount = (h: Habit) => h.type === 'AMOUNT' || (h.type === 'TIMER' && !h.mindKind);
 
   const s = state.settings;
   const units = s.units;
@@ -181,10 +186,10 @@ export default function TodayScreen() {
             last={i === views.length - 1}
             nudgeText={v.habit.presetId ? PRESET_BY_ID[v.habit.presetId]?.nudgeText.split(',')[0] : undefined}
             onPress={() => router.push({ pathname: '/habit/[id]', params: { id: v.habit.id } })}
-            onIncrement={() => actions.increment(v.habit)}
+            onIncrement={() => (needsAmount(v.habit) ? setAmountHabit(v.habit) : actions.increment(v.habit))}
             onDecrement={() => actions.decrement(v.habit)}
             onToggle={() => actions.toggleYesNo(v.habit)}
-            onTimer={() => router.push({ pathname: '/mind', params: { kind: v.habit.mindKind ?? 'MEDITATION' } })}
+            onTimer={() => (needsAmount(v.habit) ? setAmountHabit(v.habit) : router.push({ pathname: '/mind', params: { kind: v.habit.mindKind ?? 'MEDITATION' } }))}
           />
         ))}
         {views.length === 0 ? (
@@ -197,6 +202,7 @@ export default function TodayScreen() {
       </Card>
 
       <QuickLogSheet visible={logOpen} onClose={() => setLogOpen(false)} />
+      {amountHabit ? <AmountSheet visible onClose={() => setAmountHabit(null)} habit={amountHabit} /> : null}
     </Screen>
   );
 }

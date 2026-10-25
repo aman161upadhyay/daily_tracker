@@ -22,9 +22,14 @@ original Kotlin spec being ported (this plan wins where they disagree).
 - Native builds happen on Aman's laptop (Android Studio): `npx expo prebuild -p android && npx expo run:android`.
 
 ## Layout
-- `src/domain/` pure logic (time/tracking day, adherence scale, water pace, nudges, cycle, formatting) — no React,
+- `src/domain/` pure logic (time/tracking day, adherence scale, water pace, streaks, nudges, cycle, formatting) — no React,
   no `Date.now()`; `src/library/presets.ts` the habit library; `src/state/` reducer + selectors + seed +
-  `TrackerProvider` (React context, persisted to AsyncStorage, `sampleData` flag for the demo dataset).
+  `TrackerProvider` (React context; `actions` are the only write path; `sampleData` flag for the demo dataset).
+- `src/data/` persistence behind the `TrackerStore` interface: `sql/` = expo-sqlite on Android/iOS (row tables,
+  hand-written migrations via `PRAGMA user_version`, tests run the same SQL on `node:sqlite`); `jsonStore.ts` = one JSON
+  document in AsyncStorage on web and in tests; `createStore[.native].ts` picks per platform; `transfer[.native].ts` =
+  export/import. No Drizzle/MMKV (see plan §3.1). A failed write shows a red banner — never swallow it.
+- First launch starts empty (water habit only) and redirects to `app/onboarding.tsx` until `settings.onboardingDone`.
 - `constants/colors.ts` + `constants/typography.ts` are the tokens; `hooks/useColors.ts` the theme hook;
   `components/ui/` primitives (`Txt`, `Card`, `PressableScale`, `Screen`, `Sheet`, `icons.tsx`);
   `components/tracker/` the Health-style widgets (rings, summary cards, habit rows, charts, heatmap, evidence).

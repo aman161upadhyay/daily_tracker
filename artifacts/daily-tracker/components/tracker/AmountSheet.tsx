@@ -1,0 +1,121 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { StyleSheet, TextInput, View } from 'react-native';
+import { TYPE } from '@/constants/typography';
+import { useColors } from '@/hooks/useColors';
+import type { Habit } from '@/src/domain/models';
+import { formatDayLong, formatNumber, formatVolume } from '@/src/domain/time/format';
+import { useTracker } from '@/src/state/TrackerProvider';
+import { UI } from '../ui/icons';
+import { Chip, PillButton, Row } from '../ui/primitives';
+import { Sheet } from '../ui/Sheet';
+import { Txt } from '../ui/Txt';
+
+const ML_PER_OZ = 29.5735;
+
+export interface AmountSheetProps {
+  visible: boolean;
+  onClose: () => void;
+  habit: Habit;
+  /** 'add' logs on top of the day; 'set' replaces the day's total (backfill). */
+  mode?: 'add' | 'set';
+  /** Tracking day; defaults to today. */
+  day?: string;
+  /** Current total for the day (prefills 'set' mode). */
+  current?: number;
+}
+
+/** Quick values that make sense for the habit's unit. */
+export function quickValues(habit: Habit, target: number): number[] {
+  if (habit.presetId === 'water') return [150, 250, 350, 500];
+  if (habit.mindKind || habit.type === 'TIMER') return [5, 10, 15, 20];
+  if (habit.unit === 'steps') return [1000, 2000, 5000, 10000];
+  if (habit.type === 'COUNT') return Array.from(new Set([1, 2, 5, 10, target].filter((v) => v > 0))).sort((a, b) => a - b).slice(0, 5);
+  const base = Math.max(1, target);
+  return Array.from(new Set([Math.round(base / 4), Math.round(base / 2), base, base * 2].filter((v) => v > 0)));
+}
+
+export function AmountSheet({ visible, onClose, habit, mode = 'add', day, current = 0 }: AmountSheetProps) {
+  const c = useColors();
+  const { state, actions, today } = useTracker();
+  const units = state.settings.units;
+  const isWater = habit.presetId === 'water';
+  const rule = state.rules.filter((r) => r.habitId === habit.id).sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? 1 : -1))[0];
+  const target = rule?.target ?? 1;
+  const [text, setText] = useState('');
+  const quick = useMemo(() => quickValues(habit, target), [habit, target]);
+  const theDay = day ?? today;
+  const backfill = theDay !== today;
+
+  // Typed values are in the display unit; water is stored in ml.
+  const toStored = (v: number) => (isWater && units === 'oz' ? Math.round(v * ML_PER_OZ) : v);
+  const toDisplay = (v: number) => (isWater && units === 'oz' ? Math.round((v / ML_PER_OZ) * 10) / 10 : v);
+  const typedUnit = isWater ? units : habit.unit;
+
+  useEffect(() => {
+    if (visible) setText(mode === 'set' && current > 0 ? String(toDisplay(current)) : '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, mode, current]);
+
+  const label = (v: number) => {
+    if (isWater) {
+      const f = formatVolume(v, units);
+      return `${f.value} ${f.unit}`;
+    }
+    return `${formatNumber(v)} ${habit.unit}`.trim();
+  };
+
+  const commit = (value: number) => {
+    if (!Number.isFinite(value) || value < 0) return;
+    if (mode === 'set') actions.setDayValue(habit, value, theDay);
+    else if (value > 0) actions.logAmount(habit, value, theDay);
+    onClose();
+  };
+
+  const parsed = toStored(Number(text.replace(',', '.')));
+  const typedValid = text.trim().length > 0 && Number.isFinite(parsed) && parsed >= 0;
+  const title = mode === 'set' ? `Set ${habit.name}` : `Log ${habit.name}`;
+  const subtitle = backfill ? formatDayLong(theDay) : 'Today';
+
+  return (
+    <Sheet visible={visible} title={title} onClose={onClose}>
+      <Txt role="footnote" tone="secondary" style={{ marginBottom: 12 }}>
+        {subtitle}
+        {mode === 'set' ? ` · currently ${label(current)}` : ''}
+      </Txt>
+      <View style={styles.wrap}>
+        {quick.map((v) => (
+          <Chip key={v} label={mode === 'add' ? `+${label(v)}` : label(v)} color={c.cat[habit.category]} Leading={isWater ? UI.Drop : undefined} onPress={() => commit(v)} />
+        ))}
+        {mode === 'set' && current > 0 ? <Chip label="Clear day" onPress={() => commit(0)} /> : null}
+      </View>
+      <Row gap={8} style={{ marginTop: 16 }}>
+        <TextInput
+          value={text}
+          onChangeText={setText}
+          placeholder={`Custom ${typedUnit || 'amount'}`.trim()}
+          placeholderTextColor={c.textTertiary}
+          keyboardType="decimal-pad"
+          style={[TYPE.body, styles.input, { color: c.text, backgroundColor: c.surface, borderColor: c.hairline, flex: 1 }]}
+          accessibilityLabel="Custom amount"
+          returnKeyType="done"
+          onSubmitEditing={() => typedValid && commit(parsed)}
+        />
+        <PillButton label={mode === 'set' ? 'Set' : 'Log'} onPress={() => commit(parsed)} disabled={!typedValid} />
+      </Row>
+    </Sheet>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  input: {
+    minHeight: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+  },
+});

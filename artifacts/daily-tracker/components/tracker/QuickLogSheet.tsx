@@ -1,17 +1,19 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, TextInput, View } from 'react-native';
+import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
 import { SNACK_LABELS, type MindKind, type SnackType } from '@/src/domain/models';
 import { formatVolume } from '@/src/domain/time/format';
 import { useTracker } from '@/src/state/TrackerProvider';
 import { rotationItems, snackSuggestion } from '@/src/state/selectors';
 import { Sheet } from '../ui/Sheet';
-import { Chip } from '../ui/primitives';
+import { Chip, PillButton, Row } from '../ui/primitives';
 import { Txt } from '../ui/Txt';
 import { UI } from '../ui/icons';
 
 const WATER_ML = [150, 250, 350, 500];
 const MIND_MIN = [5, 10, 13, 20];
+const ML_PER_OZ = 29.5735;
 
 /** Bottom sheet for logging: water amounts, movement snacks, mind sessions. */
 export function QuickLogSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
@@ -25,10 +27,18 @@ export function QuickLogSheet({ visible, onClose }: { visible: boolean; onClose:
     { kind: 'BREATHING', label: 'Breathing' },
   ];
 
+  const [custom, setCustom] = useState('');
+  useEffect(() => {
+    if (visible) setCustom('');
+  }, [visible]);
+
   const logWater = (ml: number) => {
-    actions.addWater(ml);
+    if (!Number.isFinite(ml) || ml <= 0) return;
+    actions.addWater(Math.round(ml));
     onClose();
   };
+  const customMl = Number(custom.replace(',', '.')) * (units === 'oz' ? ML_PER_OZ : 1);
+  const customValid = custom.trim().length > 0 && Number.isFinite(customMl) && customMl > 0;
 
   return (
     <Sheet visible={visible} title="Log" onClose={onClose}>
@@ -37,6 +47,20 @@ export function QuickLogSheet({ visible, onClose }: { visible: boolean; onClose:
           const v = formatVolume(ml, units);
           return <Chip key={ml} label={`+${v.value} ${v.unit}`} color={c.cat.hydration} Leading={UI.Drop} onPress={() => logWater(ml)} />;
         })}
+        <Row gap={8} style={{ width: '100%', marginTop: 4 }}>
+          <TextInput
+            value={custom}
+            onChangeText={setCustom}
+            placeholder={`Custom ${units}`}
+            placeholderTextColor={c.textTertiary}
+            keyboardType="decimal-pad"
+            style={[TYPE.body, styles.input, { color: c.text, backgroundColor: c.surface, borderColor: c.hairline, flex: 1 }]}
+            accessibilityLabel={`Custom water amount in ${units}`}
+            returnKeyType="done"
+            onSubmitEditing={() => customValid && logWater(customMl)}
+          />
+          <PillButton label="Log" compact onPress={() => logWater(customMl)} disabled={!customValid} />
+        </Row>
       </Group>
       <Group title="Movement snack" color={c.cat.movement}>
         {allSnacks.map((t) => (
@@ -89,5 +113,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+  },
+  input: {
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
   },
 });

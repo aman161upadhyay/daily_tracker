@@ -77,3 +77,15 @@ export function formatVolume(ml: number, units: 'ml' | 'oz'): { value: string; u
   if (units === 'oz') return { value: formatNumber(Math.round(mlToOz(ml))), unit: 'oz' };
   return { value: formatNumber(ml), unit: 'ml' };
 }
+
+/** "2,000 ml a day", "10 squats · 6 sets a day", "3 days a week", "Every day". */
+export function describeRule(
+  habit: { type: 'YES_NO' | 'COUNT' | 'AMOUNT' | 'TIMER'; unit: string },
+  rule: { cadence: 'DAILY' | 'WEEKLY' | 'MONTHLY'; timesPerPeriod: number; target: number },
+): string {
+  const period = rule.cadence === 'WEEKLY' ? 'week' : 'month';
+  const cadence = rule.cadence === 'DAILY' ? 'a day' : `${rule.timesPerPeriod} day${rule.timesPerPeriod === 1 ? '' : 's'} a ${period}`;
+  if (habit.type === 'YES_NO') return rule.cadence === 'DAILY' ? 'Every day' : cadence;
+  const amount = `${formatNumber(rule.target)} ${habit.unit}`.trim();
+  return rule.cadence === 'DAILY' ? `${amount} ${cadence}` : `${amount} on ${cadence}`;
+}

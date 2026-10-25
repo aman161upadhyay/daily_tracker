@@ -132,3 +132,23 @@ export function weekStartOf(day: string): string {
 export function compareDays(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
+
+/** Offset of `zone` from UTC at an instant, in ms (local − UTC). */
+export function zoneOffsetAt(instantMs: number, zone: string): number {
+  const w = wallClock(instantMs, zone);
+  const asUtc = Date.UTC(w.year, w.month - 1, w.day, w.hour, w.minute, w.second);
+  return asUtc - Math.floor(instantMs / 1000) * 1000;
+}
+
+/**
+ * Epoch ms of a wall-clock minute on a calendar day in `zone`. Used to stamp
+ * backfilled logs inside the day they belong to. Exact except within the
+ * repeated/skipped hour of a DST transition, where it is off by at most an hour.
+ */
+export function instantOf(day: string, minute: number, zone: string): number {
+  const { year, month, day: d } = parseDay(day);
+  const guess = Date.UTC(year, month - 1, d, 0, minute);
+  const first = guess - zoneOffsetAt(guess, zone);
+  const offset = zoneOffsetAt(first, zone);
+  return guess - offset;
+}

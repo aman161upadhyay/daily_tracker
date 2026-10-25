@@ -2,32 +2,37 @@ import React, { useMemo, useState } from 'react';
 import { Alert, Platform, StyleSheet, Switch, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { AdherenceBar } from '@/components/tracker/AdherenceBar';
+import { AmountSheet } from '@/components/tracker/AmountSheet';
+import { BackfillStrip } from '@/components/tracker/BackfillStrip';
 import { EvidenceBlock } from '@/components/tracker/EvidenceBlock';
+import { HabitEditorSheet } from '@/components/tracker/HabitEditorSheet';
 import { Heatmap26w } from '@/components/tracker/Heatmap26w';
 import { MetricChart, RANGE_OPTIONS, type Range } from '@/components/tracker/MetricChart';
 import { Card } from '@/components/ui/Card';
 import { UI } from '@/components/ui/icons';
-import { Divider, IconTile, PillButton, Row, SectionHeader, Segmented, Stepper } from '@/components/ui/primitives';
+import { Divider, IconButton, IconTile, PillButton, Row, SectionHeader, Segmented } from '@/components/ui/primitives';
 import { Screen } from '@/components/ui/Screen';
 import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import { adherenceColor, FLOW_THRESHOLD, STAGE_LABELS } from '@/src/domain/adherence/adherenceScale';
 import { withAlpha } from '@/src/domain/color/oklch';
-import { formatDayShort, formatNumber, formatWeekdayShort } from '@/src/domain/time/format';
-import { lastNDays } from '@/src/domain/time/trackingDay';
+import { describeRule, formatClock, formatDayShort, formatNumber, formatVolume, formatWeekdayShort } from '@/src/domain/time/format';
+import { lastNDays, minutesOfDay } from '@/src/domain/time/trackingDay';
 import { PRESET_BY_ID } from '@/src/library/presets';
 import { useHabitView } from '@/src/state/hooks';
-import { habitSeries, heatmapValues } from '@/src/state/selectors';
+import { habitDayValue, habitSeries, heatmapValues, latestRule } from '@/src/state/selectors';
 import { useTracker } from '@/src/state/TrackerProvider';
 
 export default function HabitDetailScreen() {
   const c = useColors();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { state, today, actions } = useTracker();
+  const { state, today, zone, actions } = useTracker();
   const habit = state.habits.find((h) => h.id === id);
   const view = useHabitView(habit);
   const [range, setRange] = useState<Range>('W');
+  const [editing, setEditing] = useState(false);
+  const [amount, setAmount] = useState<{ mode: 'add' | 'set'; day?: string; current?: number } | null>(null);
 
   const preset = habit?.presetId ? PRESET_BY_ID[habit.presetId] : undefined;
 
@@ -90,6 +95,30 @@ export default function HabitDetailScreen() {
   const todayUnit = weekly ? 'this week' : habit.type === 'YES_NO' ? 'today' : `of ${formatNumber(view.target)} ${habit.unit} today`;
   const completed14 = view.ratios14.filter((r) => r.ratio >= 1).length;
   const last14 = lastNDays(today, 14);
+  const periodNoun = view.rule.cadence === 'DAILY' ? 'day' : view.rule.cadence === 'WEEKLY' ? 'week' : 'month';
+  const plural = (n: number) => (n === 1 ? periodNoun : `${periodNoun}s`);
+  const isWater = habit.presetId === 'water';
+  const units = state.settings.units;
+  const todayWater = isWater ? state.water.filter((w) => w.day === today).sort((a, b) => b.at - a.at) : [];
+  const editRule = latestRule(state, habit.id) ?? view.rule;
+  const quickLabel = isWater
+    ? (() => {
+        const f = formatVolume(state.settings.tapSizeMl, units);
+        return `+${f.value} ${f.unit}`;
+      })()
+    : habit.type === 'COUNT' && !habit.snackType
+      ? `+1 ${habit.unit}`.trim()
+      : habit.snackType
+        ? 'Log one'
+        : `Log ${habit.unit}`.trim();
+  const quickAdd = () => {
+    if (isWater || habit.type === 'COUNT' || habit.snackType) return actions.increment(habit);
+    setAmount({ mode: 'add' });
+  };
+  const onBackfill = (day: string, value: number) => {
+    if (habit.type === 'YES_NO') return actions.toggleYesNo(habit, day);
+    setAmount({ mode: 'set', day, current: value });
+  };
 
   const archive = () => {
     const go = () => {
@@ -102,12 +131,21 @@ export default function HabitDetailScreen() {
       { text: 'Archive', style: 'destructive', onPress: go },
     ]);
   };
-
-  const unitStep = habit.presetId === 'water' ? 250 : habit.unit === 'steps' ? 500 : 1;
+  const remove = () => {
+    const go = () => {
+      actions.deleteHabit(habit.id);
+      router.back();
+    };
+    if (Platform.OS === 'web') return go();
+    Alert.alert('Delete this habit?', 'Its logs are deleted too. This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: go },
+    ]);
+  };
 
   return (
     <Screen topInset={false}>
-      <Stack.Screen options={{ title: habit.name }} />
+      <Stack.Screen options={{ title: habit.name, headerRight: () => <IconButton Glyph={UI.Edit} label="Edit habit" onPress={() => setEditing(true)} size={36} color={c.text} /> }} />
 
       <Card featured={flow} glow={flow}>
         <Row gap={12} style={{ marginBottom: 14 }}>
@@ -115,7 +153,7 @@ export default function HabitDetailScreen() {
           <View style={{ flex: 1 }}>
             <Txt role="title2">{habit.name}</Txt>
             <Txt role="footnote" tone="secondary">
-              {preset?.ruleText ?? `${formatNumber(view.target)} ${habit.unit} a day`}
+              {describeRule(habit, view.rule)}
             </Txt>
           </View>
           <View style={[styles.stage, { backgroundColor: withAlpha(fill, 0.18) }]}>
@@ -147,15 +185,62 @@ export default function HabitDetailScreen() {
               <PillButton label={view.todayRatio >= 1 ? 'Undo today' : 'Mark done'} Leading={UI.Check} onPress={() => actions.toggleYesNo(habit)} style={{ flex: 1 }} kind={view.todayRatio >= 1 ? 'ghost' : 'primary'} />
             ) : (
               <>
-                <PillButton label={habit.presetId === 'water' ? '+250 ml' : `+1 ${habit.unit}`.trim()} Leading={UI.Plus} onPress={() => actions.increment(habit)} style={{ flex: 1 }} />
-                <PillButton label="Undo" Leading={UI.Undo} kind="ghost" onPress={() => actions.decrement(habit)} />
+                <PillButton label={quickLabel} Leading={UI.Plus} onPress={quickAdd} style={{ flex: 1 }} />
+                {isWater || habit.type === 'COUNT' || habit.snackType ? <PillButton label="Other" kind="ghost" onPress={() => setAmount({ mode: 'add' })} /> : null}
+                <IconButton Glyph={UI.Undo} label={`Undo last ${habit.name} entry`} onPress={() => actions.decrement(habit)} size={48} color={c.text} />
               </>
             )}
           </Row>
         ) : (
-          <PillButton label="Start timer" Leading={UI.Play} onPress={() => router.push({ pathname: '/mind', params: { kind: habit.mindKind ?? 'MEDITATION' } })} style={{ marginTop: 14 }} />
+          <Row gap={8} style={{ marginTop: 14 }}>
+            {habit.mindKind ? <PillButton label="Start timer" Leading={UI.Play} onPress={() => router.push({ pathname: '/mind', params: { kind: habit.mindKind ?? 'MEDITATION' } })} style={{ flex: 1 }} /> : null}
+            <PillButton label="Log minutes" Leading={UI.Plus} kind={habit.mindKind ? 'ghost' : 'primary'} onPress={() => setAmount({ mode: 'add' })} style={habit.mindKind ? undefined : { flex: 1 }} />
+          </Row>
         )}
       </Card>
+
+      <SectionHeader title="Last 7 days" />
+      <Card>
+        <BackfillStrip habit={habit} today={today} target={view.target} valueOf={(d) => habitDayValue(state, habit, d)} periods={view.periods} onPressDay={onBackfill} />
+        <Txt role="caption" tone="tertiary" align="center" style={{ marginTop: 12 }}>
+          Forgot to log? Tap a day to fix it.
+        </Txt>
+      </Card>
+
+      {isWater ? (
+        <>
+          <SectionHeader title="Today's water" />
+          <Card>
+            {todayWater.length === 0 ? (
+              <Txt role="body" tone="secondary">
+                Nothing logged yet today.
+              </Txt>
+            ) : (
+              todayWater.map((w, i) => {
+                const f = formatVolume(w.ml, units);
+                return (
+                  <View key={w.id}>
+                    <Row style={{ justifyContent: 'space-between', paddingVertical: 6 }}>
+                      <Row gap={10}>
+                        <UI.Drop size={18} color={c.cat.hydration} weight="fill" />
+                        <Txt role="body">
+                          {f.value} {f.unit}
+                        </Txt>
+                        <Txt role="footnote" tone="tertiary">
+                          {formatClock(minutesOfDay(w.at, zone))}
+                          {w.source === 'AUTO_WIDGET' ? ' · widget' : ''}
+                        </Txt>
+                      </Row>
+                      <IconButton Glyph={UI.Trash} label={`Delete ${f.value} ${f.unit} entry`} onPress={() => actions.removeLog('water', w.id)} size={36} color={c.textSecondary} />
+                    </Row>
+                    {i < todayWater.length - 1 ? <Divider /> : null}
+                  </View>
+                );
+              })
+            )}
+          </Card>
+        </>
+      ) : null}
 
       <Card>
         <Segmented options={RANGE_OPTIONS} value={range} onChange={setRange} />
@@ -166,9 +251,18 @@ export default function HabitDetailScreen() {
 
       <Card>
         <Row style={styles.stats}>
-          <Stat label="Streak" value={`${view.streak}`} unit={view.streak === 1 ? 'day' : 'days'} gold={view.streak >= 3} />
-          <Stat label="Best" value={`${view.best}`} unit={view.best === 1 ? 'day' : 'days'} />
+          <Stat label="Streak" value={`${view.streak}`} unit={plural(view.streak)} gold={view.streak >= 3} />
+          <Stat label="Best" value={`${view.best}`} unit={plural(view.best)} />
           <Stat label="Last 14 days" value={`${completed14}`} unit={`of ${last14.length}`} />
+        </Row>
+        <Divider />
+        <Row gap={8} style={{ marginTop: 10 }}>
+          <UI.Snowflake size={16} color={c.violetSoft} weight="fill" />
+          <Txt role="footnote" tone="secondary" style={{ flex: 1 }}>
+            {view.freezesLeftThisMonth === 0
+              ? `No streak freezes left this month (${view.rule.freezesPerMonth} a month).`
+              : `${view.freezesLeftThisMonth} of ${view.rule.freezesPerMonth} streak freezes left this month. A missed ${periodNoun} uses one instead of resetting.`}
+          </Txt>
         </Row>
       </Card>
 
@@ -213,20 +307,16 @@ export default function HabitDetailScreen() {
 
       <SectionHeader title="Options" />
       <Card>
-        {habit.type !== 'YES_NO' ? (
-          <>
-            <Row style={{ justifyContent: 'space-between' }}>
-              <View>
-                <Txt role="title2">Daily target</Txt>
-                <Txt role="footnote" tone="secondary">
-                  Changes apply from today
-                </Txt>
-              </View>
-              <Stepper value={view.target} onChange={(v) => actions.setTarget(habit, v)} step={unitStep} min={unitStep} label="daily target" format={(v) => `${formatNumber(v)} ${habit.unit}`} />
-            </Row>
-            <Divider />
-          </>
-        ) : null}
+        <Row style={{ justifyContent: 'space-between', paddingVertical: 4 }}>
+          <View style={{ flex: 1 }}>
+            <Txt role="title2">Rule</Txt>
+            <Txt role="footnote" tone="secondary">
+              {describeRule(habit, view.rule)} · {view.rule.freezesPerMonth} freezes a month
+            </Txt>
+          </View>
+          <PillButton label="Edit" kind="ghost" Leading={UI.Edit} compact onPress={() => setEditing(true)} />
+        </Row>
+        <Divider />
         <Row style={{ justifyContent: 'space-between', paddingVertical: 10 }}>
           <View>
             <Txt role="title2">Pin to Today</Txt>
@@ -237,8 +327,14 @@ export default function HabitDetailScreen() {
           <Switch value={habit.pinned} onValueChange={(v) => actions.updateHabit(habit.id, { pinned: v })} trackColor={{ false: c.hairline, true: c.green }} thumbColor={c.text} accessibilityLabel="Pin to Today" />
         </Row>
         <Divider />
-        <PillButton label="Archive habit" kind="danger" Leading={UI.Archive} onPress={archive} style={{ marginTop: 12 }} />
+        <Row gap={8} style={{ marginTop: 12 }}>
+          <PillButton label="Archive" kind="ghost" Leading={UI.Archive} onPress={archive} style={{ flex: 1 }} />
+          {!habit.presetId ? <PillButton label="Delete" kind="danger" Leading={UI.Trash} onPress={remove} style={{ flex: 1 }} /> : null}
+        </Row>
       </Card>
+
+      <HabitEditorSheet visible={editing} onClose={() => setEditing(false)} habit={habit} rule={editRule} />
+      {amount ? <AmountSheet visible onClose={() => setAmount(null)} habit={habit} mode={amount.mode} day={amount.day} current={amount.current} /> : null}
     </Screen>
   );
 }

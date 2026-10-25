@@ -24,6 +24,7 @@ const BellIcon = require('phosphor-react-native/src/icons/Bell').BellIcon as Ico
 const CalendarHeartIcon = require('phosphor-react-native/src/icons/CalendarHeart').CalendarHeartIcon as Icon;
 const CaretRightIcon = require('phosphor-react-native/src/icons/CaretRight').CaretRightIcon as Icon;
 const CheckIcon = require('phosphor-react-native/src/icons/Check').CheckIcon as Icon;
+const DownloadSimpleIcon = require('phosphor-react-native/src/icons/DownloadSimple').DownloadSimpleIcon as Icon;
 const DropIcon = require('phosphor-react-native/src/icons/Drop').DropIcon as Icon;
 const FlameIcon = require('phosphor-react-native/src/icons/Flame').FlameIcon as Icon;
 const FlowerLotusIcon = require('phosphor-react-native/src/icons/FlowerLotus').FlowerLotusIcon as Icon;
@@ -39,6 +40,7 @@ const MinusIcon = require('phosphor-react-native/src/icons/Minus').MinusIcon as 
 const MoonStarsIcon = require('phosphor-react-native/src/icons/MoonStars').MoonStarsIcon as Icon;
 const NotePencilIcon = require('phosphor-react-native/src/icons/NotePencil').NotePencilIcon as Icon;
 const PauseIcon = require('phosphor-react-native/src/icons/Pause').PauseIcon as Icon;
+const PencilSimpleIcon = require('phosphor-react-native/src/icons/PencilSimple').PencilSimpleIcon as Icon;
 const PersonArmsSpreadIcon = require('phosphor-react-native/src/icons/PersonArmsSpread').PersonArmsSpreadIcon as Icon;
 const PersonSimpleIcon = require('phosphor-react-native/src/icons/PersonSimple').PersonSimpleIcon as Icon;
 const PersonSimpleTaiChiIcon = require('phosphor-react-native/src/icons/PersonSimpleTaiChi').PersonSimpleTaiChiIcon as Icon;
@@ -50,9 +52,13 @@ const PushPinIcon = require('phosphor-react-native/src/icons/PushPin').PushPinIc
 const ShieldCheckIcon = require('phosphor-react-native/src/icons/ShieldCheck').ShieldCheckIcon as Icon;
 const ShuffleIcon = require('phosphor-react-native/src/icons/Shuffle').ShuffleIcon as Icon;
 const SneakerIcon = require('phosphor-react-native/src/icons/Sneaker').SneakerIcon as Icon;
+const SnowflakeIcon = require('phosphor-react-native/src/icons/Snowflake').SnowflakeIcon as Icon;
+const SparkleIcon = require('phosphor-react-native/src/icons/Sparkle').SparkleIcon as Icon;
 const StairsIcon = require('phosphor-react-native/src/icons/Stairs').StairsIcon as Icon;
 const SunHorizonIcon = require('phosphor-react-native/src/icons/SunHorizon').SunHorizonIcon as Icon;
 const TimerIcon = require('phosphor-react-native/src/icons/Timer').TimerIcon as Icon;
+const TrashIcon = require('phosphor-react-native/src/icons/Trash').TrashIcon as Icon;
+const UploadSimpleIcon = require('phosphor-react-native/src/icons/UploadSimple').UploadSimpleIcon as Icon;
 const WindIcon = require('phosphor-react-native/src/icons/Wind').WindIcon as Icon;
 const XIcon = require('phosphor-react-native/src/icons/X').XIcon as Icon;
 
@@ -93,7 +99,9 @@ export const UI = {
   Close: XIcon,
   Connect: PlugsConnectedIcon,
   Cycle: CalendarHeartIcon,
+  Download: DownloadSimpleIcon,
   Drop: DropIcon,
+  Edit: PencilSimpleIcon,
   External: ArrowSquareOutIcon,
   Flame: FlameIcon,
   Gear: GearSixIcon,
@@ -107,7 +115,11 @@ export const UI = {
   Play: PlayIcon,
   Plus: PlusIcon,
   Shuffle: ShuffleIcon,
+  Snowflake: SnowflakeIcon,
+  Sparkle: SparkleIcon,
   Timer: TimerIcon,
+  Trash: TrashIcon,
+  Upload: UploadSimpleIcon,
   Today: SunHorizonIcon,
   Undo: ArrowUUpLeftIcon,
   Wind: WindIcon,

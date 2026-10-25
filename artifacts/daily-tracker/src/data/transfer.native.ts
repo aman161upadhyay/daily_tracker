@@ -1,0 +1,33 @@
+/**
+ * Export / import of the whole state as JSON — Android / iOS implementation.
+ * Writes the backup to the cache directory and hands it to the share sheet
+ * (Drive, Files, email…); import goes through the system document picker.
+ */
+import * as DocumentPicker from 'expo-document-picker';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import type { TrackerState } from '@/src/state/types';
+import { StorageError } from './store';
+import { exportFileName, parseExport, serializeExport } from './transfer';
+
+export { describeImport, exportFileName, parseExport, serializeExport } from './transfer';
+
+export async function exportState(state: TrackerState): Promise<void> {
+  const file = new File(Paths.cache, exportFileName());
+  if (file.exists) file.delete();
+  file.create();
+  file.write(serializeExport(state));
+  if (!(await Sharing.isAvailableAsync())) {
+    throw new StorageError(`Sharing is not available on this device. The backup was saved to ${file.uri}.`);
+  }
+  await Sharing.shareAsync(file.uri, { mimeType: 'application/json', dialogTitle: 'Save your Daily Tracker backup', UTI: 'public.json' });
+}
+
+export async function pickImport(): Promise<TrackerState | null> {
+  const result = await DocumentPicker.getDocumentAsync({ type: ['application/json', 'text/plain', '*/*'], copyToCacheDirectory: true, multiple: false });
+  if (result.canceled) return null;
+  const asset = result.assets[0];
+  if (!asset) return null;
+  const text = await new File(asset.uri).text();
+  return parseExport(text);
+}

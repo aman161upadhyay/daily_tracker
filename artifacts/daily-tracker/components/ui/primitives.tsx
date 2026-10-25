@@ -149,7 +149,7 @@ export function PillButton({
       style={[styles.pill, compact ? styles.pillCompact : null, { backgroundColor: bg, borderColor: kind === 'ghost' ? c.hairline : 'transparent' }, style]}
     >
       {Leading ? <Leading size={18} color={fg} weight="bold" /> : null}
-      <Txt role={compact ? 'callout' : 'title2'} color={fg}>
+      <Txt role={compact ? 'callout' : 'title2'} color={fg} numberOfLines={1}>
         {label}
       </Txt>
     </PressableScale>

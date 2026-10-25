@@ -5,13 +5,12 @@
 import { adherenceStage, type AdherenceStage } from '@/src/domain/adherence/adherenceScale';
 import {
   adherenceOf,
-  bestStreak,
-  currentStreak,
   percentChange,
   ratioOf,
   sumValues,
   type DayRatio,
 } from '@/src/domain/habits/progress';
+import { evaluateStreak, type PeriodResult } from '@/src/domain/habits/streaks';
 import type { Habit, HabitRule, MovementSnack, NudgePolicy, SnackType } from '@/src/domain/models';
 import { SNACK_LABELS } from '@/src/domain/models';
 import { nextNudge, type NextNudge, type RotationItem } from '@/src/domain/nudges/nextNudge';
@@ -21,12 +20,38 @@ import type { TrackerState } from './types';
 
 // ── Rules & policies ───────────────────────────────────────────────────────
 
+// Per-state caches. State objects are immutable, so a WeakMap keyed by the
+// state gives each render pass O(1) lookups after one O(n) index build.
+const rulesCache = new WeakMap<TrackerState, Map<string, HabitRule[]>>();
+const valuesCache = new WeakMap<TrackerState, Map<string, Map<string, number>>>();
+
+/** Rules of one habit, oldest first. */
+export function rulesFor(state: TrackerState, habitId: string): HabitRule[] {
+  let perState = rulesCache.get(state);
+  if (!perState) {
+    perState = new Map();
+    rulesCache.set(state, perState);
+  }
+  let rules = perState.get(habitId);
+  if (!rules) {
+    rules = state.rules.filter((r) => r.habitId === habitId).sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? -1 : 1));
+    perState.set(habitId, rules);
+  }
+  return rules;
+}
+
 export function ruleFor(state: TrackerState, habitId: string, day: string): HabitRule | undefined {
-  const rules = state.rules.filter((r) => r.habitId === habitId).sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? -1 : 1));
+  const rules = rulesFor(state, habitId);
   if (rules.length === 0) return undefined;
   let chosen = rules[0]!;
   for (const r of rules) if (r.effectiveFrom <= day) chosen = r;
   return chosen;
+}
+
+/** Latest rule of a habit (what the editor shows). */
+export function latestRule(state: TrackerState, habitId: string): HabitRule | undefined {
+  const rules = rulesFor(state, habitId);
+  return rules[rules.length - 1];
 }
 
 export function policyFor(state: TrackerState, habitId: string): NudgePolicy | undefined {
@@ -45,19 +70,43 @@ export function snackCountsFor(habit: Habit, snack: MovementSnack): boolean {
   return snack.type === habit.snackType && snack.trigger !== 'SUGAR_SHIELD';
 }
 
+/** day → value for one habit, from whichever log it lives in (cached per state). */
+export function dayValues(state: TrackerState, habit: Habit): Map<string, number> {
+  let perState = valuesCache.get(state);
+  if (!perState) {
+    perState = new Map();
+    valuesCache.set(state, perState);
+  }
+  const key =
+    habit.presetId === 'water'
+      ? 'water'
+      : habit.snackType
+        ? `snack:${habit.snackType}:${isSugarShield(habit) ? 'sugar' : 'plain'}`
+        : habit.mindKind
+          ? `mind:${habit.mindKind}`
+          : `habit:${habit.id}:${habit.type}`;
+  const cached = perState.get(key);
+  if (cached) return cached;
+
+  const m = new Map<string, number>();
+  const add = (day: string, v: number) => m.set(day, (m.get(day) ?? 0) + v);
+  if (habit.presetId === 'water') {
+    for (const w of state.water) add(w.day, w.ml);
+  } else if (habit.snackType) {
+    for (const s of state.snacks) if (snackCountsFor(habit, s)) add(s.day, 1);
+  } else if (habit.mindKind) {
+    for (const x of state.mind) if (x.kind === habit.mindKind) add(x.day, x.minutes);
+  } else {
+    for (const e of state.entries) if (e.habitId === habit.id) add(e.day, e.value);
+    if (habit.type === 'YES_NO') for (const [day, v] of m) m.set(day, v > 0 ? 1 : 0);
+  }
+  perState.set(key, m);
+  return m;
+}
+
 /** Raw value of a habit on a day, derived from whichever log it lives in. */
 export function habitDayValue(state: TrackerState, habit: Habit, day: string): number {
-  if (habit.presetId === 'water') {
-    return state.water.reduce((acc, w) => (w.day === day ? acc + w.ml : acc), 0);
-  }
-  if (habit.snackType) {
-    return state.snacks.reduce((acc, s) => (s.day === day && snackCountsFor(habit, s) ? acc + 1 : acc), 0);
-  }
-  if (habit.mindKind) {
-    return state.mind.reduce((acc, m) => (m.day === day && m.kind === habit.mindKind ? acc + m.minutes : acc), 0);
-  }
-  const total = state.entries.reduce((acc, e) => (e.day === day && e.habitId === habit.id ? acc + e.value : acc), 0);
-  return habit.type === 'YES_NO' ? (total > 0 ? 1 : 0) : total;
+  return dayValues(state, habit).get(day) ?? 0;
 }
 
 /** Per-day ratios for a list of days (oldest → newest). Weekly habits use the week-to-date count. */
@@ -91,8 +140,12 @@ export interface HabitView {
   todayRatio: number;
   adherence: number;
   stage: AdherenceStage;
+  /** Streak in periods (days, weeks or months depending on the cadence). */
   streak: number;
   best: number;
+  freezesLeftThisMonth: number;
+  /** Scored periods, oldest first (for the backfill strip and the editor). */
+  periods: PeriodResult[];
   /** Last 14 days, oldest first, ending today. */
   ratios14: DayRatio[];
   /** Week-to-date completed days for weekly habits. */
@@ -108,16 +161,19 @@ export function habitView(state: TrackerState, habit: Habit, today: string): Hab
     target: 1,
     freezesPerMonth: 0,
   };
-  // Enough history for streaks: 120 days is plenty for the UI and cheap enough.
-  const days = lastNDays(today, 120);
-  const ratios = habitRatios(state, habit, days);
-  const ratios14 = ratios.slice(-14);
+  const ratios14 = habitRatios(state, habit, lastNDays(today, 14));
   const todayRatio = ratios14[ratios14.length - 1]!;
   const weekly = rule.cadence !== 'DAILY';
   const weekDone = weekly
-    ? ratios.filter((r) => weekStartOf(r.day) === weekStartOf(today) && r.value >= r.target).length
+    ? habitRatios(state, habit, lastNDays(today, 7)).filter((r) => weekStartOf(r.day) === weekStartOf(today) && r.value >= r.target).length
     : undefined;
   const adherence = adherenceOf(ratios14, habit.createdDay, today);
+  const streaks = evaluateStreak({
+    rules: rulesFor(state, habit.id),
+    valueOf: (day) => habitDayValue(state, habit, day),
+    createdDay: habit.createdDay,
+    today,
+  });
   return {
     habit,
     rule,
@@ -127,8 +183,10 @@ export function habitView(state: TrackerState, habit: Habit, today: string): Hab
     todayRatio: weekly ? todayRatio.ratio : ratioOf(todayRatio.value, rule.target),
     adherence,
     stage: adherenceStage(adherence),
-    streak: currentStreak(ratios),
-    best: bestStreak(ratios),
+    streak: streaks.streak,
+    best: streaks.best,
+    freezesLeftThisMonth: streaks.freezesLeftThisMonth,
+    periods: streaks.periods,
     ratios14,
     weekDone,
   };

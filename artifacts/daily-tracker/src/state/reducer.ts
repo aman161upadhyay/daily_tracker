@@ -12,7 +12,13 @@ export type Action =
   | { type: 'LOG_SNACK'; snack: MovementSnack }
   | { type: 'UNDO_SNACK'; day: string; habit: Habit }
   | { type: 'LOG_MIND'; session: MindSession }
+  /** Delete one logged item by id (water entries list, undo a backfill). */
+  | { type: 'REMOVE_LOG'; log: 'entry' | 'water' | 'snack' | 'mind'; id: string }
+  /** Clear a habit's logs on one day before writing a backfilled total. */
+  | { type: 'CLEAR_DAY'; habit: Habit; day: string }
   | { type: 'ADD_HABIT'; habit: Habit; rule: HabitRule; policy: NudgePolicy }
+  /** Permanent delete: the habit, its rules, policy and logs. */
+  | { type: 'DELETE_HABIT'; id: string }
   | { type: 'UPDATE_HABIT'; id: string; patch: Partial<Omit<Habit, 'id' | 'type'>> }
   | { type: 'SET_RULE'; rule: HabitRule }
   | { type: 'SET_POLICY'; policy: NudgePolicy }
@@ -83,6 +89,36 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
     case 'LOG_MIND':
       return { ...state, mind: [...state.mind, action.session] };
 
+    case 'REMOVE_LOG': {
+      const keep = <T extends { id: string }>(xs: T[]) => xs.filter((x) => x.id !== action.id);
+      switch (action.log) {
+        case 'entry':
+          return { ...state, entries: keep(state.entries) };
+        case 'water':
+          return { ...state, water: keep(state.water) };
+        case 'snack':
+          return { ...state, snacks: keep(state.snacks) };
+        case 'mind':
+          return { ...state, mind: keep(state.mind) };
+      }
+      return state;
+    }
+
+    case 'CLEAR_DAY': {
+      const h = action.habit;
+      const day = action.day;
+      if (h.presetId === 'water') return { ...state, water: state.water.filter((w) => w.day !== day) };
+      if (h.snackType) {
+        const sugar = h.presetId === 'sugar-shield';
+        return {
+          ...state,
+          snacks: state.snacks.filter((s) => !(s.day === day && (sugar ? s.trigger === 'SUGAR_SHIELD' : s.type === h.snackType && s.trigger !== 'SUGAR_SHIELD'))),
+        };
+      }
+      if (h.mindKind) return { ...state, mind: state.mind.filter((m) => !(m.day === day && m.kind === h.mindKind)) };
+      return { ...state, entries: state.entries.filter((e) => !(e.day === day && e.habitId === h.id)) };
+    }
+
     case 'ADD_HABIT':
       return {
         ...state,
@@ -93,6 +129,15 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
 
     case 'UPDATE_HABIT':
       return { ...state, habits: state.habits.map((h) => (h.id === action.id ? { ...h, ...action.patch } : h)) };
+
+    case 'DELETE_HABIT':
+      return {
+        ...state,
+        habits: state.habits.filter((h) => h.id !== action.id),
+        rules: state.rules.filter((r) => r.habitId !== action.id),
+        policies: state.policies.filter((p) => p.habitId !== action.id),
+        entries: state.entries.filter((e) => e.habitId !== action.id),
+      };
 
     case 'SET_RULE': {
       const r = action.rule;

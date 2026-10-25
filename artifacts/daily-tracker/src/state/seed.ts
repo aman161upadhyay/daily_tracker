@@ -106,7 +106,7 @@ export function buildSampleState(today: string, zone: string, nowMs: number): Tr
   let seq = 0;
   const nextId = (prefix: string) => `${prefix}_${(seq++).toString(36)}`;
 
-  const settings = { ...DEFAULT_SETTINGS, name: 'Aman', sampleData: true, cycleEnabled: true };
+  const settings = { ...DEFAULT_SETTINGS, name: 'Aman', sampleData: true, cycleEnabled: true, onboardingDone: true };
   const goalMl = settings.waterGoalMl;
 
   for (const profile of PROFILES) {
@@ -224,18 +224,24 @@ export function buildSampleState(today: string, zone: string, nowMs: number): Tr
 }
 
 /** A fresh start keeps the water habit (the app's core) and nothing else. */
-export function buildEmptyState(today: string, keepSettings?: TrackerState['settings']): TrackerState {
-  const { habit, rule, policy } = habitFromPreset(PRESET_BY_ID.water!, 'h_water', today);
+export function buildEmptyState(today: string, keepSettings?: TrackerState['settings'], opts: { withWater?: boolean } = {}): TrackerState {
   const base = keepSettings ?? DEFAULT_SETTINGS;
-  return {
+  const state: TrackerState = {
     version: 1,
-    habits: [habit],
-    rules: [rule],
-    policies: [policy],
+    habits: [],
+    rules: [],
+    policies: [],
     entries: [],
     water: [],
     snacks: [],
     mind: [],
     settings: { ...base, sampleData: false, cycle: { ...base.cycle, history: [] } },
   };
+  if (opts.withWater ?? true) {
+    const { habit, rule, policy } = habitFromPreset(PRESET_BY_ID.water!, 'h_water', today);
+    state.habits.push(habit);
+    state.rules.push(rule);
+    state.policies.push(policy);
+  }
+  return state;
 }

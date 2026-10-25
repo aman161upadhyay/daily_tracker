@@ -64,14 +64,14 @@ Apple Health mapping is in `DESIGN_SYSTEM.md` §1.
 |---|---|
 | App shell / routing | Expo SDK (current stable), Expo Router (tabs + stack), TypeScript strict |
 | UI | React Native + Reanimated 3, `react-native-svg` (rings, charts, heatmap), Phosphor icons, Manrope via `expo-font`, `expo-haptics` |
-| State | Zustand for UI state; data flows from repositories (SQLite) via hooks |
-| Storage | `expo-sqlite` + **Drizzle ORM** with committed migrations (never destructive); `react-native-mmkv` for settings/bookkeeping |
+| State | One reducer (`src/state/reducer.ts`) + selectors behind `TrackerProvider` (React context); screens read via hooks and write via `actions` only |
+| Storage | `expo-sqlite` on Android/iOS through a small `TrackerStore` interface (`src/data/`): row-level tables, **hand-written SQL migrations** keyed by `PRAGMA user_version` (never destructive). Web keeps the same state as one JSON document in AsyncStorage (expo-sqlite on web needs wasm + COOP/COEP headers; not worth it for a preview surface). *Deviation from the first draft:* no Drizzle, no MMKV — fewer moving parts, and the M2/M3 headless writers (widget tap, notification actions) can insert single rows without loading the whole state |
 | Notifications & alarms | `expo-notifications` (channels, categories with action buttons, date triggers; `SCHEDULE_EXACT_ALARM`/`USE_EXACT_ALARM`), `expo-task-manager` + `expo-background-task` for the 3-hourly catch-up |
 | Widgets | `react-native-android-widget` (Expo config plugin; interactive widgets whose click handlers run in a headless JS task) |
 | Health Connect | `react-native-health-connect` (config plugin adds the rationale activity, `VIEW_PERMISSION_USAGE` alias, `<queries>`) |
 | App lock | `expo-local-authentication` |
 | Backup / export | `expo-file-system`, `expo-sharing`, `expo-document-picker`; Android `dataExtractionRules`/`fullBackupContent` via config plugin |
-| Tests | Vitest (domain + repositories against in-memory SQLite via `better-sqlite3`), React Native Testing Library (components), Maestro flows later (optional) |
+| Tests | `node --test` via `tsx` (domain; store contract against Node's built-in `node:sqlite` and the in-memory JSON backend), React Native Testing Library (components, later), Maestro flows later (optional). Vitest is not used — its install is blocked in this workspace |
 
 **Expo Go rule:** everything in `src/native/` is wrapped so that in Expo Go (no custom native modules)
 the app runs with no-op widget/Health Connect stubs and a visible "Needs the installed build" note.
@@ -90,7 +90,8 @@ src/domain/               Pure TS, no RN imports, fully unit-tested (ported from
   cycle/{models,predictor,timeline,alerts,reminderPlanner}.ts
   insights/{highlights,symptomWindows,correlations}.ts
   export/format.ts            versioned export schema (entities are the format)
-src/data/                 db/schema.ts (Drizzle), db/migrations/*, repositories/*.ts, settings.ts
+src/data/                 store.ts (TrackerStore contract, parseState, normalizeSettings, diffById), jsonStore.ts (web / tests),
+                          sql/{driver,schema,sqliteStore}.ts (expo-sqlite, migrations), createStore[.native].ts, transfer[.native].ts (export/import)
 src/services/             notifications.ts, alarms.ts (replan*), widgets.ts, healthConnect.ts, backup.ts, appLock.ts, dayCloser.ts
 src/native/               guarded wrappers: widget.ts, healthConnect.ts (stubs in Expo Go)
 src/library/presets.ts    the HABIT_LIBRARY as data (id, rule, nudge policy, why, evidence)
@@ -101,7 +102,7 @@ tests/                    domain/*, data/*, ui/*
 docs/                     this plan, design system, habit library, device checklist, reference/
 ```
 
-### 3.3 Data model (SQLite via Drizzle; entities double as the export format — add fields with defaults, never rename)
+### 3.3 Data model (SQLite tables mirror the `TrackerState` lists; entities double as the export format — add fields with defaults, never rename)
 
 | Table | Key fields |
 |---|---|
@@ -147,15 +148,22 @@ beat automatic ones**; streaks are recomputed from raw entries, never stored.
 - `.gitignore` (keystore, `local.properties`, builds), README with laptop build steps, first push.
 **Done when:** Aman opens it in Expo Go on his phone and the Today screen looks like the target design with sample data; adherence colors visibly ramp gold → green → violet.
 
-### M1 — Real habits, water, and the Library
-- Drizzle schema + migrations; repositories; settings; onboarding (goals from the Library, active hours, cycle opt-in).
-- Streak engine with freezes (ported from Cadence, tests ported 1:1: 3rd miss resets, month-end freeze accounting, weekly habit over month end, backfill refunds, rule change not retroactive, idempotent recompute).
-- Habit types YES_NO / COUNT / AMOUNT / TIMER; backfill strip (last 7 days); habit editor; archive.
-- Water: quick log (150/250/350/custom), today's entries, 7-day bars, pace planner + tests.
-- Library screen: presets with "Why" + evidence links; one-tap add; custom habit.
-- Highlights v1 (rule-based: best streak, days logged, week-over-week water).
-- Export/import JSON (no password yet); day boundary setting.
-**Done when:** a full day of real logging works offline; data survives restarts; all domain tests green.
+### M1 — Real habits, water, and the Library ✅ (v0.1)
+- SQLite store (`dailytracker.db`, WAL) with v1 migration; JSON store on web; `TrackerProvider` persists identity-diffs
+  through a serialized queue and surfaces write failures as a red banner (no silent fallback).
+- Streak engine with freezes (`src/domain/habits/streaks.ts`, 14 tests: 3rd miss resets, month-end freeze accounting,
+  weekly habit over month end, backfill refunds, rule change not retroactive, proration, off-days, idempotent recompute).
+- Habit types YES_NO / COUNT / AMOUNT / TIMER; `BackfillStrip` (last 7 days, tap to fix); `HabitEditorSheet`
+  (create + edit; type locked; rule edits versioned by `effectiveFrom`); archive; delete for custom habits.
+- Water: quick log 150/250/350/500 + custom (ml or oz), today's entries with delete, "one tap adds" setting
+  (`tapSizeMl`, shared with the widget later), 7-day bars, pace planner.
+- Library: presets with "Why" + evidence; one-tap add; custom habit with unit/cadence/freezes.
+- Onboarding (`app/onboarding.tsx`): name, units, water goal, active hours, starter presets, cycle opt-in,
+  "sample data" escape hatch. Fresh installs start empty (water only) → onboarding.
+- Export/import JSON (share sheet on Android, download on web; confirm before replace); day boundary setting.
+- Highlights v1 (rule-based).
+**Done:** a full day of real logging works offline; data survives restarts; 60 tests green.
+**Deferred to M2:** 7-day water pace planner tests already exist; nudges for custom habits; week-start setting.
 
 ### M2 — The nudge engine + Mind
 - Notification channels (`nudges`, `water`, `summary`, `cycle`), permission flow, exact-alarm handling and the "Allow exact reminders" settings deep link.
@@ -257,8 +265,8 @@ cycle notifications, birth-control mode, luteal length, app lock + timeout, them
 
 ## 6. Testing
 
-- **Domain (Vitest):** streaks & freezes (16 cases ported), tracking day & DST (6), water planner (17), nudge planner (new, ≥ 20: caps, merges, quiet hours, rotation order, snooze, DST, active-hours end, completed habit), cycle timeline/predictor/alerts/reminders (28 ported), fasting-style timer credit, insights, export round-trip.
-- **Repositories (Vitest + in-memory SQLite):** manual beats auto, rule versioning, de-dup of Health Connect imports, day closer idempotency, migration tests (every schema version opens).
+- **Domain (`node --test`):** streaks & freezes (14 cases), tracking day & DST (6), water planner (17), nudge planner (new, ≥ 20: caps, merges, quiet hours, rotation order, snooze, DST, active-hours end, completed habit), cycle timeline/predictor/alerts/reminders (28 ported), fasting-style timer credit, insights, export round-trip.
+- **Store contract (`node --test` + `node:sqlite` / in-memory JSON):** load/replace/apply round-trips, identity diff, migrations (every schema version opens), `parseState` rejects bad imports; later: manual beats auto, de-dup of Health Connect imports, day closer idempotency.
 - **Components (RNTL):** HabitRow states and colors by adherence, SummaryCard formatting (thousands separators, units), TodayRings values.
 - **Device checklist** (`docs/DEVICE_CHECKLIST.md`, ported from Cadence §11): fresh install, widget with app killed and after reboot, nudges under Doze, sticky water reminder, action buttons from the lock screen, time-zone change, Health Connect flow, upgrade keeps data, backup round trip, dark/light + large text + TalkBack, "a real day".
 - CI (GitHub Actions, optional in M3): `npm ci && npm test && npx tsc --noEmit` on every push.
