@@ -11,5 +11,10 @@ The workspace `.git` tracks `origin/main` of the user's repo (`aman161upadhyay/d
 assumed a private repo would need connector credentials, but the proxy already covers it.
 
 **How to apply:** `git add -A && git commit -m "<step>" && git push` (never force-push `main`); tag
-milestones `v0.<n>` and push the tag. `.gitignore` excludes `.conversation/`, `attached_assets/` and
-`.agents/*` except `.agents/memory/`. Git identity is already configured in the workspace.
+milestones `v0.<n>` and push the tag (v0.1 = M1, v0.2 = M2). `.gitignore` excludes `.conversation/`,
+`attached_assets/` and `.agents/*` except `.agents/memory/`.
+
+**Author identity (user request, 2026-10-25):** commits are made "using my name, Aman" — repo-local
+`git config user.name "Aman Upadhyay"` / `user.email aman161upadhyay@users.noreply.github.com` is set in
+the workspace repo; verify with `git log -1 --format=%an` before pushing, re-set it if the workspace was
+recreated. The two earlier agent-authored commits stay (no history rewrite).

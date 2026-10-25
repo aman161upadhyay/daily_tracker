@@ -1,3 +1,3 @@
-- [Expo workspace quirks](expo-workspace-quirks.md) — Phosphor deep-require, node --test not Vitest, SQLite native / JSON web / node:sqlite tests, platform-split modules, web pitfalls.
-- [Git / GitHub push workflow](git-github-push.md) — workspace repo tracks origin/main; plain git push works through Replit's GitHub proxy; push after every milestone, tag v0.<n> (v0.1 = M1).
-- [Product decisions](product-decisions.md) — user constraints, cycle blending, rule versioning + freeze accounting, empty-first-launch, visible storage errors, open questions.
+- [Expo workspace quirks](expo-workspace-quirks.md) — Phosphor deep-require, node --test not Vitest, SQLite native / JSON web / node:sqlite tests, platform-split modules, notifications/background-task limits, web pitfalls.
+- [Git / GitHub push workflow](git-github-push.md) — workspace repo tracks origin/main; plain git push via Replit's proxy; commits authored as Aman; push after every milestone, tag v0.<n> (v0.2 = M2).
+- [Product decisions](product-decisions.md) — user constraints (widget = any habit), nudge-planner rules (rotation per completed snack, snooze/swap semantics), headless actions, cycle blending, rule versioning, open questions.

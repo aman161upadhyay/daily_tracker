@@ -3,8 +3,9 @@ name: Product decisions (Daily Tracker)
 description: Non-obvious product/UX decisions and user-stated constraints that the code does not explain.
 ---
 
-- User constraints (stated 2026-10-25): Android install via sideloaded APK first; home-screen water widget
-  with a tap button; movement nudges every 60/90 min (user-tunable); research-backed habit combos; copy the
+- User constraints (stated 2026-10-25): Android install via sideloaded APK first; home-screen widget that
+  is **not water-only** — switchable to any habit (water, steps, movement, mind, periods, reading, writing,
+  AI build-out; `settings.widgetHabitIds`, max 3, empty = automatic); movement nudges every 60/90 min (user-tunable); research-backed habit combos; copy the
   Apple Health look; Spotify green + gold frames + violet tints; adherence ramp pale gold → light green →
   Spotify green → green/violet; import Samsung Health / Google Fit via Health Connect; meditation and
   opt-in period tracking; native builds on the user's laptop with Android Studio.
@@ -22,6 +23,18 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
 - Persistence failures are shown (red banner + Settings note) rather than silently falling back to memory.
 - Cycle opt-in lives in onboarding *and* Settings (decided 2026-10-25, user had not answered).
 - Adherence colors go on fills only, never text (contrast); gold frame = "in flow" (≥ 90 % adherence).
+- Nudge planner decisions (2026-10-25): the movement rotation advances per *completed* snack (plus swaps),
+  never per elapsed slot, so the Today card and the first pending notification always name the same snack
+  (an ignored nudge re-offers the same thing). A snooze re-offers the same snack via the SNOOZED event's
+  habitIds; a swap offers the next one. FIXED clock times are kept outside active hours (the user set them);
+  automatic cadences are not. Quiet hours = outside active hours, no separate setting. Water nudges are
+  skipped while on pace; a merged water+movement nudge's "+ml" button only settles the water half.
+  **Why:** avoiding "the card says squats but the phone says walk" was the main consistency complaint risk.
+- Headless notification actions (app killed) run through expo-notifications' response task on Android and
+  write to SQLite directly via the shared command layer; the running app reloads on foreground when a
+  "headless write" flag is set. Expo Go cannot run these; only the dev build can — device checklist N5/N6.
+- Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
+  Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app
   name/icon, ml vs oz default (onboarding defaults to ml), Cadence Kotlin source availability,
   active hours 9–21 and a 10-nudges/day cap.

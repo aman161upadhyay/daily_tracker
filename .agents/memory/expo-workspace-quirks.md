@@ -35,6 +35,15 @@ The new expo-file-system API (`File`, `Paths.cache`, `file.write`, `file.text()`
 ## Image tooling
 No PIL, no sharp. ImageMagick `magick` is available and was used for app icons (icon/adaptive/splash/favicon).
 
+## Notifications / background tasks (SDK 57)
+expo-notifications uses exact alarms only when `SCHEDULE_EXACT_ALARM` is in app.json permissions *and* the
+user allowed it (Android 12+); otherwise inexact delivery. `Notifications.registerTaskAsync` also delivers
+**action-button presses with the app backgrounded/killed on Android** (that is the "response task");
+`expo-background-task` is unavailable in Expo Go — both registrations are wrapped in try/catch and the UI
+reports "unavailable" instead of failing. Notification `data` must be a plain object (spread the payload;
+typed interfaces without an index signature do not satisfy `Record<string, unknown>`).
+`weekdayOf()` in the time module is Monday = 0; any weekday setting must use that convention (Sunday = 6).
+
 ## Web preview pitfalls (react-native-web)
 - Nested `Pressable`s render as nested `<button>`s → React error overlay. Keep action buttons as siblings of
   the pressable area, never children.
