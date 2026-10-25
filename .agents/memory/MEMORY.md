@@ -1,0 +1,3 @@
+- [Expo workspace quirks](expo-workspace-quirks.md) — Phosphor deep-require pattern, node --test instead of Vitest, node types via reference directive, ImageMagick only, web pitfalls.
+- [Git / GitHub push workflow](git-github-push.md) — workspace repo tracks origin/main; plain git push works through Replit's GitHub proxy; push after every milestone, tag v0.<n>.
+- [Product decisions](product-decisions.md) — user constraints, cycle-prediction blending, honest Body-tab state, rule versioning, open questions.
