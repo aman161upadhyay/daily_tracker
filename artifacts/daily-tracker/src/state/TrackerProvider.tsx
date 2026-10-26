@@ -5,7 +5,7 @@ import { WATER_GOAL_MAX_ML, WATER_GOAL_MIN_ML } from '@/src/data/validate';
 import { withHeadlessLock } from '@/src/services/headlessLock';
 import { headlessRevision, onHeadlessWrite } from '@/src/services/replan';
 import type { TrackerStore } from '@/src/data/store';
-import type { Cadence, Category, CycleDayLog, CycleReminder, Habit, HabitIcon, HabitRule, HabitType, MindKind, NudgePolicy, Settings, SnackTrigger, SnackType } from '@/src/domain/models';
+import type { Cadence, Category, CycleDayLog, CycleReminder, Habit, HabitIcon, HabitRule, HabitType, MindKind, MovementSnack, NudgePolicy, Settings, SnackTrigger, SnackType } from '@/src/domain/models';
 import { SNACK_LABELS } from '@/src/domain/models';
 import { applyPeriodStart } from '@/src/domain/cycle/timeline';
 import { currentZone, newId, now } from '@/src/domain/time/clock';
@@ -18,6 +18,9 @@ import { bumpBodyEpoch } from './epochs';
 import { setLiveStore } from './liveStore';
 import { latestRule } from './selectors';
 import type { TrackerState } from './types';
+
+/** Most snacks one log can add (a day has room for a few dozen two-minute snacks, not thousands). */
+export const MAX_SNACKS_PER_LOG = 100;
 
 export interface TrackerContextValue {
   state: TrackerState;
@@ -431,9 +434,12 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
       if (habit.snackType) {
         const meta = SNACK_LABELS[habit.snackType];
         const trigger: SnackTrigger = habit.presetId === 'sugar-shield' ? 'SUGAR_SHIELD' : 'MANUAL';
-        for (let i = 0; i < Math.max(1, Math.round(value)); i++) {
-          dispatch({ type: 'LOG_SNACK', snack: { id: newId(), at: at + i, zone: z, day: d, type: habit.snackType, reps: meta.defaultReps, seconds: meta.defaultSeconds, trigger } });
-        }
+        // A snack count becomes that many rows (each a real snack with its own undo); capped so a typo
+        // never turns into a million rows — the sheet refuses above the cap before it gets here.
+        const count = Math.min(MAX_SNACKS_PER_LOG, Math.max(1, Math.round(value)));
+        const snacks: MovementSnack[] = [];
+        for (let i = 0; i < count; i++) snacks.push({ id: newId(), at: at + i, zone: z, day: d, type: habit.snackType, reps: meta.defaultReps, seconds: meta.defaultSeconds, trigger });
+        dispatch({ type: 'LOG_SNACKS', snacks });
         return;
       }
       if (habit.mindKind) {

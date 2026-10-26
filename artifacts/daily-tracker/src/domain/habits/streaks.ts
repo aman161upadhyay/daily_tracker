@@ -109,6 +109,8 @@ export function periodRequired(rule: Pick<HabitRule, 'cadence' | 'timesPerPeriod
 export function segmentStartOn(rules: HabitRule[], createdDay: string, day: string): string {
   const sorted = sortRules(rules);
   if (sorted.length === 0 || day <= createdDay) return createdDay;
+  // A cadence that never changed has one segment: no need to walk a year of periods to find its start.
+  if (sorted.every((r) => r.cadence === sorted[0]!.cadence)) return createdDay;
   let cursor = createdDay;
   let cadence = ruleOn(sorted, cursor).cadence;
   let segment = cursor;

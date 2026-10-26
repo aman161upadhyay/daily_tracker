@@ -5,7 +5,7 @@ first thing to read after `replit.md`. It answers: what exists, why it is the wa
 verified, what happened step by step, and what is still open. Append to the journal; never rewrite
 history.
 
-Last updated: 2026-10-26, autonomous session (council rounds 1–5 fixed; see journal and §6).
+Last updated: 2026-10-26, autonomous session (council rounds 1–6 fixed; see journal and §6).
 
 ---
 
@@ -15,10 +15,10 @@ Last updated: 2026-10-26, autonomous session (council rounds 1–5 fixed; see jo
 |---|---|
 | App | Daily Tracker — private Android tracker: habits · water · movement snacks · meditation · opt-in cycle · home-screen widget · configurable nudges · Health Connect import · app lock · encrypted backups |
 | Code | `artifacts/daily-tracker/` — Expo SDK 57, React Native 0.86, TypeScript, Expo Router, expo-sqlite |
-| Version | `app.json` `version 0.9.0`, `versionCode 9`, tag `v0.9` (M6 complete + council rounds 1–5) |
+| Version | `app.json` `version 0.10.0`, `versionCode 10`, tag `v0.10` (M6 complete + council rounds 1–6) |
 | Repo | https://github.com/aman161upadhyay/daily_tracker.git, branch `main`, commits authored as Aman |
 | Milestones | M0 skeleton ✅ · M1 storage/streaks/onboarding ✅ · M2 nudges/notifications ✅ · M3 widget ✅ · M4 Health Connect/Body ✅ · M5 cycle ✅ · M6 theme/lock/backup/signing ✅ (`docs/IMPLEMENTATION_PLAN.md`) |
-| Verified here | type-check (three packages), 245 unit tests, Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks, web walkthroughs by a browser-driving tester |
+| Verified here | type-check (three packages), 269 unit tests, Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks (incl. the Health Connect rationale activity), web walkthroughs by a browser-driving tester |
 | Never run yet | a real Android device. Everything native (widget taps, notification buttons with the app closed, Health Connect, app lock, Auto Backup, signed APK) is coded and reviewed but untested on hardware — `docs/DEVICE_CHECKLIST.md` lists the exact rows |
 | User's next step | `docs/GET_IT_ON_YOUR_PHONE.md` (plain-language build guide) |
 
@@ -157,6 +157,21 @@ contradicts one, write down why.
     shows the plan ("From Nov 2: …") so a save that starts next week never looks lost. **Why:** basing
     an edit on the latest row made a planned monthly rhythm start today when a target was tweaked, and
     an invisible plan read as a failed save.
+26. **A clock time is judged by the tracking day it falls in, and a wall-clock minute is one slot.**
+    `instantOf` moves a minute the clock skips forward onto the moment the clock jumps to (02:30 on a
+    spring-forward night is 03:30, never 01:30), and resolves a repeated minute to its first pass; the
+    planner carries `boundaryHour` and asks `trackingDayOf(slot)` before deciding a slot is already
+    settled, and drops the second of two elapsed-hour slots that share a minute id. Terminal nudge
+    events (done, dismissed) outrank snoozes whatever their timestamps say. **Why:** calendar-day
+    checks sent a 1:30 am reminder for a habit done an hour earlier, a skipped minute rang an hour
+    early, and a clock set back between a snooze and a tap re-offered a finished nudge.
+27. **A backup the running build cannot read is never overwritten, and a delete is a promise kept on
+    the next start.** The hourly snapshot writer moves an unreadable snapshot to `snapshot.kept.json`
+    first; onboarding and Settings say so and offer keep / delete / try again; erase and opt-out write
+    a `backup-cleanup.pending` marker before deleting and clear it last, and start-up finishes any
+    pending cleanup. **Why:** a newer phone's restored snapshot was the only copy of that data and a
+    fresh install would have replaced it within the hour; an erase interrupted by process death left
+    the old snapshot eligible for Android backup for ever.
 
 ### How council findings are judged
 - Accept when: evidence is concrete (file:line, reproducible), it violates a paradigm or a user constraint,
@@ -201,6 +216,10 @@ Dates are America/New_York. Commits are on `main`.
 | 2026-10-26 midday | **Council round 5** — five lenses (Android runtime, data, UX, security, release) over the round-4 result plus a cycle-flow e2e run. Theme: the round-4 proration formula was shared but fed the wrong start day after a cadence change; the timer bell's own payload failed the stricter parser; the live-store hand-over still had a window between a headless job's "app not alive" check and its write. Triage in §6 | — |
 | 2026-10-26 midday | **Round-5 fixes:** `parsePayload` accepts the timer bell's empty day (only for `MIND_END`) and the bell is built by the same `mindEndPayload()` the parser is tested against; one `mindSessionExists()` dedupe (60 s on the start instant) for the bell and the screen's own log; cadence segments — `segmentStartOn()` replays the streak's walk, and the card, charts, planner and widget prorate from the segment start instead of the creation day (a weekly habit turned monthly is no longer asked for the whole month's quota in its first partial month); the provider loads and registers the live store under the headless lock and headless jobs re-check for a live store after their re-plan await, before writing; `commitPending()` kicks one more save when the retry budget was already spent; Health Connect reads are single-flight with a watermark that never moves backwards; the app-lock gate locks during render (no unlocked frame) with no modal fade; BackfillStrip judges each day against its own rule; the stepper's number is tappable to type (bounded, no grid snap); the breathing circle resumes mid-phase and the phase label is a live region; a closed period's end can be moved from the day sheet (extend or shorten) and future days explain themselves; cycle calendar cells ≈46 dp; `docs/BUILD_ANDROID.md` restored after a round-4 text-splice corruption (a `$'` in a replacement string) | this commit |
 | 2026-10-26 midday | Verification: tsc clean ×3, 245 tests (14 new in `tests/round5.test.ts`), Android Metro bundle 200 (12.8 MB dev), `expo export --platform android` → 5.9 MB Hermes bytecode, web screenshot (Mind); e2e tester over the cycle sheet, the mind timer, the typed stepper, the cadence change and the Library (results in §6 Round 5) | this commit |
+
+| 2026-10-26 afternoon | **Council round 6** — five new lenses (time/DST/calendar arithmetic, first-build/release, accessibility, upgrade/data-migration, scale/performance) over the round-5 result. Theme: the planner reasoned in calendar days where the user lives in tracking days; the Auto Backup lifecycle had two unrecoverable moments; typed input trusted blur ordering and the stored unit; four palette tokens missed AA; one water tap recomputed every habit's lifetime. Triage in §6 | — |
+| 2026-10-26 afternoon | **Round-6 fixes:** `instantOf` DST-gap fix; planner tracking-day slot checks (`boundaryHour`), duplicate-minute dedupe, terminal-event ranking, orphan one-off events skipped (`eventHabitIds`), plan cache keyed on day and zone; archive/delete drop a habit's scheduled events; `LOG_SNACKS` bulk action with a 100-snack ceiling in the sheet and at the command boundary; heart history counts as data worth backing up; unreadable snapshots set aside (`snapshot.kept.json`) with onboarding and Settings cards; durable cleanup marker for erase / opt-out; `habitView` cached per state, cadence segments cached per rule history, cycle insights keyed on their inputs with an empty fast path; stepper applies each keystroke (Save right after typing keeps the value) and takes a `parse` so the water goal is typed in the unit shown (`parseVolumeInput`); tertiary inks and the light primary green moved to ≥ 4.5:1 (contrast regression test over `constants/colors.ts`); font-scale caps raised (callout/caption 2×, title2 1.8×, title1 1.6×); widget rings and names labelled for TalkBack; Health Connect privacy rationale: `plugins/withHealthRationale.js` adds `HealthRationaleActivity` (both rationale intents → `daily-tracker://health-privacy`) and `app/health-privacy.tsx`; `SYSTEM_ALERT_WINDOW` removed from release builds (`blockedPermissions`; the debug source set keeps it); guides: Play Protect vs unknown-source prompts, properties-file escaping and the `ORG_GRADLE_PROJECT_*` alternative, version table; checklist H2 tightened, rows V1–V11; version 0.10.0 / versionCode 10 | this commit |
+| 2026-10-26 afternoon | Verification: tsc clean, 269 tests (24 new in `tests/round6.test.ts`), Android Metro bundle 200 (12.9 MB dev), `expo prebuild` in a scratch copy: manifest shows the rationale activity, the retargeted alias, no rationale filter on MainActivity, `SYSTEM_ALERT_WINDOW` with `tools:node="remove"`; the Kotlin trampoline generated | this commit |
 
 (Entries for each council round follow below as they happen.)
 
@@ -314,6 +333,54 @@ Reviewers re-read the round-1 result. Ids are theirs where they gave one.
 **End-to-end tester (web preview)**
 - Checks 1–6 passed (onboarding both paths, logging, habit edit, backfill, export/import, cycle). Checks 7–8 were interrupted by a transient `slotStep is not defined` that came from my own half-saved edit to the planner, not from the product; re-run is owed and listed below.
 
+### Round 3 (2026-10-26 night)
+
+Fresh reviewer sessions over the round-2 result. Ids are theirs.
+
+**Android runtime lens**
+- AND3-01 high · the headless button task read `content.data`, but Android's raw bundle carries the payload as `content.dataString` (JSON text); buttons pressed with the app closed were dropped · **fixed** — `notificationPayload.ts` reads both shapes (and the top-level payload the pure test uses); the foreground listener and the headless task share it; unit test with the raw fixture.
+- AND3-02 high · the foreground path still marked a press handled before the provider had persisted it · **fixed** — `commitPending()` resolves when the generation the dispatch created is in the database; `endHandling` waits for it.
+- AND3-03 high · a dispatch queued in the same React batch as a HYDRATE was lost · **fixed** — a synchronous dispatch generation counter; a reload proceeds only when the generation it saw is both rendered and committed, otherwise it retries.
+- AND3-04 high · the headless lock serialised headless writers against each other but not against the live app: a widget tap could load the database, decide against it and save while the app held unsaved changes · **fixed** — live-store registry: when the provider is alive the headless task hands it a *builder* (`state → actions`) and the provider applies it against its current state and persists; the database path is only used when no app is running.
+- AND3-05 high · the merged water + movement nudge recorded the drink as SNOOZED, so a replay could not tell the drink from a snooze and logged it twice · **fixed** — WATER ledger kind written in the same transaction, before the SNOOZED/DONE that follows it; test.
+- AND3-06 high · a delayed headless snapshot could recreate a snapshot the user had just erased or opted out of · **fixed** — `maybeSnapshot` takes a state *getter* and re-reads the policy at write time; erase and opt-out go first.
+- AND3-07 high · a Health Connect sync in flight across "Remove imported data" wrote its result afterwards · **fixed** — generation guard in `useHealthConnect`: results from before the removal are dropped.
+- AND3-08 med · `syncPlan` and `cancelAll` could interleave and restore cancelled notifications · **fixed** — both serialised behind one promise with a generation; a superseded sync schedules nothing and returns `[]`.
+- AND3-09 med · a schedule call that threw was still recorded as scheduled · **fixed** — only accepted ids enter the ledger.
+- AND3-10 med · the widget task returned before its snapshot write finished (Android may release the runtime) · **fixed** — awaited, outside the lock.
+
+**Data-integrity lens**
+- DI3-01 high · the app accepted values its own importer rejects (20,001-character cycle note, amount above 1e9), making the export unrestorable · **fixed** — caps at the writers (`MAX_TEXT` on notes, `MAX_AMOUNT` 1,000,000 in the amount sheet with a hint, name 80 / unit 12 characters); paradigm 16.
+- DI3-02 high · the habit editor allowed a Water target up to 100,000, the goal mirror accepted it, `sanitizeSettings` reset it to 2,000 on reload · **fixed** — editor 100–20,000 for Water; goal↔rule mirror clamps the same range on both sides.
+- DI3-03 high · "deleted step days retain their automatic habit totals" · **fixed** — complete step reads fill missing window days with 0 so the mirror clears them; manual totals untouched; test. (The reviewer's second example, a strength tick judged by minutes, is working as designed: the threshold is the habit's definition.)
+- DI3-04 high · a workout moved upstream to another day kept its old tick when the old day lay outside the read window · **fixed** — the old day of an updated workout is judged again against the merged list; test.
+- DI3-05 high · deleted heart measurements survived a complete read · **fixed** — complete reads replace the day's row (several rows for one day are folded first); partial reads fill in; test.
+- DI3-06 high · the goal→rule sync overwrote a rule whose cadence change was pending (activating it early) and later reversed the target · **fixed** — the sync updates today's effective rule *and* any future rule, each keeping its own cadence and start.
+- DI3-07 med · a monthly quota of 31 could never be met in February · **fixed** — `periodQuota` = min(timesPerPeriod, days in the period) in the engine and the Today card; test.
+- DI3-08 med · rotation slots inside a pause consumed the post-pause budget · **fixed** — paused slots are skipped before budgeting (rotation and interval); test.
+
+**UX lens**
+- UX3-01 high · the timer could log twice while its leave dialog was open (bell + Finish) · **fixed** — the timer pauses while the dialog is up; `logOnce` guard.
+- UX3-02 med · the onboarding backup switch could be pushed offscreen at large text · **fixed** — label takes the remaining width and wraps.
+- UX3-03 med · Sugar Shield kept the permission it read on mount after the user enabled notifications in system Settings · **fixed** — re-checked on AppState active and right before scheduling.
+- UX3-04 med · custom habit target controls overflowed with large values or fonts · **fixed** — the row wraps; unit input capped.
+- UX3-05 med · the complete-day dot disappeared on 360 dp phones (cells < 8 dp) · **fixed** — drawn from 5 dp cells.
+- UX3-06 med · onboarding's privacy line contradicted the backup step · **fixed** — copy qualified ("unless you keep the phone backup on").
+- UX3-07 low · heatmap legend could not fit at large font scale · **fixed** — wraps.
+
+**Security / privacy lens**
+- SEC3-01 high · cycle notifications named the reminder on the lock screen by default · **fixed** — discreet mode is the default (opt into names); existing users keep their choice.
+- SEC3-02 high · declining the restore prompt left the snapshot eligible for the next backup · **fixed** — "Start fresh" deletes it.
+- SEC3-03 high · imported fixed-time strings bypassed numeric bounds (`"25:99"`, `"noon"`) and reached the planner as NaN · **fixed** — strict `HH:MM` in the validator; the planner skips anything else; test.
+- SEC3-04 high · body sync metadata (`lastSyncAt`, `lastError`, `granted`) escaped validation · **fixed** — sanitised in `normalizeBody`; test.
+- SEC3-05 med · an interrupted import left the document picker's plaintext copy under `cache/DocumentPicker` · **fixed** — purged with the export scratch files (start-up after an hour, erase immediately).
+
+**Release / docs lens**
+- REL3-01..07 · Mac `npm install -g pnpm` can fail with `EACCES` (now a `sudo` path and a table row); signing recipe had no PowerShell form (now has one); build blocks changed directory relative to the previous block (each block now starts from the repository root); the Python decrypt recipe skipped NFKC (added); checklist said 4 am boundary (default is 3 am; rows now test both sides of it); "refuses an update whose number is not higher" (Android rejects only lower; wording fixed in both guides); stale header / test count / RN version (refreshed) · **all fixed**.
+
+**End-to-end tester (web preview)**
+- Re-ran checks 7–8 from round 2 plus a regression over the round-2 changes: settings / theme / app-lock copy and the Body stubs **pass**; Sugar Shield's web wording and "Log the squats" **pass**; heatmap legend dot and spoken summary **pass**; "Set amount" leaves an untouched prefill exact **pass**; meditation leave dialog **fail on web only** — `Alert.alert` is a no-op in the browser, so the dialog is a device check (row S4), not a web one; export file name lacked the random tag on web **fixed** this round (native already had it). One console error during the run (`onHeadlessWrite is not defined`) was my own half-saved provider edit, gone on reload.
+
 ### Round 4 (2026-10-26 morning)
 
 Fresh reviewer sessions over the round-3 result. Ids are theirs.
@@ -400,53 +467,43 @@ Fresh reviewer sessions (Android runtime, data, UX, security, release) over the 
 - Retest **pass**: the caption read `From Nov 2: 20 days a month`, the editor reopened on the pending rule, Library add → archive → restore row, typed `9:30 pm` into a start-time stepper clamped to its 12:00 PM ceiling and `noon` left it alone; no console errors. The retest also showed that switching the plan back to the current rule left a redundant "From Nov 2: 2 days a week" row, and reading the code showed `setTarget` based its new rule on the *latest* rule — a planned monthly rhythm would have started today the moment a target was edited · **fixed** — rule edits go through pure `ruleChangeActions` / `targetChangeActions` in `src/state/commands.ts` (a plan equal to today's rule is called off via the new `REMOVE_RULE` action, which never removes a habit's last rule; a same-cadence change supersedes the plan; a target change keeps today's cadence and carries the number into the plan); 4 tests.
 - The only console error (`withHeadlessLock is not defined`) was a half-saved provider edit during the batch, gone on reload.
 
-### Round 3 (2026-10-26 night)
+### Round 6 (2026-10-26 afternoon)
 
-Fresh reviewer sessions over the round-2 result. Ids are theirs.
+Five lenses not used before (time arithmetic, first build, accessibility, upgrade/data, scale), each a fresh read-only session over the round-5 result with its own scratch reproduction script. Ids are theirs.
 
-**Android runtime lens**
-- AND3-01 high · the headless button task read `content.data`, but Android's raw bundle carries the payload as `content.dataString` (JSON text); buttons pressed with the app closed were dropped · **fixed** — `notificationPayload.ts` reads both shapes (and the top-level payload the pure test uses); the foreground listener and the headless task share it; unit test with the raw fixture.
-- AND3-02 high · the foreground path still marked a press handled before the provider had persisted it · **fixed** — `commitPending()` resolves when the generation the dispatch created is in the database; `endHandling` waits for it.
-- AND3-03 high · a dispatch queued in the same React batch as a HYDRATE was lost · **fixed** — a synchronous dispatch generation counter; a reload proceeds only when the generation it saw is both rendered and committed, otherwise it retries.
-- AND3-04 high · the headless lock serialised headless writers against each other but not against the live app: a widget tap could load the database, decide against it and save while the app held unsaved changes · **fixed** — live-store registry: when the provider is alive the headless task hands it a *builder* (`state → actions`) and the provider applies it against its current state and persists; the database path is only used when no app is running.
-- AND3-05 high · the merged water + movement nudge recorded the drink as SNOOZED, so a replay could not tell the drink from a snooze and logged it twice · **fixed** — WATER ledger kind written in the same transaction, before the SNOOZED/DONE that follows it; test.
-- AND3-06 high · a delayed headless snapshot could recreate a snapshot the user had just erased or opted out of · **fixed** — `maybeSnapshot` takes a state *getter* and re-reads the policy at write time; erase and opt-out go first.
-- AND3-07 high · a Health Connect sync in flight across "Remove imported data" wrote its result afterwards · **fixed** — generation guard in `useHealthConnect`: results from before the removal are dropped.
-- AND3-08 med · `syncPlan` and `cancelAll` could interleave and restore cancelled notifications · **fixed** — both serialised behind one promise with a generation; a superseded sync schedules nothing and returns `[]`.
-- AND3-09 med · a schedule call that threw was still recorded as scheduled · **fixed** — only accepted ids enter the ledger.
-- AND3-10 med · the widget task returned before its snapshot write finished (Android may release the runtime) · **fixed** — awaited, outside the lock.
+**Time / DST / calendar lens**
+- TIME6-01 med · `instantOf` on a spring-forward night returned 01:30 for 02:30 (an hour *early*) · **fixed** — a minute the clock skips lands on the moment the clock jumps to (03:30); tests for both transitions and an ordinary day.
+- TIME6-02 med · the planner judged "done today" by calendar day: at 00:30 on 1 Nov (tracking day 31 Oct) a 01:30 reminder rang for a habit already done · **fixed** — `PlanInput.boundaryHour`; FIXED and custom-window INTERVAL slots are judged by `trackingDayOf(slot)`; rotation and water keep calendar-day checks (their windows start at 5:00 or later, so both agree there).
+- TIME6-03 med · on the fall-back night an interval policy starting at midnight produced two slots with one id; sync's map collapsed them while its loop submitted both · **fixed** — one slot per wall-clock minute id (first keeps it), before cap accounting.
+- TIME6-04 med · a clock set back between a snooze and a Done let the snooze win and re-offer a finished nudge · **fixed** — DONE / DISMISSED outrank snooze / swap regardless of timestamps (WATER stays non-terminal: on a merged nudge a drink is followed by the snooze that keeps the movement half open — round 3's design, protected by its test).
+- TIME6-05 low · plan cache ignored a zone change within the same minute · **fixed** — key is minute | tracking day | zone.
 
-**Data-integrity lens**
-- DI3-01 high · the app accepted values its own importer rejects (20,001-character cycle note, amount above 1e9), making the export unrestorable · **fixed** — caps at the writers (`MAX_TEXT` on notes, `MAX_AMOUNT` 1,000,000 in the amount sheet with a hint, name 80 / unit 12 characters); paradigm 16.
-- DI3-02 high · the habit editor allowed a Water target up to 100,000, the goal mirror accepted it, `sanitizeSettings` reset it to 2,000 on reload · **fixed** — editor 100–20,000 for Water; goal↔rule mirror clamps the same range on both sides.
-- DI3-03 high · "deleted step days retain their automatic habit totals" · **fixed** — complete step reads fill missing window days with 0 so the mirror clears them; manual totals untouched; test. (The reviewer's second example, a strength tick judged by minutes, is working as designed: the threshold is the habit's definition.)
-- DI3-04 high · a workout moved upstream to another day kept its old tick when the old day lay outside the read window · **fixed** — the old day of an updated workout is judged again against the merged list; test.
-- DI3-05 high · deleted heart measurements survived a complete read · **fixed** — complete reads replace the day's row (several rows for one day are folded first); partial reads fill in; test.
-- DI3-06 high · the goal→rule sync overwrote a rule whose cadence change was pending (activating it early) and later reversed the target · **fixed** — the sync updates today's effective rule *and* any future rule, each keeping its own cadence and start.
-- DI3-07 med · a monthly quota of 31 could never be met in February · **fixed** — `periodQuota` = min(timesPerPeriod, days in the period) in the engine and the Today card; test.
-- DI3-08 med · rotation slots inside a pause consumed the post-pause budget · **fixed** — paused slots are skipped before budgeting (rotation and interval); test.
+**First-build / release lens**
+- BLD6-01 med · Health Connect's privacy-policy link opened the app on Today; nothing explained the data use · **fixed** — `plugins/withHealthRationale.js` (native trampoline activity for `ACTION_SHOW_PERMISSIONS_RATIONALE`, the Android 14 alias retargeted) → `app/health-privacy.tsx`, offline, reachable from Body → Health Connect too; checklist H2 tightened (cold start), row V1.
+- BLD6-02 med · the phone guide called every Play Protect block harmless · **fixed** — the unknown-source prompt and Play Protect's scan / verdict are now described separately, with what each means.
+- BLD6-03 med · a signing password with a backslash (or leading space) breaks when pasted into `gradle.properties` · **fixed** — escaping rules in both guides and the `ORG_GRADLE_PROJECT_DT_RELEASE_*` environment-variable alternative.
+- BLD6-04 low · version drift across the guides (0.7 / 0.8 / 0.9) · **fixed** — one table, `app.json` named as the source of truth; this round bumps to 0.10.0 / 10.
+- Also this round (own finding while wiring the plugin): `SYSTEM_ALERT_WINDOW` shipped in release builds (template default) · **fixed** — `android.blockedPermissions`; the debug source set's own manifest keeps it for the developer overlay (verified in the prebuilt manifest).
 
-**UX lens**
-- UX3-01 high · the timer could log twice while its leave dialog was open (bell + Finish) · **fixed** — the timer pauses while the dialog is up; `logOnce` guard.
-- UX3-02 med · the onboarding backup switch could be pushed offscreen at large text · **fixed** — label takes the remaining width and wraps.
-- UX3-03 med · Sugar Shield kept the permission it read on mount after the user enabled notifications in system Settings · **fixed** — re-checked on AppState active and right before scheduling.
-- UX3-04 med · custom habit target controls overflowed with large values or fonts · **fixed** — the row wraps; unit input capped.
-- UX3-05 med · the complete-day dot disappeared on 360 dp phones (cells < 8 dp) · **fixed** — drawn from 5 dp cells.
-- UX3-06 med · onboarding's privacy line contradicted the backup step · **fixed** — copy qualified ("unless you keep the phone backup on").
-- UX3-07 low · heatmap legend could not fit at large font scale · **fixed** — wraps.
+**Accessibility lens**
+- A11Y6-01 med · typing into a stepper and tapping Save straight away saved the old value (the edit lived in local state until blur) · **fixed** — every keystroke that parses applies immediately; blur only tidies the text.
+- A11Y6-02 med · the water goal stepper took a typed number as millilitres even when showing ounces · **fixed** — stepper `parse` prop; `parseVolumeInput(text, units)` for Settings and onboarding, decimal keyboard, unit placeholder.
+- A11Y6-03 med · tertiary text 4.2:1 on raised surfaces (both themes) and white on the light primary 4.4:1 · **fixed** — dark tertiary `#85918A`, light tertiary `#5F6B63`, light primary/green `#107A37`; `tests/round6.test.ts` computes the ratios from `constants/colors.ts` (text ≥ 7, secondary/tertiary ≥ 4.5 on bg / surface / raised, button text ≥ 4.5).
+- A11Y6-04 med · widget rings and names had no accessibility labels · **fixed** — `ringLabel(tile)` ("Log Water, 1,250 of 2,000 ml") and "Open <habit>".
+- A11Y6-05 med · 200 % font size capped globally, including buttons and chips · **fixed** — callout and caption 2×, title2 1.8×, title1 1.6×; the large ring numerals keep their cap by design.
 
-**Security / privacy lens**
-- SEC3-01 high · cycle notifications named the reminder on the lock screen by default · **fixed** — discreet mode is the default (opt into names); existing users keep their choice.
-- SEC3-02 high · declining the restore prompt left the snapshot eligible for the next backup · **fixed** — "Start fresh" deletes it.
-- SEC3-03 high · imported fixed-time strings bypassed numeric bounds (`"25:99"`, `"noon"`) and reached the planner as NaN · **fixed** — strict `HH:MM` in the validator; the planner skips anything else; test.
-- SEC3-04 high · body sync metadata (`lastSyncAt`, `lastError`, `granted`) escaped validation · **fixed** — sanitised in `normalizeBody`; test.
-- SEC3-05 med · an interrupted import left the document picker's plaintext copy under `cache/DocumentPicker` · **fixed** — purged with the export scratch files (start-up after an hour, erase immediately).
+**Upgrade / data-migration lens**
+- UPG6-01 high · a restored snapshot from a *newer* build failed parsing silently and the hourly writer overwrote it · **fixed** — `keepUnreadable()` sets it aside as `snapshot.kept.json` before any overwrite; onboarding card "A backup this version can't open" (Keep it for later / Delete it); Settings → Your data row (Try to restore it / Delete it).
+- UPG6-02 high · erase / backup opt-out deleted the snapshot only on an in-memory transition; process death or a failed delete left it eligible for Android backup for ever · **fixed** — `backup-cleanup.pending` marker written first, every delete awaited and reported (`deleteSnapshot` throws on a failure), marker cleared last, `cleanupPending()` on every start.
+- UPG6-03 high (conditional) · two JavaScript runtimes (headless task + app) could both write SQLite with no shared lock; a stale read-decide-write can resurrect an erased row · **deferred** — a cross-runtime CAS needs a device to prove the scenario exists on this SDK (Expo's headless tasks share the app's runtime in the common case); documented as a residual risk, checklist row V11 with the exact reproduction.
+- UPG6-04 med · heart-only history did not count as data worth backing up · **fixed** — `hasUserData` includes `body.heart`; test.
+- UPG6-05 med · archived / deleted habits left scheduled one-off events behind · **fixed** — the reducer drops a habit's events on archive and delete; the planner also skips events whose habit is not in `eventHabitIds` (every active habit plus the Sugar Shield placeholder — the Shield habit has an EVENT policy and is not among the planner's habits, which the first attempt got wrong and `tests/planner.test.ts` caught).
 
-**Release / docs lens**
-- REL3-01..07 · Mac `npm install -g pnpm` can fail with `EACCES` (now a `sudo` path and a table row); signing recipe had no PowerShell form (now has one); build blocks changed directory relative to the previous block (each block now starts from the repository root); the Python decrypt recipe skipped NFKC (added); checklist said 4 am boundary (default is 3 am; rows now test both sides of it); "refuses an update whose number is not higher" (Android rejects only lower; wording fixed in both guides); stale header / test count / RN version (refreshed) · **all fixed**.
-
-**End-to-end tester (web preview)**
-- Re-ran checks 7–8 from round 2 plus a regression over the round-2 changes: settings / theme / app-lock copy and the Body stubs **pass**; Sugar Shield's web wording and "Log the squats" **pass**; heatmap legend dot and spoken summary **pass**; "Set amount" leaves an untouched prefill exact **pass**; meditation leave dialog **fail on web only** — `Alert.alert` is a no-op in the browser, so the dialog is a device check (row S4), not a web one; export file name lacked the random tag on web **fixed** this round (native already had it). One console error during the run (`onHeadlessWrite is not defined`) was my own half-saved provider edit, gone on reload.
+**Scale / performance lens** (synthetic 365-day state: 12 habits, 4,000 entries, 3,000 drinks, 1,500 nudge events)
+- SCALE6-01 high · a snack amount up to 1,000,000 became that many synchronous dispatches (quadratic array copies: 2.8 s for 30,000 in Node) · **fixed** — `MAX_SNACKS_PER_LOG = 100` enforced in the sheet (hint, button disabled) and at the command boundary; one `LOG_SNACKS` action appends all at once.
+- SCALE6-02 high · one water tap recomputed every habit's lifetime streak four times (Today, highlights, planner input, summary text): ~109 ms here, ~435 ms at the 4× phone estimate · **fixed** — `habitView` cached per state and day for stored habits (drafts bypass the cache; `buildHabitView` does the work), so the four callers share one projection per tick.
+- SCALE6-03 med · weekly/monthly charts replayed the cadence history twice per plotted day; cold cycle insights 203 ms even with no cycle logs · **fixed** — `segmentFrom` cached per rule-history key with a fast path when one cadence covers the history; `cycleInsights` keyed on the slices it reads (not water) and returns `NO_INSIGHTS` immediately when there are no cycle logs.
+- SCALE6-04 med · the 30-second clock tick re-renders every context consumer · **deferred** — the expensive consumers are now served from caches (SCALE6-02/03), so a tick costs a few hundred microseconds of selectors; splitting the context is a larger refactor to do with device profiling in hand.
 
 ## 7. Backlog and open questions
 
@@ -461,5 +518,6 @@ Fresh reviewer sessions over the round-2 result. Ids are theirs.
 - Steps and cycle tiles in the widget; sleep-stages chart; write-back of water/mind sessions to Health Connect (v2).
 
 ### Device verification owed
-- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10, T1–T11, U1–U11 have never been run on hardware. First build on the laptop is the next real milestone.
+- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10, T1–T11, U1–U11, V1–V11 have never been run on hardware. First build on the laptop is the next real milestone.
+- Residual risk carried knowingly: two JavaScript runtimes writing SQLite at once (UPG6-03, row V11). If the device run shows a lost write there, the fix is a database revision compared inside the write transaction.
 - Rows added this round: R9 and S6 now test both sides of the 3 am boundary; W4/W6/N-rows exercise the live-store path (app open vs swiped away) — both paths must log exactly once.

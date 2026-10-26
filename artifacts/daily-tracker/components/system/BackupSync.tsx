@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { AppState, Platform } from 'react-native';
-import { deleteSnapshot } from '@/src/services/backup';
+import { cleanupPending, deleteSnapshot, markCleanupPending } from '@/src/services/backup';
 import { afterSnapshots, maybeSnapshot } from '@/src/services/snapshotSync';
 import { purgeTransferCache } from '@/src/services/transferCache';
 import { useTracker } from '@/src/state/TrackerProvider';
@@ -21,7 +21,9 @@ export { hasUserData, shouldSnapshot } from '@/src/data/backupPolicy';
  * - sample data is never snapshotted, and loading it never deletes the last
  *   real snapshot (it may be the only copy left)
  * - "Erase everything" and turning the setting off delete the snapshot
- *   ("deleted" must mean deleted), queued behind any write in flight
+ *   ("deleted" must mean deleted), queued behind any write in flight; the
+ *   intent is recorded on disk first, so an app killed before the delete ran
+ *   finishes it on the next start instead of leaving the copy behind
  */
 export function BackupSync() {
   const { state, ready } = useTracker();
@@ -45,6 +47,11 @@ export function BackupSync() {
         })
         .catch((err) => console.warn('[backup]', err));
     };
+    cleanupPending()
+      .then((pending) => {
+        if (pending) enqueue(deleteSnapshot);
+      })
+      .catch((err) => console.warn('[backup]', err));
     run();
     enqueue(() => purgeTransferCache());
     const sub = AppState.addEventListener('change', (next) => {
@@ -65,7 +72,9 @@ export function BackupSync() {
     const turnedOff = prev.enabled && !current.enabled;
     if (erased || turnedOff) {
       lastWritten.current = null;
-      enqueue(deleteSnapshot);
+      markCleanupPending()
+        .catch((err) => console.warn('[backup]', err))
+        .then(() => enqueue(deleteSnapshot));
       if (erased) enqueue(() => purgeTransferCache({ all: true }));
     }
   }, [ready, state]);

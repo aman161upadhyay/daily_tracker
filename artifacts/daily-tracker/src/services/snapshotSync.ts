@@ -8,10 +8,10 @@
  * data, something worth keeping. Throttle: at most one write per hour, Auto
  * Backup itself runs about daily.
  */
-import { serializeExport } from '@/src/data/transfer';
+import { inspectExport, serializeExport } from '@/src/data/transfer';
 import { shouldSnapshot } from '@/src/data/backupPolicy';
 import type { TrackerState } from '@/src/state/types';
-import { snapshotWrittenAt, writeSnapshot } from './backup';
+import { readSnapshot, setAsideSnapshot, snapshotWrittenAt, writeSnapshot } from './backup';
 
 /** A snapshot at most this often. */
 export const SNAPSHOT_MIN_AGE_MS = 60 * 60 * 1000;
@@ -34,12 +34,29 @@ export function maybeSnapshot(source: () => TrackerState | null, nowMs = Date.no
     if (!state || !shouldSnapshot(state)) return false;
     const writtenAt = await snapshotWrittenAt();
     if (writtenAt !== null && nowMs - writtenAt < SNAPSHOT_MIN_AGE_MS) return false;
+    if (writtenAt !== null) await keepUnreadable();
     await writeSnapshot(serializeExport(state));
     return true;
   };
   const run = queue.then(job, job);
   queue = run.catch(() => undefined);
   return run;
+}
+
+/**
+ * A snapshot on disk this build cannot read — restored from a phone running a newer app, or
+ * damaged — is moved aside rather than overwritten: it may be the only copy of that data, and a
+ * later update can still restore it (Settings offers it). Nothing to do when it reads fine.
+ */
+export async function keepUnreadable(): Promise<boolean> {
+  const existing = await readSnapshot();
+  if (!existing) return false;
+  try {
+    inspectExport(existing.text);
+    return false;
+  } catch {
+    return setAsideSnapshot();
+  }
 }
 
 /** Run `job` after every queued snapshot write (used for delete-after-write ordering). */

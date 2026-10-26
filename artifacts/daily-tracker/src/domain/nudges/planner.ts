@@ -21,7 +21,7 @@
  */
 import type { NudgeEvent, NudgePolicy, ScheduledEvent, Settings, SnackType } from '../models';
 import { SNACK_LABELS } from '../models';
-import { addDays, calendarDayOf, instantOf, minutesOfDay, weekdayOf } from '../time/trackingDay';
+import { DEFAULT_BOUNDARY_HOUR, addDays, calendarDayOf, instantOf, minutesOfDay, trackingDayOf, weekdayOf } from '../time/trackingDay';
 import { expectedIntakeMl, isOnPace } from '../water/pace';
 
 export type NudgeChannel = 'nudges' | 'water' | 'summary' | 'cycle' | 'mind';
@@ -78,10 +78,18 @@ export type PlanSettings = Pick<
 export interface PlanInput {
   nowMs: number;
   zone: string;
-  /** Tracking day (3 am boundary) — progress figures refer to it. */
+  /** Tracking day — progress figures refer to it. */
   today: string;
+  /** Hour the tracking day starts (`settings.dayBoundaryHour`); a clock time before it belongs to the previous tracking day. */
+  boundaryHour?: number;
   settings: PlanSettings;
   habits: PlanHabit[];
+  /**
+   * Habits a one-off event may still ring for (every active habit, whatever its reminder policy,
+   * plus the Sugar Shield placeholder). When given, events for any other habit — archived or
+   * deleted after the event was scheduled — are skipped. Absent: every event is eligible.
+   */
+  eventHabitIds?: readonly string[];
   water?: PlanWater;
   /** Movement snacks completed today (excluding Sugar Shield). */
   rotationCompletedToday: number;
@@ -120,12 +128,28 @@ function slotStep(intervalMin: number): number {
   return Math.max(1, Number.isFinite(intervalMin) ? Math.floor(intervalMin) : 1) * 60_000;
 }
 
-/** Latest event per nudge id — the only thing the planner needs from the history. */
+/**
+ * Done and dismissed end a nudge for good; the others move it. WATER is not terminal on its own:
+ * a drink on a merged water + movement nudge is followed by a SNOOZED that keeps the movement
+ * half open (a water-only nudge records DONE as well).
+ */
+const TERMINAL: ReadonlySet<NudgeEvent['kind']> = new Set(['DONE', 'DISMISSED']);
+
+/**
+ * Latest event per nudge id — the only thing the planner needs from the history. A terminal
+ * event (done, dismissed) outranks a snooze or swap whatever their timestamps say: the clock can
+ * be set back between the two, and a settled nudge must never be re-offered.
+ */
 export function latestEvents(events: readonly NudgeEvent[]): Map<string, NudgeEvent> {
   const out = new Map<string, NudgeEvent>();
   for (const e of events) {
     const prev = out.get(e.nudgeId);
-    if (!prev || e.at >= prev.at) out.set(e.nudgeId, e);
+    if (!prev) {
+      out.set(e.nudgeId, e);
+      continue;
+    }
+    const rank = (x: NudgeEvent) => (TERMINAL.has(x.kind) ? 1 : 0);
+    if (rank(e) > rank(prev) || (rank(e) === rank(prev) && e.at >= prev.at)) out.set(e.nudgeId, e);
   }
   return out;
 }
@@ -176,10 +200,20 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
   const candidates: Candidate[] = [];
   /** Inside the pause-aware window the OS will actually be asked to ring in. */
   const placeable = (at: number) => at >= earliest && at <= horizonEnd;
+  // Ids are per wall-clock minute. On the night DST ends the clock shows one hour twice, so two
+  // elapsed-hour slots can share a minute; the first keeps the id, the second is dropped (one
+  // reminder fewer on a 25-hour day, never two notifications fighting over one identifier).
+  const seen = new Set<string>();
   const push = (c: Candidate) => {
-    if (!placeable(c.at)) return;
+    if (!placeable(c.at) || seen.has(c.id)) return;
+    seen.add(c.id);
     candidates.push(c);
   };
+  const boundary = input.boundaryHour ?? DEFAULT_BOUNDARY_HOUR;
+  /** Whether a clock time belongs to the tracking day the progress figures describe. */
+  const inToday = (at: number) => trackingDayOf(at, zone, boundary) === input.today;
+  /** Done for the tracking day the slot falls in: a 1:30 am reminder is judged by the evening before it. */
+  const settled = (h: PlanHabit, at: number) => inToday(at) && (h.doneToday || h.donePeriod);
 
   /** Apply snooze / swap / fired bookkeeping to a slot; returns the effective time or null. */
   const effectiveAt = (id: string, at: number): number | null => {
@@ -268,7 +302,6 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
     // ── Other interval habits (non-movement, e.g. a custom "sip tea" every 2 h) ──
     for (const h of input.habits) {
       if (h.movement || !h.policy.enabled || h.policy.kind !== 'INTERVAL' || !(h.policy.intervalMin! >= 1)) continue;
-      if (isToday && (h.doneToday || h.donePeriod)) continue;
       const start = h.policy.activeStartMin !== undefined ? instantOf(day, h.policy.activeStartMin, zone) : activeStart;
       const end = h.policy.activeEndMin !== undefined ? instantOf(day, h.policy.activeEndMin, zone) : activeEnd;
       if (end <= start) continue;
@@ -277,7 +310,8 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
       let slots = 0;
       const step = slotStep(h.policy.intervalMin!);
       for (let at = anchor + step; at < end && n < h.policy.maxPerDay && slots++ < MAX_SLOTS_PER_DAY; at += step) {
-        if (h.policy.onlyWhenBehind && isToday) {
+        if (settled(h, at)) continue;
+        if (h.policy.onlyWhenBehind && inToday(at)) {
           const elapsed = (at - start) / (end - start);
           if (h.todayRatio >= elapsed) continue;
         }
@@ -307,8 +341,6 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
     // ── Fixed clock times ────────────────────────────────────────────────
     for (const h of input.habits) {
       if (!h.policy.enabled || h.policy.kind !== 'FIXED' || !h.policy.times?.length) continue;
-      if (isToday && (h.doneToday || h.donePeriod)) continue;
-      if (isToday && h.policy.onlyWhenBehind && h.todayRatio >= 0.6) continue;
       let n = 0;
       for (const hhmm of h.policy.times) {
         const [hh, mm] = hhmm.split(':').map(Number);
@@ -316,6 +348,8 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
         if (!Number.isInteger(hh) || !Number.isInteger(mm) || hh! < 0 || hh! > 23 || mm! < 0 || mm! > 59) continue;
         if (n >= h.policy.maxPerDay) break;
         const at = instantOf(day, hh! * 60 + mm!, zone);
+        if (settled(h, at)) continue;
+        if (inToday(at) && h.policy.onlyWhenBehind && h.todayRatio >= 0.6) continue;
         const id = `fix:${h.id}:${day}:${hhmm}`;
         const when = effectiveAt(id, at);
         if (when === null) {
@@ -434,7 +468,11 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
   }
 
   // ── One-off events (Sugar Shield follow-up) ────────────────────────────
+  // Only for habits still in play: an archived or deleted habit's follow-up is never rung. (The
+  // Sugar Shield habit itself has an EVENT policy and so is not in `input.habits`.)
+  const live = input.eventHabitIds ? new Set(input.eventHabitIds) : null;
   for (const e of input.events) {
+    if (live && !live.has(e.habitId)) continue;
     const id = `event:${e.id}`;
     const when = effectiveAt(id, e.at);
     if (when === null) continue;

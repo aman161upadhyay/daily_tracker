@@ -15,7 +15,7 @@ import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
 import type { ThemePreference, Units } from '@/src/domain/models';
 import { WATER_GOAL_MAX_ML, WATER_GOAL_MIN_ML } from '@/src/data/validate';
-import { formatClock, formatVolume, parseClockInput } from '@/src/domain/time/format';
+import { formatClock, formatVolume, parseClockInput, parseVolumeInput } from '@/src/domain/time/format';
 import { useTracker } from '@/src/state/TrackerProvider';
 
 const INTERVALS = [45, 60, 90, 120];
@@ -91,6 +91,10 @@ export default function SettingsScreen() {
               const f = formatVolume(v, s.units);
               return `${f.value} ${f.unit}`;
             }}
+            // Typed in the unit shown: "64" in ounces is 64 oz, not 64 ml.
+            parse={(text) => parseVolumeInput(text, s.units)}
+            keyboardType="decimal-pad"
+            placeholder={s.units === 'oz' ? '64 oz' : '2,000 ml'}
           />
         </Setting>
         <Divider />

@@ -63,7 +63,7 @@ from the Library so the auto-fill has somewhere to land.
 | # | Scenario | Steps | Expect |
 |---|---|---|---|
 | H1 | Status card | Open the Body tab before installing Health Connect (older Android) / after installing | "Not installed" card with Install → Play Store; after install and "I installed it", the card becomes "Ready to connect" |
-| H2 | Permissions | Body tab → Connect | Health Connect's own sheet lists exactly the eight types (steps, sleep, exercise, heart rate, resting heart rate, weight, hydration, background). The "privacy policy" link opens the app (rationale intent, no crash). Allow all |
+| H2 | Permissions | Body tab → Connect | Health Connect's own sheet lists exactly the eight types (steps, sleep, exercise, heart rate, resting heart rate, weight, hydration, background). The "privacy policy" link opens **"Your health data"** (the rationale screen, not Today) — test it once with the app open and once after swiping the app away (cold start through `HealthRationaleActivity`); Done returns to Health Connect's sheet or to Today, never to a blank screen. Allow all |
 | H3 | First sync | Right after allowing | Card reads "Connected · 7 of 7 data types · Synced hh:mm"; Steps/Sleep/Resting HR/Weight/Workouts cards show the phone's real numbers for the last 30 days (compare with the source app). Empty types show "Nothing in Health Connect yet", not zero |
 | H4 | Steps auto-fill | Today / Habits → Steps | Today's total equals the Body tab value; the entry is marked automatic. Type a total by hand → it replaces the automatic one; Sync now does not bring the automatic one back |
 | H5 | Workout tick | Log a strength workout of ≥ 15 min in the source app, wait for it to reach Health Connect, Sync now | Strength session is ticked once for that day; a walk does not tick it. Hide the session on the Workouts page → it stays hidden after another Sync now |
@@ -163,6 +163,22 @@ cycle (phases, calendar, day sheet, insights) was verified in the web preview an
 | U7 | Period end moved from the calendar | Cycle → tap a day two days after a closed period's end → "Period lasted until here" | The period extends to that day; tapping a day inside the period and choosing "Period ended here instead" shortens it; a future day shows the hint instead of period buttons |
 | U8 | Widget tap and app launch together | Swipe the app away; tap a widget tile and immediately open the app from the launcher | The tap lands exactly once (Today shows it after the first reload tick, at the latest after 30 s); no "could not save" banner |
 | U9 | Health Connect: foreground and background sync overlapping | Enable background sync; open the app at a moment the 3-hourly task is due (or trigger it with `adb shell cmd jobscheduler run`) and press Sync now at the same time | Body screen shows one consistent result; the "last synced" time never moves backwards; no duplicate step totals |
+
+## V — Council round 6 follow-ups (2026-10-26)
+
+| # | Scenario | Steps | Expect |
+|---|---|---|---|
+| V1 | Rationale from Android 14's permission manager | Settings → Security & privacy → Privacy → Health Connect → App permissions → Daily Tracker → the privacy / "manage data" link | "Your health data" opens (VIEW_PERMISSION_USAGE alias → `HealthRationaleActivity`); no chooser, no crash |
+| V2 | Typed target then Save | Habits → a count habit → Edit → tap the target number → type 12 → tap Save straight away (do not press Done on the keyboard) | The saved target is 12; reopening Edit shows 12 |
+| V3 | Water goal typed in ounces | Settings → Units → oz; Settings → Water goal → tap the number → type 64 → Done | 64 oz is accepted as 64 oz (about 1,893 ml), not 64 ml; the stepper shows "64 oz"; the placeholder reads "64 oz" while empty |
+| V4 | Snack backfill ceiling | Habits → Squat snack → a past day → Set amount → type 500 | Set is disabled and the hint says "That is more than 100 snacks — check the number"; typing 100 logs 100 snacks in one step (no freeze, no partial save; the day shows 100) |
+| V5 | Backup this build cannot read | On a phone with an Auto Backup snapshot from a *newer* app version (or edit `files/backup/snapshot.json` with `run-as` so `"version"` is 99), reinstall this build | Onboarding shows "A backup this version can't open" with Keep it for later / Delete it; after Keep, using the app for an hour moves the file to `snapshot.kept.json` and writes a fresh `snapshot.json`; Settings → Your data shows "Try to restore it" |
+| V6 | Erase interrupted | Settings → Your data → Erase everything, and kill the app (`adb shell am force-stop`) within the same second | On the next start `files/backup/` is empty and `backup-cleanup.pending` is gone (`run-as … ls files`); no old snapshot is left for Android to back up |
+| V7 | Release APK has no "draw over other apps" | Install the release APK; Settings → Apps → Daily Tracker → Permissions / "Display over other apps" | The app is not listed under "Display over other apps" (the debug build is — by design) |
+| V8 | TalkBack on the widget | TalkBack on; focus each widget tile | The ring reads "Log <habit>, <progress>" and the name reads "Open <habit>"; double-tap on the ring logs once |
+| V9 | 200 % font size | Settings → Display → Font size largest, and Display size largest | Button labels, chips and captions scale (up to 2×); only ring numerals and the large titles stay capped; nothing overlaps or is cut off on Today, Settings and the habit editor |
+| V10 | 1:30 am reminder on the night the clocks go back (1 Nov 2026) | Set a fixed reminder at 01:30 on a habit, mark the habit done at 00:30 | No 01:30 reminder that night (the slot belongs to the tracking day already done); the 9:00 reminder next morning arrives once |
+| V11 | Two runtimes at once (residual risk, deferred) | Swipe the app away; tap a widget tile and, within the same second, open the app from the launcher and log something else on Today | Both logs survive a reload. Known residual risk: the headless writer and the app can be two separate JavaScript runtimes with no shared lock; a stale write would show as one of the two logs missing. Report it with `adb logcat` if it happens |
 
 ## Recording results
 

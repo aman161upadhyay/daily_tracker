@@ -142,13 +142,20 @@ export function zoneOffsetAt(instantMs: number, zone: string): number {
 
 /**
  * Epoch ms of a wall-clock minute on a calendar day in `zone`. Used to stamp
- * backfilled logs inside the day they belong to. Exact except within the
- * repeated/skipped hour of a DST transition, where it is off by at most an hour.
+ * backfilled logs inside the day they belong to and to place clock-time reminders.
+ * A minute the clock shows twice (the repeated hour when DST ends) resolves to
+ * its first occurrence; a minute the clock skips (the missing hour when DST
+ * starts) resolves to the instant the clock jumps to — 02:30 on a spring-forward
+ * night is 03:30, never 01:30 the hour before.
  */
 export function instantOf(day: string, minute: number, zone: string): number {
   const { year, month, day: d } = parseDay(day);
   const guess = Date.UTC(year, month - 1, d, 0, minute);
   const first = guess - zoneOffsetAt(guess, zone);
   const offset = zoneOffsetAt(first, zone);
-  return guess - offset;
+  const result = guess - offset;
+  // The offset in force at the result must be the one used to compute it; when it is not, the
+  // requested minute falls in a gap, and `first` (computed with the pre-transition offset) is
+  // the moment the clock lands on after skipping it.
+  return zoneOffsetAt(result, zone) === offset ? result : first;
 }

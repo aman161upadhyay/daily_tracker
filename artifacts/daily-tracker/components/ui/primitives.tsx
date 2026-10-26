@@ -213,6 +213,8 @@ export function Stepper({
   max = Number.POSITIVE_INFINITY,
   format,
   parse,
+  keyboardType,
+  placeholder,
   label,
 }: {
   value: number;
@@ -223,6 +225,9 @@ export function Stepper({
   format?: (v: number) => string;
   /** Reads a typed value (a clock time, say); plain numbers when absent. Returning null keeps the old value. */
   parse?: (text: string) => number | null;
+  /** Keyboard while typing: the number pad for plain numbers, the full keyboard when `parse` reads text. */
+  keyboardType?: 'number-pad' | 'decimal-pad' | 'default';
+  placeholder?: string;
   label: string;
 }) {
   const c = useColors();
@@ -231,16 +236,25 @@ export function Stepper({
   const up = Math.min(max, Math.max(min, value % step === 0 ? value + step : Math.ceil(value / step) * step));
   const down = Math.max(min, Math.min(max, value % step === 0 ? value - step : Math.floor(value / step) * step));
   // Tapping the number types it: 2,000 → 1,850 ml is one entry, not six presses. Typed values keep
-  // to the bounds but not to the step grid (the next press snaps back onto it).
+  // to the bounds but not to the step grid (the next press snaps back onto it). Every keystroke
+  // that reads as a value is applied at once: a sheet's Save button does not blur the field
+  // (taps are kept for the keyboard), so waiting for the blur would lose what was typed.
   const [typed, setTyped] = useState<string | null>(null);
-  const commit = () => {
-    if (typed === null) return;
-    setTyped(null);
-    if (typed.trim() === '') return;
-    const n = parse ? parse(typed) : Number(typed.replace(/[^\d.]/g, ''));
+  const apply = (text: string) => {
+    if (text.trim() === '') return;
+    const n = parse ? parse(text) : Number(text.replace(/[^\d.]/g, ''));
     if (n === null || !Number.isFinite(n)) return;
     const next = Math.min(max, Math.max(min, Math.round(n)));
     if (next !== value) onChange(next);
+  };
+  const edit = (text: string) => {
+    setTyped(text);
+    apply(text);
+  };
+  const commit = () => {
+    if (typed === null) return;
+    setTyped(null);
+    apply(typed);
   };
   const shown = format ? format(value) : String(value);
   const bounds = parse ? `, ${format ? format(min) : min} to ${format ? format(max) : max}` : Number.isFinite(max) ? `, ${min} to ${max}` : `, at least ${min}`;
@@ -250,17 +264,17 @@ export function Stepper({
       {typed !== null ? (
         <TextInput
           value={typed}
-          onChangeText={setTyped}
+          onChangeText={edit}
           onBlur={commit}
           onSubmitEditing={commit}
           autoFocus
           selectTextOnFocus
-          keyboardType={parse ? 'default' : 'number-pad'}
+          keyboardType={keyboardType ?? (parse ? 'default' : 'number-pad')}
           autoCapitalize="none"
           autoCorrect={false}
           returnKeyType="done"
-          maxLength={parse ? 8 : 6}
-          placeholder={parse ? '9:30 pm' : undefined}
+          maxLength={parse ? 10 : 6}
+          placeholder={placeholder ?? (parse ? '9:30 pm' : undefined)}
           placeholderTextColor={c.textTertiary}
           accessibilityLabel={`${label}${bounds}`}
           style={[TYPE.title2, styles.stepperValue, styles.stepperInput, { color: c.text, borderColor: c.tint }]}

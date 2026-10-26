@@ -42,7 +42,7 @@ Not copied: Apple's Sharing tab, medical records, the light-only palette.
 | `hairline` | `#2A3430` | Dividers, default card border |
 | `text` | `#F3F6F2` | Primary text |
 | `textSecondary` | `#AEB8B1` | Labels, units, timestamps |
-| `textTertiary` | `#7B877F` | Placeholders, disabled |
+| `textTertiary` | `#85918A` | Placeholders, disabled, captions (4.9:1 on `surfaceRaised`) |
 
 ### 2.2 Brand accents
 
@@ -98,15 +98,15 @@ Rules:
 ### 2.5 Light theme (shipped in M6, opt-in: Settings → Appearance; dark stays the default)
 
 `bg #F5F7F6`, `surface #FFFFFF`, `surfaceRaised #EEF2EF`, `hairline #DCE3DF`, `text #0D120F`,
-`textSecondary #4F5B55`, `textTertiary #6B776F`, `scrim` 40 % black. Gold frames become `#B8973F`
+`textSecondary #4F5B55`, `textTertiary #5F6B63` (4.9:1 on `surfaceRaised`), `scrim` 40 % black. Gold frames become `#B8973F`
 at 70 % (inner 15 %). The adherence scale is unchanged (fills only).
 
 Because screens use one token for both an icon/text ink and (through `withAlpha`) its tinted fill,
 the light palette remaps the brand tokens themselves to AA inks and lets the tints follow:
-`green → #128A3E` (so primary buttons are deep green with **white** `onGreen` text — 5.9:1),
+`green → #107A37` (so primary buttons are deep green with **white** `onGreen` text — 5.4:1; `#128A3E` was 4.4:1),
 `greenBright → #16A34A`, `greenMist → #3B9D5D`, `lime → #7A8A1F`, `gold → #9A7A1F`,
 `goldBright → #8A6D1C`, `goldPale → #B8973F`, `violet`/`violetSoft → #6D3FE0`, `danger → #C62828`;
-categories `hydration #13897A`, `movement #128A3E`, `mind #6D3FE0`, `cycle #C2487A`, `body #8A6D1C`,
+categories `hydration #13897A`, `movement #107A37`, `mind #6D3FE0`, `cycle #C2487A`, `body #8A6D1C`,
 `fuel #B5541A`, `craft #6F7F14`. Cards get the `0 1 2 rgba(0,0,0,.06)` shadow; the home-screen
 widget stays dark in both themes.
 

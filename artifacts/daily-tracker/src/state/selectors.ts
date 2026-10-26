@@ -12,7 +12,7 @@ import {
 } from '@/src/domain/habits/progress';
 import { evaluateStreak, periodRequired, periodStartOf, segmentStartOn, type PeriodResult } from '@/src/domain/habits/streaks';
 import type { Cadence, Category, Habit, HabitRule, MovementSnack, NudgePolicy, SnackType } from '@/src/domain/models';
-import { SNACK_LABELS } from '@/src/domain/models';
+import { SHIELD_EVENT_HABIT_ID, SNACK_LABELS } from '@/src/domain/models';
 import { habitSymptomCorrelations, symptomPatterns, type CompletedCycle, type Correlation, type HabitPerCycle, type SymptomPattern } from '@/src/domain/cycle/insights';
 import { upcomingReminders, type ReminderFire } from '@/src/domain/cycle/reminders';
 import { buildTimeline, cycleLengths, isPeriodOpen, type CycleTimeline } from '@/src/domain/cycle/timeline';
@@ -113,9 +113,28 @@ export function habitDayValue(state: TrackerState, habit: Habit, day: string): n
   return dayValues(state, habit).get(day) ?? 0;
 }
 
+// Segment starts depend only on the habit's cadence history, which rarely changes, so they are
+// cached by that history rather than per state: a water tap does not re-walk a year of periods.
+const segmentCache = new Map<string, Map<string, string>>();
+const SEGMENT_CACHE_MAX = 256;
+
 /** First day of the habit's cadence segment that contains `day` (creation, or where the current cadence took over). */
 export function segmentFrom(state: TrackerState, habit: Habit, day: string): string {
-  return segmentStartOn(rulesFor(state, habit.id), habit.createdDay, day);
+  const rules = rulesFor(state, habit.id);
+  if (rules.every((r) => r.cadence === rules[0]!.cadence)) return habit.createdDay;
+  const key = `${habit.createdDay}|${rules.map((r) => `${r.effectiveFrom}:${r.cadence}`).join(',')}`;
+  let perHistory = segmentCache.get(key);
+  if (!perHistory) {
+    if (segmentCache.size >= SEGMENT_CACHE_MAX) segmentCache.clear();
+    perHistory = new Map();
+    segmentCache.set(key, perHistory);
+  }
+  let start = perHistory.get(day);
+  if (start === undefined) {
+    start = segmentStartOn(rules, habit.createdDay, day);
+    perHistory.set(day, start);
+  }
+  return start;
 }
 
 /**
@@ -178,7 +197,26 @@ export interface HabitView {
   periodLabel?: string;
 }
 
+// One view per habit and day per state: the Today list, highlights, the planner and the widget
+// model all ask for the same views during one render pass.
+const viewCache = new WeakMap<TrackerState, Map<string, HabitView>>();
+
 export function habitView(state: TrackerState, habit: Habit, today: string): HabitView {
+  let perState = viewCache.get(state);
+  if (!perState) {
+    perState = new Map();
+    viewCache.set(state, perState);
+  }
+  const key = `${habit.id}|${today}`;
+  const cached = perState.get(key);
+  // Only a view of this very habit object counts (a draft with the same id must not get the stored one's view).
+  if (cached && cached.habit === habit) return cached;
+  const view = buildHabitView(state, habit, today);
+  if (state.habits.includes(habit)) perState.set(key, view);
+  return view;
+}
+
+function buildHabitView(state: TrackerState, habit: Habit, today: string): HabitView {
   const rule = ruleFor(state, habit.id, today) ?? {
     habitId: habit.id,
     effectiveFrom: habit.createdDay,
@@ -576,11 +614,15 @@ export interface CycleInsights {
   loggedCycles: number;
 }
 
-const insightsCache = new WeakMap<TrackerState, CycleInsights>();
+const NO_INSIGHTS: CycleInsights = { patterns: [], correlations: [], loggedCycles: 0 };
+// Keyed by the slices the insights read, not by the state: a water tap or a settings change leaves
+// them untouched, and the correlations (a pass over every habit's history per cycle) are not redone.
+let insightsMemo: { deps: unknown[]; result: CycleInsights } | null = null;
 
 export function cycleInsights(state: TrackerState): CycleInsights {
-  const cached = insightsCache.get(state);
-  if (cached) return cached;
+  if (state.cycleLogs.length === 0) return NO_INSIGHTS;
+  const deps = [state.cycleLogs, state.settings.cycle.history, state.habits, state.rules, state.entries, state.snacks, state.mind];
+  if (insightsMemo && insightsMemo.deps.every((d, i) => d === deps[i])) return insightsMemo.result;
   const cycles = completedCycles(state);
   const patterns = symptomPatterns(state.cycleLogs, cycles);
   const correlations = habitSymptomCorrelations(state.cycleLogs, cycles, habitsPerCycle(state, cycles)).slice(0, 3);
@@ -590,7 +632,7 @@ export function cycleInsights(state: TrackerState): CycleInsights {
     return false;
   }).length;
   const result = { patterns, correlations, loggedCycles: logged };
-  insightsCache.set(state, result);
+  insightsMemo = { deps, result };
   return result;
 }
 
@@ -609,6 +651,7 @@ export function planInputFor(state: TrackerState, today: string, nowMs: number, 
     nowMs,
     zone,
     today,
+    boundaryHour: s.dayBoundaryHour,
     settings: {
       activeStartMin: s.activeStartMin,
       activeEndMin: s.activeEndMin,
@@ -621,6 +664,7 @@ export function planInputFor(state: TrackerState, today: string, nowMs: number, 
       tapSizeMl: s.tapSizeMl,
     },
     habits,
+    eventHabitIds: [...activeHabits(state).map((h) => h.id), SHIELD_EVENT_HABIT_ID],
     rotationCompletedToday: todaySnacks.length,
     swapOffset: state.nudgeSwap?.day === today ? state.nudgeSwap.offset : 0,
     events: state.events,
@@ -651,14 +695,14 @@ function calendarTodayOf(nowMs: number, zone: string): string {
   return calendarDayOf(nowMs, zone);
 }
 
-const planCache = new WeakMap<TrackerState, { minute: number; plan: ScheduledNudge[] }>();
+const planCache = new WeakMap<TrackerState, { key: string; plan: ScheduledNudge[] }>();
 
-/** Everything that should be scheduled right now; memoized per state and minute. */
+/** Everything that should be scheduled right now; memoized per state, minute, tracking day and zone. */
 export function nudgePlan(state: TrackerState, today: string, nowMs: number, zone: string): ScheduledNudge[] {
-  const minute = Math.floor(nowMs / 60_000);
+  const key = `${Math.floor(nowMs / 60_000)}|${today}|${zone}`;
   const cached = planCache.get(state);
-  if (cached && cached.minute === minute) return cached.plan;
+  if (cached && cached.key === key) return cached.plan;
   const plan = planNudges(planInputFor(state, today, nowMs, zone));
-  planCache.set(state, { minute, plan });
+  planCache.set(state, { key, plan });
   return plan;
 }

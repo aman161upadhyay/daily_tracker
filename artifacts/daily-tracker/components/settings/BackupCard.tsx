@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Platform, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { Card } from '@/components/ui/Card';
 import { UI } from '@/components/ui/icons';
@@ -9,6 +9,7 @@ import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
 import { MIN_PASSWORD_LENGTH, type EncryptedBackup } from '@/src/data/backupCrypto';
 import { describeImport, exportState, inspectExport, pickImport, unlockExport } from '@/src/data/transfer';
+import { deleteKeptSnapshot, readKeptSnapshot, type Snapshot } from '@/src/services/backup';
 import type { TrackerState } from '@/src/state/types';
 import { useTracker } from '@/src/state/TrackerProvider';
 
@@ -29,6 +30,26 @@ export function BackupCard({ confirm }: { confirm: Confirm }) {
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [locked, setLocked] = useState<EncryptedBackup | null>(null);
+  /** A phone-backup snapshot an older build could not read, kept for this one to try. */
+  const [kept, setKept] = useState<Snapshot | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    let alive = true;
+    readKeptSnapshot()
+      .then((snap) => {
+        if (alive) setKept(snap);
+      })
+      .catch((err) => console.warn('[backup] kept snapshot', err));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const forgetKept = () => {
+    setKept(null);
+    deleteKeptSnapshot().catch((err) => console.warn('[backup] kept snapshot', err));
+  };
 
   const runExport = async (password: string | undefined) => {
     setExporting(false);
@@ -47,11 +68,25 @@ export function BackupCard({ confirm }: { confirm: Confirm }) {
     }
   };
 
-  const offerImport = (incoming: TrackerState) => {
+  const offerImport = (incoming: TrackerState, onDone?: () => void) => {
     confirm('Replace everything with this backup?', `It holds ${describeImport(incoming)}. Your current data on this phone is replaced.`, 'Import', () => {
       actions.importState(incoming);
       setTransfer({ tone: 'ok', text: `Imported ${describeImport(incoming)}.` });
+      onDone?.();
     });
+  };
+
+  // The kept copy, now that the app may be new enough to read it. Still unreadable → it stays kept.
+  const restoreKept = () => {
+    if (!kept) return;
+    setTransfer(null);
+    try {
+      const inspected = inspectExport(kept.text);
+      if (inspected.kind === 'encrypted') setLocked(inspected.file);
+      else offerImport(inspected.state, forgetKept);
+    } catch (err) {
+      setTransfer({ tone: 'error', text: `Still can't open it: ${message(err)}` });
+    }
   };
 
   const doImport = async () => {
@@ -101,6 +136,17 @@ export function BackupCard({ confirm }: { confirm: Confirm }) {
             </View>
             <Switch value={s.cloudBackup} onValueChange={(cloudBackup) => actions.updateSettings({ cloudBackup })} trackColor={{ false: c.hairline, true: c.green }} thumbColor={c.text} accessibilityLabel="Android phone backup" />
           </Row>
+          {kept ? (
+            <View style={{ marginTop: 12 }}>
+              <Txt role="footnote" tone="secondary">
+                {`A phone backup${kept.writtenAt ? ` from ${new Date(kept.writtenAt).toLocaleDateString()}` : ''} that an earlier version of this app could not open is kept on this phone.`}
+              </Txt>
+              <Row gap={8} style={{ marginTop: 8, flexWrap: 'wrap' }}>
+                <PillButton label="Try to restore it" kind="ghost" Leading={UI.Upload} onPress={restoreKept} disabled={busy} />
+                <PillButton label="Delete it" kind="ghost" onPress={() => confirm('Delete the kept backup?', 'The copy an earlier version could not open is removed from this phone for good.', 'Delete', forgetKept)} />
+              </Row>
+            </View>
+          ) : null}
         </>
       ) : null}
       <Divider />

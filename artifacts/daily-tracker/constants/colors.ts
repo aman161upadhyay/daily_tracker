@@ -39,7 +39,8 @@ const dark = {
   hairline: '#2A3430',
   text: '#F3F6F2',
   textSecondary: '#AEB8B1',
-  textTertiary: '#7B877F',
+  /** 4.9:1 on the raised surface, the lowest-contrast place captions sit (#7B877F was 4.2:1 there). */
+  textTertiary: '#85918A',
   /** Text on green buttons (white is only 2.9:1). */
   onGreen: '#0D120F',
   goldFrame: 'rgba(201, 168, 76, 0.7)',
@@ -84,13 +85,16 @@ const light: typeof dark = {
   hairline: '#DCE3DF',
   text: '#0D120F',
   textSecondary: '#4F5B55',
-  textTertiary: '#6B776F',
+  /** 4.9:1 on the raised surface (#6B776F was 4.1:1). */
+  textTertiary: '#5F6B63',
   onGreen: '#FFFFFF',
   goldFrame: 'rgba(184, 151, 63, 0.7)',
   goldFrameInner: 'rgba(184, 151, 63, 0.15)',
   flowGlow: 'rgba(109, 63, 224, 0.15)',
   scrim: 'rgba(0, 0, 0, 0.4)',
-  green: '#128A3E',
+  // 5.4:1 with the white `onGreen` on primary buttons (#128A3E was 4.4:1 — the pressed shade of a
+  // button is a body-size label, not large text).
+  green: '#107A37',
   // Text and icon inks: 6.3:1 (green) and 5.3:1 (gold) on the raised surface, where footnotes sit.
   // #16A34A reads as green on white but is 2.9:1 on #EEF2EF.
   greenBright: '#166534',
@@ -104,19 +108,19 @@ const light: typeof dark = {
   danger: '#C62828',
   cat: {
     hydration: '#13897A',
-    movement: '#128A3E',
+    movement: '#107A37',
     mind: '#6D3FE0',
     cycle: '#C2487A',
     body: '#8A6D1C',
     fuel: '#B5541A',
     craft: '#6F7F14',
   },
-  tint: '#128A3E',
+  tint: '#107A37',
   background: '#F5F7F6',
   foreground: '#0D120F',
   card: '#FFFFFF',
   cardForeground: '#0D120F',
-  primary: '#128A3E',
+  primary: '#107A37',
   primaryForeground: '#FFFFFF',
   secondary: '#EEF2EF',
   secondaryForeground: '#0D120F',

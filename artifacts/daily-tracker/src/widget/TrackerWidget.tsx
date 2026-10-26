@@ -29,6 +29,13 @@ export interface TrackerWidgetProps {
   height: number;
 }
 
+/** What TalkBack reads for the ring: the progress, then what a tap does. */
+export function ringLabel(tile: WidgetTile): string {
+  const progress = `${tile.name}: ${tile.value} ${tile.caption}`.trim();
+  const action = tile.kind === 'water' ? 'Double-tap to log a glass.' : tile.kind === 'rotation' ? 'Double-tap to log the next snack.' : tile.done ? 'Double-tap to log again.' : 'Double-tap to log it.';
+  return `${progress}. ${action}`;
+}
+
 function Ring({ tile, layout }: { tile: WidgetTile; layout: WidgetLayout }) {
   const size = layout.ring;
   const stroke = Math.max(4, Math.round(size * 0.11));
@@ -38,6 +45,7 @@ function Ring({ tile, layout }: { tile: WidgetTile; layout: WidgetLayout }) {
       style={{ width: size, height: size }}
       clickAction={CLICK_LOG}
       clickActionData={{ habitId: tile.habitId }}
+      accessibilityLabel={ringLabel(tile)}
     >
       <SvgWidget svg={ringSvg({ size, ratio: tile.ratio, color: tile.color })} style={{ width: size, height: size }} />
       <FlexWidget style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
@@ -64,6 +72,7 @@ function Labels({ tile, layout, align }: { tile: WidgetTile; layout: WidgetLayou
       style={{ flexDirection: 'column', alignItems: align === 'center' ? 'center' : 'flex-start', width: 'match_parent' }}
       clickAction="OPEN_URI"
       clickActionData={{ uri: HABIT_URI(tile.habitId) }}
+      accessibilityLabel={`${tile.name}, ${tile.value} ${tile.caption}. Opens the habit.`}
     >
       <TextWidget
         text={tile.name}

@@ -14,6 +14,7 @@ export function hasUserData(s: TrackerState): boolean {
     s.settings.cycle.history.length > 0 ||
     s.body.steps.length > 0 ||
     s.body.sleep.length > 0 ||
+    s.body.heart.length > 0 ||
     s.body.weight.length > 0 ||
     s.body.workouts.length > 0 ||
     s.habits.some((h) => h.presetId !== 'water')

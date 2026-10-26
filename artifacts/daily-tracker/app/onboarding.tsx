@@ -13,9 +13,9 @@ import { useColors } from '@/hooks/useColors';
 import { describeImport, inspectExport } from '@/src/data/transfer';
 import { withAlpha } from '@/src/domain/color/oklch';
 import { DEFAULT_SETTINGS, type Units } from '@/src/domain/models';
-import { formatClock, formatVolume, parseClockInput } from '@/src/domain/time/format';
+import { formatClock, formatVolume, parseClockInput, parseVolumeInput } from '@/src/domain/time/format';
 import { CATEGORY_LABELS, CATEGORY_ORDER, PRESETS } from '@/src/library/presets';
-import { deleteSnapshot, readSnapshot } from '@/src/services/backup';
+import { deleteSnapshot, readSnapshot, setAsideSnapshot } from '@/src/services/backup';
 import { afterSnapshots } from '@/src/services/snapshotSync';
 import { NOTIFICATIONS_SUPPORTED, getPermission, requestPermission, type PermissionState } from '@/src/services/notifications';
 import { useTracker } from '@/src/state/TrackerProvider';
@@ -41,6 +41,8 @@ export default function OnboardingScreen() {
   const [cloudBackup, setCloudBackup] = useState(true);
   const [perm, setPerm] = useState<PermissionState>('undetermined');
   const [restore, setRestore] = useState<{ state: TrackerState; writtenAt: number | null } | null>(null);
+  /** A restored snapshot this build cannot open (made by a newer app, or damaged). */
+  const [unreadable, setUnreadable] = useState<{ reason: string; writtenAt: number | null } | null>(null);
 
   useEffect(() => {
     if (NOTIFICATIONS_SUPPORTED) getPermission().then(setPerm).catch(() => {});
@@ -52,8 +54,14 @@ export default function OnboardingScreen() {
     readSnapshot()
       .then((snap) => {
         if (!snap || !alive) return;
-        const inspected = inspectExport(snap.text);
-        if (inspected.kind === 'plain' && inspected.state.habits.length > 0) setRestore({ state: inspected.state, writtenAt: snap.writtenAt });
+        try {
+          const inspected = inspectExport(snap.text);
+          if (inspected.kind === 'plain' && inspected.state.habits.length > 0) setRestore({ state: inspected.state, writtenAt: snap.writtenAt });
+        } catch (err) {
+          // Never silently overwritten: the user decides, and until then the first hourly write moves it aside.
+          console.warn('[backup] snapshot unreadable', err);
+          setUnreadable({ reason: err instanceof Error ? err.message : String(err), writtenAt: snap.writtenAt });
+        }
       })
       .catch((err) => console.warn('[backup] snapshot unreadable', err));
     return () => {
@@ -71,7 +79,14 @@ export default function OnboardingScreen() {
   // again (or restored onto yet another phone) once this person said no to it.
   const startFresh = () => {
     setRestore(null);
+    setUnreadable(null);
     afterSnapshots(deleteSnapshot).catch((err) => console.warn('[backup] could not remove the old snapshot', err));
+  };
+
+  // The unreadable copy is kept under another name: Settings offers it again once the app is newer.
+  const keepUnreadable = () => {
+    setUnreadable(null);
+    afterSnapshots(setAsideSnapshot).catch((err) => console.warn('[backup] could not set the old snapshot aside', err));
   };
 
   const toggle = (id: string) =>
@@ -108,6 +123,24 @@ export default function OnboardingScreen() {
           Small habits, honest numbers. Your data lives on this phone — no account, no server.
         </Txt>
       </View>
+
+      {unreadable ? (
+        <Card featured style={{ marginBottom: 20 }}>
+          <Row gap={12}>
+            <IconTile Glyph={UI.Archive} color={c.gold} size={40} />
+            <View style={{ flex: 1 }}>
+              <Txt role="title2">A backup this version can't open</Txt>
+              <Txt role="footnote" tone="secondary" style={{ marginTop: 2 }}>
+                {`Android restored a backup${unreadable.writtenAt ? ` from ${new Date(unreadable.writtenAt).toLocaleDateString()}` : ''}, but this app cannot read it: ${unreadable.reason} Keep it and it stays on this phone — Settings offers it again after you update the app.`}
+              </Txt>
+            </View>
+          </Row>
+          <Row gap={8} style={{ marginTop: 14, flexWrap: 'wrap' }}>
+            <PillButton label="Keep it for later" Leading={UI.Check} onPress={keepUnreadable} />
+            <PillButton label="Delete it" kind="ghost" onPress={startFresh} />
+          </Row>
+        </Card>
+      ) : null}
 
       {restore ? (
         <Card featured style={{ marginBottom: 20 }}>
@@ -155,7 +188,7 @@ export default function OnboardingScreen() {
               Adults need about 2–3 L of drinks a day
             </Txt>
           </View>
-          <Stepper value={waterGoalMl} onChange={setWaterGoalMl} step={250} min={1000} max={4000} label="water goal" format={() => `${goal.value} ${goal.unit}`} />
+          <Stepper value={waterGoalMl} onChange={setWaterGoalMl} step={250} min={1000} max={4000} label="water goal" format={() => `${goal.value} ${goal.unit}`} parse={(text) => parseVolumeInput(text, units)} keyboardType="decimal-pad" placeholder={units === 'oz' ? '64 oz' : '2,000 ml'} />
         </Row>
         <View style={{ marginTop: 16, gap: 10 }}>
           <Txt role="body">Nudges only between</Txt>

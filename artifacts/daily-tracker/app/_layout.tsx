@@ -104,6 +104,10 @@ function RootLayoutNav() {
           options={{ title: "Health Connect", presentation: "modal" }}
         />
         <Stack.Screen
+          name="health-privacy"
+          options={{ title: "Your health data", presentation: "modal" }}
+        />
+        <Stack.Screen
           name="settings"
           options={{ title: "Settings", presentation: "modal" }}
         />

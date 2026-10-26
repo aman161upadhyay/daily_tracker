@@ -4,7 +4,7 @@ import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
 import type { Habit } from '@/src/domain/models';
 import { formatDayLong, formatNumber, formatVolume } from '@/src/domain/time/format';
-import { useTracker } from '@/src/state/TrackerProvider';
+import { MAX_SNACKS_PER_LOG, useTracker } from '@/src/state/TrackerProvider';
 import { UI } from '../ui/icons';
 import { Chip, PillButton, Row } from '../ui/primitives';
 import { Sheet } from '../ui/Sheet';
@@ -37,6 +37,11 @@ export function quickValues(habit: Habit, target: number): number[] {
 /** Largest single amount accepted (a million of any unit), well inside what an export file allows. */
 export const MAX_AMOUNT = 1_000_000;
 
+/** Snack habits store one row per snack, so their cap is the per-log row limit, not a million. */
+export function maxAmountFor(habit: Habit): number {
+  return habit.snackType ? MAX_SNACKS_PER_LOG : MAX_AMOUNT;
+}
+
 export function AmountSheet({ visible, onClose, habit, mode = 'add', day, current = 0 }: AmountSheetProps) {
   const c = useColors();
   const { state, actions, today } = useTracker();
@@ -67,8 +72,9 @@ export function AmountSheet({ visible, onClose, habit, mode = 'add', day, curren
     return `${formatNumber(v)} ${habit.unit}`.trim();
   };
 
+  const maxAmount = maxAmountFor(habit);
   const commit = (value: number) => {
-    if (!Number.isFinite(value) || value < 0 || value > MAX_AMOUNT) return;
+    if (!Number.isFinite(value) || value < 0 || value > maxAmount) return;
     if (mode === 'set') actions.setDayValue(habit, value, theDay);
     else if (value > 0) actions.logAmount(habit, value, theDay);
     onClose();
@@ -78,7 +84,7 @@ export function AmountSheet({ visible, onClose, habit, mode = 'add', day, curren
   // otherwise come back as 251 ml just from opening the sheet and pressing Set.
   const prefilled = mode === 'set' && current > 0 && text === String(toDisplay(current));
   const parsed = prefilled ? current : toStored(Number(text.replace(',', '.')));
-  const tooLarge = Number.isFinite(parsed) && parsed > MAX_AMOUNT;
+  const tooLarge = Number.isFinite(parsed) && parsed > maxAmount;
   const typedValid = text.trim().length > 0 && Number.isFinite(parsed) && parsed >= 0 && !tooLarge;
   const title = mode === 'set' ? `Set ${habit.name}` : `Log ${habit.name}`;
   const subtitle = backfill ? formatDayLong(theDay) : 'Today';
@@ -112,7 +118,7 @@ export function AmountSheet({ visible, onClose, habit, mode = 'add', day, curren
       {tooLarge ? (
         <Txt role="caption" tone="tertiary" style={{ marginTop: 6 }}>
           {/* The cap in the unit being typed: 1,000,000 ml reads as 33,814 oz when the sheet is in ounces. */}
-          {`That is more than ${formatNumber(Math.floor(toDisplay(MAX_AMOUNT)))}${typedUnit ? ` ${typedUnit}` : ''} — check the number.`}
+          {`That is more than ${formatNumber(Math.floor(toDisplay(maxAmount)))}${typedUnit ? ` ${typedUnit}` : ''} — check the number.`}
         </Txt>
       ) : null}
     </Sheet>

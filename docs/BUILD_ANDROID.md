@@ -62,6 +62,16 @@ What to expect:
   it loaded and will try to reconnect to Metro on the next launch — for a build that works without
   the laptop use the release variant below.
 - Debug APK, if you want to keep it: `android/app/build/outputs/apk/debug/app-debug.apk`.
+- **Prebuild check** (30 seconds, catches a plugin that silently stopped applying):
+  `android/app/src/main/AndroidManifest.xml` must show `android:fullBackupContent` and
+  `android:dataExtractionRules` on `<application>`; an `<activity android:name=".HealthRationaleActivity">`
+  with the `androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE` filter (and **not** that filter on
+  `.MainActivity`); the `ViewPermissionUsageActivity` alias targeting `.HealthRationaleActivity`;
+  and `SYSTEM_ALERT_WINDOW` carrying `tools:node="remove"` (the debug source set keeps it for the
+  developer overlay; release builds drop it). `android/app/src/main/java/com/amanupadhyay/dailytracker/`
+  must contain `HealthRationaleActivity.kt`. `plugins/withHealthRationale.js` must stay listed
+  **before** `react-native-health-connect` in `app.json` — Expo runs a later plugin's manifest edit
+  first, so a later position would be overwritten.
 
 ## A standalone APK (no laptop needed after install)
 
@@ -108,6 +118,18 @@ the block survives every `--clean` prebuild.
    ```
    On Windows write the path with forward slashes, `DT_RELEASE_STORE_FILE=C:/Users/<you>/keystores/daily-tracker-release.jks`
    (a backslash in a properties file is an escape character, so `C:\Users` would be read as `C:Users`).
+   The same rule applies to the passwords: a `\` inside one must be written `\\`, and a password
+   that starts with a space loses it (Java properties trim leading whitespace; `!` and `#` are fine
+   except as the very first character, where they start a comment). Simplest: choose a password
+   without backslashes or leading spaces. Alternatively keep the file password-free and pass the
+   secrets as environment variables for the one build command — Gradle reads
+   `ORG_GRADLE_PROJECT_DT_RELEASE_STORE_PASSWORD` (and the same prefix for the other three) as
+   project properties, no escaping involved:
+   ```bash
+   ORG_GRADLE_PROJECT_DT_RELEASE_STORE_FILE=$HOME/keystores/daily-tracker-release.jks \
+   ORG_GRADLE_PROJECT_DT_RELEASE_STORE_PASSWORD='…' ORG_GRADLE_PROJECT_DT_RELEASE_KEY_ALIAS=daily-tracker \
+   ORG_GRADLE_PROJECT_DT_RELEASE_KEY_PASSWORD='…' ./gradlew assembleRelease
+   ```
    With a PKCS12 keystore (the `-storetype PKCS12` above) use the **same password** for the store and
    the key — `keytool` warns that different ones are not supported. When the properties are absent
    the release build type falls back to the template's public debug keystore, so the command below
@@ -140,8 +162,9 @@ the block survives every `--clean` prebuild.
 `versionCode` discipline: Android installs a same-signer build whose `versionCode` is equal **or**
 higher over the existing one and rejects only a lower one (`INSTALL_FAILED_VERSION_DOWNGRADE`).
 This project still raises `expo.android.versionCode` in `app.json` on every release (M3 shipped 3,
-M4 4, M5 5, M6 6, round 3 7) so that "which build is this phone on" has one answer; `version`
-follows the tag (`0.7.0` = `v0.7`).
+M4 4, M5 5, M6 6, then one per council round: round 3 → 7, round 4 → 8, round 5 → 9, round 6 → 10)
+so that "which build is this phone on" has one answer; `version` follows the tag (`0.10.0` = `v0.10`).
+`app.json` is the source of truth; when this paragraph and `app.json` disagree, `app.json` is right.
 
 Google Play is deliberately not part of this recipe; `./gradlew bundleRelease` produces the AAB if
 that day comes, and the remaining items (feature graphic, privacy policy, Health Connect
@@ -154,9 +177,14 @@ Two independent mechanisms, both leaving the live SQLite database alone:
 - **Android Auto Backup.** `plugins/withBackupRules.js` restricts the backup to `files/backup/`
   (and switches it off on phones that cannot encrypt it with their own lock screen). The app keeps
   `files/backup/snapshot.json` there — a plain export, refreshed on start and when leaving the app,
-  at most hourly, never for sample data, deleted by "Erase everything". After a factory reset or a
-  new phone, Android restores that file, the database is empty, and onboarding opens with
-  "Welcome back → Restore it / Start fresh". To rehearse without a reset:
+  at most hourly, never for sample data, deleted by "Erase everything" (the intent to delete is
+  recorded in a marker file outside the backup directory first and finished on the next start if
+  the app died before the delete ran). After a factory reset or a new phone, Android restores that
+  file, the database is empty, and onboarding opens with "Welcome back → Restore it / Start fresh".
+  A restored snapshot that this build cannot read (written by a newer app, or damaged) is never
+  overwritten: onboarding offers "Keep it for later / Delete it", the hourly writer moves it to
+  `snapshot.kept.json` (still inside the backed-up directory), and Settings → Your data offers
+  "Try to restore it" once the app has been updated. To rehearse without a reset:
   `adb shell bmgr backupnow com.amanupadhyay.dailytracker`, uninstall, reinstall, and
   `adb shell bmgr restore <token> com.amanupadhyay.dailytracker` (tokens from `adb shell bmgr list sets`;
   `adb shell bmgr enable true` and a Google account on the phone are prerequisites).

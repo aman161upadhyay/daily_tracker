@@ -41,12 +41,12 @@ function toneColor(c: Colors, tone: Tone): string {
 const MAX_SCALE: Record<TypeRole, number> = {
   display: 1.3,
   largeTitle: 1.4,
-  title1: 1.5,
-  title2: 1.6,
+  title1: 1.6,
+  title2: 1.8,
   body: 2,
-  callout: 1.8,
+  callout: 2,
   footnote: 2,
-  caption: 1.8,
+  caption: 2,
 };
 
 export function Txt({ role = 'body', tone = 'primary', color, align, style, maxFontSizeMultiplier, ...rest }: TxtProps) {

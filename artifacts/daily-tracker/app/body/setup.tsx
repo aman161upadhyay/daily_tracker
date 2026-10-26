@@ -6,6 +6,7 @@ import { Divider, IconTile, PillButton, Row, SectionHeader } from '@/components/
 import { Screen } from '@/components/ui/Screen';
 import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
+import { useRouter } from 'expo-router';
 import { useHealthConnect } from '@/hooks/useHealthConnect';
 import type { HabitIcon } from '@/src/domain/models';
 
@@ -51,6 +52,7 @@ const DATA: { icon: HabitIcon; title: string; detail: string }[] = [
 export default function BodySetupScreen() {
   const c = useColors();
   const hc = useHealthConnect();
+  const router = useRouter();
 
   return (
     <Screen topInset={false}>
@@ -71,6 +73,7 @@ export default function BodySetupScreen() {
         <Txt role="footnote" tone="tertiary" style={{ marginTop: 10 }}>
           Android 14 and newer have Health Connect built in (Settings → Security & privacy → Privacy → Health Connect). Android 9–13 get it from the Play Store.
         </Txt>
+        <PillButton label="What is read, and where it goes" kind="ghost" compact Leading={UI.Info} onPress={() => router.push('/health-privacy')} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
         {hc.supported ? (
           <Row gap={8} style={{ marginTop: 12, flexWrap: 'wrap' }}>
             {hc.status === 'available' ? (

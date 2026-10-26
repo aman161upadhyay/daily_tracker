@@ -120,9 +120,13 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   re-check `liveStore()` after their re-plan await. Health Connect reads are single-flight; watermark never
   moves back. App-lock gate locks during render (no fade). Stepper numbers are tappable to type (clamped, not
   snapped). Period ends are editable from any calendar day (extend/shorten). Screenshot protection follows
-  the *setting*, not the lock state — by design (Recents thumbnail). **Why:** round 5 showed round 4's shared
-  formula and tightened parser each broke a caller that was not updated with them. Dispositions in
-  `docs/RUNNING_CONTEXT.md` §6 Round 5.
+  the *setting*, not the lock state — by design (Recents thumbnail). Rule edits baseline the rule *in force*
+  (never the latest row): a rhythm planned for a later period is replaced at its own start, called off when
+  the draft equals today's rule (`REMOVE_RULE`, never a habit's last rule), and only takes the new number
+  when a target is edited; the habit page shows "From <day>: <rule>" while a plan is pending (a tester read
+  the invisible plan as a failed save). **Why:** round 5 showed round 4's shared formula and tightened
+  parser each broke a caller that was not updated with them. Dispositions in `docs/RUNNING_CONTEXT.md`
+  §6 Round 5.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app

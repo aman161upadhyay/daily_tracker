@@ -98,6 +98,19 @@ export function formatVolume(ml: number, units: 'ml' | 'oz'): { value: string; u
   return { value: formatNumber(ml), unit: 'ml' };
 }
 
+/**
+ * A typed volume in the display unit, as ml: "64", "64 oz", "1,850 ml". The number is read in the
+ * unit the stepper shows (ounces when the app is in ounces), a stray unit word is ignored.
+ * Returns null for anything that is not a number.
+ */
+export function parseVolumeInput(text: string, units: 'ml' | 'oz'): number | null {
+  const digits = text.replace(/,/g, '').replace(/[^\d.]/g, '');
+  if (!/\d/.test(digits)) return null; // "oz", "", "  ": nothing typed yet, keep the current value
+  const n = Number(digits);
+  if (!Number.isFinite(n)) return null;
+  return units === 'oz' ? Math.round(ozToMl(n)) : Math.round(n);
+}
+
 /** "2,000 ml a day", "10 squats · 6 sets a day", "3 days a week", "Every day". */
 export function describeRule(
   habit: { type: 'YES_NO' | 'COUNT' | 'AMOUNT' | 'TIMER'; unit: string },

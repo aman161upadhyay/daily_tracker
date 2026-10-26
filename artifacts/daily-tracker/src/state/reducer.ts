@@ -14,6 +14,8 @@ export type Action =
   | { type: 'ADD_WATER'; entry: WaterEntry }
   | { type: 'UNDO_WATER'; day: string }
   | { type: 'LOG_SNACK'; snack: MovementSnack }
+  /** Several snacks at once (a backfilled count): one state change, not one per snack. */
+  | { type: 'LOG_SNACKS'; snacks: MovementSnack[] }
   | { type: 'UNDO_SNACK'; day: string; habit: Habit }
   | { type: 'LOG_MIND'; session: MindSession }
   /** Delete one logged item by id (water entries list, undo a backfill). */
@@ -105,6 +107,9 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
     case 'LOG_SNACK':
       return { ...state, snacks: [...state.snacks, action.snack] };
 
+    case 'LOG_SNACKS':
+      return action.snacks.length === 0 ? state : { ...state, snacks: [...state.snacks, ...action.snacks] };
+
     case 'UNDO_SNACK': {
       const h = action.habit;
       const sugar = h.presetId === 'sugar-shield';
@@ -159,8 +164,13 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
         policies: [...state.policies.filter((p) => p.habitId !== action.policy.habitId), action.policy],
       };
 
-    case 'UPDATE_HABIT':
-      return { ...state, habits: state.habits.map((h) => (h.id === action.id ? { ...h, ...action.patch } : h)) };
+    case 'UPDATE_HABIT': {
+      const habits = state.habits.map((h) => (h.id === action.id ? { ...h, ...action.patch } : h));
+      // Archiving withdraws the habit's pending one-off reminders (a Sugar Shield follow-up must not ring
+      // for a habit that was just put away); restoring it does not bring them back.
+      const events = action.patch.archived === true ? state.events.filter((e) => e.habitId !== action.id) : state.events;
+      return { ...state, habits, events };
+    }
 
     case 'DELETE_HABIT':
       return {
@@ -169,6 +179,7 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
         rules: state.rules.filter((r) => r.habitId !== action.id),
         policies: state.policies.filter((p) => p.habitId !== action.id),
         entries: state.entries.filter((e) => e.habitId !== action.id),
+        events: state.events.filter((e) => e.habitId !== action.id),
       };
 
     case 'REMOVE_RULE': {

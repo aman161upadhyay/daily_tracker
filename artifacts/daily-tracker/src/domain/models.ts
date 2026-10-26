@@ -154,6 +154,9 @@ export interface NudgeEvent {
   untilMs?: number;
 }
 
+/** The habitId a Sugar Shield follow-up carries when no Sugar Shield habit exists to own it. */
+export const SHIELD_EVENT_HABIT_ID = 'sugar-shield';
+
 /** A one-off nudge created by an in-app event (e.g. the Sugar Shield post-meal walk). */
 export interface ScheduledEvent {
   id: string;

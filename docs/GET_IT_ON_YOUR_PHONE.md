@@ -203,11 +203,18 @@ Then try the list in `docs/DEVICE_CHECKLIST.md` if you want to check every featu
    on a Mac (Finder → Go → Go to Folder…, paste exactly that, including the `~`) and
    `C:\dev\daily_tracker\artifacts\daily-tracker\android\app\build\outputs\apk\release\app-release.apk`
    on Windows (paste it into the File Explorer address bar).
-   Rename a copy to something like `DailyTracker-0.8.apk` (the version number from `app.json`) if you like.
+   Rename a copy to something like `DailyTracker-0.10.apk` (the `version` from `app.json`) if you like.
 2. Send it any way you want: Google Drive link, WhatsApp, email, AirDrop-style apps.
 3. On their phone they tap the file. Android asks to allow installing from that app (Files,
-   Chrome, WhatsApp…) → **Allow** → **Install**. If *Play Protect* shows a warning, tap *More
-   details* → *Install anyway* — the warning only means the app is not from the Play Store.
+   Chrome, WhatsApp…) → **Allow** → **Install**. Two different prompts can appear, and they mean
+   different things:
+   - *"For your security, your phone is not allowed to install unknown apps from this source"* is
+     the ordinary unknown-source check: **Settings** → allow for that app → back → **Install**.
+   - A **Play Protect** sheet ("Unsafe app blocked" / "App scan recommended") is Google's scanner
+     reacting to an app it has never seen. *Scan app* is fine to accept (it uploads the APK to
+     Google for a check); if it then still says *blocked*, tap *More details* → *Install anyway*.
+     The verdict means "unknown to Google", not "harmful" — this app has no network code and the
+     source is on GitHub — but a friend should hear that from you before they tap.
 4. They then do Part 3 on their own phone.
 
 Later versions install over the old one as long as they are signed with the same key (Part 6).
@@ -265,7 +272,10 @@ replaced computer. Do this once, before the first APK you hand out.
    (This kind of key file keeps one password for the file and the key inside it — if `keytool`
    asked for a second one, press Enter to reuse the first. Write the same password on both lines.)
    On Windows write the path with forward slashes: `C:/Users/<you>/keystores/daily-tracker-release.jks`.
-   This file is outside the project, so it is never uploaded to GitHub.
+   Pick a password **without a backslash (`\`) and not starting with a space, `#` or `!`** — in this
+   kind of file those characters are read specially, and a build would then fail with "keystore
+   password was incorrect" even though the password is right. This file is outside the project, so
+   it is never uploaded to GitHub.
 4. Build again (Part 5). The app on **your** phone must be uninstalled once before the newly signed
    build installs (Android refuses a different key): in the app, Settings → Your data → Export
    backup first, uninstall, build/install, then Import backup. Friends who got an APK *before* this
@@ -291,7 +301,7 @@ replaced computer. Do this once, before the first APK you hand out.
 | Reminders arrive late or not at all | Exact alarms or battery settings | Part 3 steps 2–3. |
 | Widget says "Open Daily Tracker to choose habits…" or looks empty | The app has not run since install, or no habits yet | Open the app once (finish onboarding); the widget redraws within a minute. |
 | Body tab says Health Connect is not available | Health Connect missing on this phone | Android 9–13: install *Health Connect* from the Play Store; Android 8 is too old for imports. |
-| Play Protect blocks the install on a friend's phone | Unknown-source app | *More details* → *Install anyway*. |
+| Play Protect blocks the install on a friend's phone | Google's scanner has never seen this APK (it is not from the Play Store) | *Scan app* if offered, then *More details* → *Install anyway*. The unknown-source prompt is a different, ordinary step: *Settings* → allow for the app they opened the file with. |
 | Build fails with something else | — | Copy the last 30 lines of the terminal into the Replit chat; the agent reads them. |
 
 ---

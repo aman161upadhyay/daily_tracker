@@ -10,6 +10,7 @@ import { Screen } from '@/components/ui/Screen';
 import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import { newId, now } from '@/src/domain/time/clock';
+import { SHIELD_EVENT_HABIT_ID } from '@/src/domain/models';
 import { formatMinSec } from '@/src/domain/time/format';
 import { PRESET_BY_ID } from '@/src/library/presets';
 import { getPermission, NOTIFICATIONS_SUPPORTED } from '@/src/services/notifications';
@@ -97,7 +98,7 @@ export default function ShieldScreen() {
     if (allowed) {
       actions.scheduleEvent({
         id: `shield-${newId()}`,
-        habitId: habit?.id ?? 'sugar-shield',
+        habitId: habit?.id ?? SHIELD_EVENT_HABIT_ID,
         inMinutes: FOLLOW_UP_MINUTES,
         title: 'Post-meal walk',
         body: 'Two minutes on your feet — the second half of the Sugar Shield.',
