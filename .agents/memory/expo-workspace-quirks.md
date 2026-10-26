@@ -30,10 +30,24 @@ future headless writers (widget taps, notification actions) free to insert singl
 ## Platform-split modules
 Metro picks `x.native.ts` on Android/iOS and `x.ts` on web; tsc type-checks both, and the web file is the one
 `@/…` imports resolve to for typing, so keep the exported API identical (used for `createStore` and `transfer`).
+**Never import `./x` from `x.native.ts`** to share helpers: on native it resolves to itself → "Require cycle
+x.native.ts -> x.native.ts" + "Maximum call stack size exceeded" at startup (re-export getters recurse); tsc does
+not catch it because it resolves `./x` to the web file. Shared code goes in a third module (`transferFormat.ts`).
 The new expo-file-system API (`File`, `Paths.cache`, `file.write`, `file.text()`) is sync for writes.
 
 ## Image tooling
 No PIL, no sharp. ImageMagick `magick` is available and was used for app icons (icon/adaptive/splash/favicon).
+
+## Expo Go on Android lacks the FCM topic module
+`expo-notifications@57.0.24` does `requireNativeModule('ExpoTopicSubscriptionModule')` at import time in its
+`.android.js`; Expo Go's Android client (sdk-57 `ExperiencePackagePicker` + `ExpoModuleRegistryAdapter`) registers
+every other notifications module but not that one, so importing `expo-notifications` anywhere crashed every route
+("Cannot find native module …", then "Route … is missing the required default export", blank screen, 50+ LogBox
+entries). Fixed with a pnpm patch (`patches/expo-notifications@57.0.24.patch`, `requireOptionalNativeModule ?? {}`);
+upstream main still uses the throwing call, so re-check when bumping the SDK. Local notifications do work in Expo Go.
+Metro verification without a device: request Expo Go's exact bundle URL
+`/.expo/.virtual-metro-entry.bundle?platform=android&dev=true&hot=false&lazy=true&transform.engine=hermes&transform.routerRoot=app`
+on Metro's port (`PORT` from the workflow process environ) and grep it.
 
 ## Notifications / background tasks (SDK 57)
 expo-notifications uses exact alarms only when `SCHEDULE_EXACT_ALARM` is in app.json permissions *and* the

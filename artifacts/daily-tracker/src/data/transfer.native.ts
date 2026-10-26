@@ -2,15 +2,16 @@
  * Export / import of the whole state as JSON — Android / iOS implementation.
  * Writes the backup to the cache directory and hands it to the share sheet
  * (Drive, Files, email…); import goes through the system document picker.
+ * Never import './transfer' from here: on native that path resolves to this file.
  */
 import * as DocumentPicker from 'expo-document-picker';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import type { TrackerState } from '@/src/state/types';
 import { StorageError } from './store';
-import { exportFileName, parseExport, serializeExport } from './transfer';
+import { exportFileName, parseExport, serializeExport } from './transferFormat';
 
-export { describeImport, exportFileName, parseExport, serializeExport } from './transfer';
+export { describeImport, exportFileName, parseExport, serializeExport, type ExportFile } from './transferFormat';
 
 export async function exportState(state: TrackerState): Promise<void> {
   const file = new File(Paths.cache, exportFileName());

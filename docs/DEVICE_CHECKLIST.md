@@ -8,6 +8,13 @@ Ported from Cadence E1–E17 where the behaviour carried over.
 release APK. Phone: Android 12+ (exact alarms need the user's grant from 12, notifications need runtime
 permission from 13).
 
+## G — Expo Go (Replit's Android emulator, or the QR code on a phone)
+
+| # | Scenario | Steps | Expect |
+|---|---|---|---|
+| G1 | Cold start | Open the project in Expo Go on Android | Onboarding (fresh) or Today — no red error screen. Known past failures: missing FCM topic module (patched, see replit.md) and a self-importing `.native` module (both fixed 2026-10-26) |
+| G2 | Local nudges in Expo Go | Allow notifications, set the movement interval to 45 min | Nudges arrive while the app is open or in the background; the Done/Snooze buttons work while Expo Go is alive. With Expo Go swiped away they do **not** (that is the dev build's job — N6) |
+
 ## N — Notifications (M2)
 
 | # | Scenario | Steps | Expect |

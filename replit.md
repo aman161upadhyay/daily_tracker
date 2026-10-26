@@ -23,6 +23,12 @@ original Kotlin spec being ported (this plan wins where they disagree).
 - `pnpm run typecheck` — `tsc --noEmit`; `pnpm run test` — `node --test` via tsx (`tests/*.test.ts`, node:assert).
   Both green before every push. Vitest is **not** used (its install is blocked in this workspace).
 - Native builds happen on Aman's laptop (Android Studio): `npx expo prebuild -p android && npx expo run:android`.
+- `patches/expo-notifications@57.0.24.patch` (applied by pnpm via `patchedDependencies` in `pnpm-workspace.yaml`) makes the
+  Android FCM topic module optional: Expo Go's Android client ships without it, and without the patch importing
+  `expo-notifications` throws on load and every screen fails ("Cannot find native module 'ExpoTopicSubscriptionModule'").
+  Re-create the patch (`pnpm patch expo-notifications@<ver>`) whenever the package version changes.
+- Platform-split pairs (`x.ts` + `x.native.ts`): the native file must never import `./x` — on Android/iOS that resolves to
+  itself (infinite getter loop at startup). Put shared code in a third module (see `src/data/transferFormat.ts`).
 
 ## Layout
 - `src/domain/` pure logic (time/tracking day, adherence scale, water pace, streaks, nudges, cycle, formatting) — no React,

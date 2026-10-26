@@ -1,0 +1,30 @@
+diff --git a/build/TopicSubscriptionModule.android.js b/build/TopicSubscriptionModule.android.js
+index 644a8bb61d46483402fe81a502883e3871782586..5ebdcf8da8f8392faf5686bf172ef71814ee90e2 100644
+--- a/build/TopicSubscriptionModule.android.js
++++ b/build/TopicSubscriptionModule.android.js
+@@ -1,3 +1,9 @@
+-import { requireNativeModule } from 'expo-modules-core';
+-export default requireNativeModule('ExpoTopicSubscriptionModule');
++import { requireOptionalNativeModule } from 'expo-modules-core';
++// Patched for Expo Go: the Android client ships without the FCM topic module
++// since remote push left Expo Go (SDK 53), and the original `requireNativeModule`
++// threw at import time, taking every screen down with it. Fall back to the same
++// no-op the non-Android build uses; subscribeToTopicAsync then reports
++// UnavailabilityError instead of crashing the app on load.
++const nativeModule = requireOptionalNativeModule('ExpoTopicSubscriptionModule');
++export default nativeModule ?? {};
+ //# sourceMappingURL=TopicSubscriptionModule.android.js.map
+diff --git a/src/TopicSubscriptionModule.android.ts b/src/TopicSubscriptionModule.android.ts
+index 2b9ed573a47cef45091c6b5ea1d116fd92d1531b..3935dbbe9cc3c687f3d28d53dccb4cd2c9d43036 100644
+--- a/src/TopicSubscriptionModule.android.ts
++++ b/src/TopicSubscriptionModule.android.ts
+@@ -1,5 +1,7 @@
+-import { requireNativeModule } from 'expo-modules-core';
++import { requireOptionalNativeModule } from 'expo-modules-core';
+ 
+ import type { TopicSubscriptionModule } from './TopicSubscriptionModule.types';
+ 
+-export default requireNativeModule<TopicSubscriptionModule>('ExpoTopicSubscriptionModule');
++// Patched for Expo Go on Android, which has no FCM topic module: never throw at import time.
++export default (requireOptionalNativeModule<TopicSubscriptionModule>('ExpoTopicSubscriptionModule') ??
++  ({} as TopicSubscriptionModule));
