@@ -14,7 +14,7 @@ import { SampleDataChip } from '@/components/tracker/SampleDataChip';
 import { useColors } from '@/hooks/useColors';
 import { useHealthConnect } from '@/hooks/useHealthConnect';
 import { exerciseLabel } from '@/src/domain/body/exerciseTypes';
-import { averageOf, countedWorkouts, formatSleep, latestResting, latestWeight, seriesOf, workoutsThisWeek } from '@/src/domain/body/stats';
+import { averageOf, countedWorkouts, formatSleep, latestResting, latestWeight, seriesOf, weightSpanText, workoutsThisWeek } from '@/src/domain/body/stats';
 import type { BodyRecordType } from '@/src/domain/body/types';
 import type { HabitIcon } from '@/src/domain/models';
 import { formatDayShort } from '@/src/domain/time/format';
@@ -180,7 +180,7 @@ export default function BodyScreen() {
             value={formatWeight(view.weightLatest.kg, units).value}
             unit={formatWeight(view.weightLatest.kg, units).unit}
             timestamp={view.weightLatest.day === calendarToday ? 'Today' : formatDayShort(view.weightLatest.day)}
-            detail={view.weightLatest.delta30 !== undefined ? `${formatWeightDelta(view.weightLatest.delta30, units)} over 30 days` : 'First month of readings'}
+            detail={view.weightLatest.delta30 !== undefined ? `${formatWeightDelta(view.weightLatest.delta30, units)} ${weightSpanText(view.weightLatest.sinceDay!, view.weightLatest.sinceDays!)}` : 'First month of readings'}
             chart={{ values: view.weight30, kind: 'line', baseline: Math.floor(Math.min(...view.weight30.filter((v) => v > 0)) - 1) }}
             onPress={() => open('weight')}
           />

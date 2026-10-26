@@ -60,7 +60,7 @@ export default function BodySetupScreen() {
         <Row gap={12} style={{ alignItems: 'flex-start' }}>
           <IconTile Glyph={UI.Connect} color={c.cat.body} size={44} />
           <View style={{ flex: 1 }}>
-            <Txt role="title2">How the data gets here</Txt>
+            <Txt role="title2" heading>How the data gets here</Txt>
             <Txt role="footnote" tone="secondary" style={{ marginTop: 2 }}>
               Source app → Health Connect → Daily Tracker
             </Txt>

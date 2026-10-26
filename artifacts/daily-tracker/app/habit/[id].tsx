@@ -21,6 +21,7 @@ import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import { adherenceColor, FLOW_THRESHOLD, STAGE_LABELS } from '@/src/domain/adherence/adherenceScale';
 import { withAlpha } from '@/src/domain/color/oklch';
+import { daysMet } from '@/src/domain/habits/progress';
 import { describePolicy, isPaused, nextRingText, type PolicyContext } from '@/src/domain/nudges/describePolicy';
 import { describeRule, formatDayShort, formatHabitValue, formatVolume, formatWeekdayShort, habitAmountText, habitUnit, mlToOz } from '@/src/domain/time/format';
 import { lastNDays } from '@/src/domain/time/trackingDay';
@@ -105,7 +106,9 @@ export default function HabitDetailScreen() {
         : 'Not yet'
       : formatHabitValue(habit, view.todayValue, state.settings.units).value;
   const todayUnit = weekly ? (view.periodLabel ?? 'this period') : habit.type === 'YES_NO' ? 'today' : `of ${habitAmountText(habit, view.target, state.settings.units)} today`;
-  const completed14 = view.ratios14.filter((r) => r.ratio >= 1).length;
+  // Each day about itself — for a weekly habit `ratio` is the week's accumulated progress, and one
+  // Monday session would otherwise count as seven days met by Sunday.
+  const completed14 = daysMet(view.ratios14);
   const last14 = lastNDays(today, 14);
   const periodNoun = view.rule.cadence === 'DAILY' ? 'day' : view.rule.cadence === 'WEEKLY' ? 'week' : 'month';
   const plural = (n: number) => (n === 1 ? periodNoun : `${periodNoun}s`);
@@ -220,12 +223,13 @@ export default function HabitDetailScreen() {
             <IconButton Glyph={UI.Undo} label={`Undo last ${habit.name} entry`} onPress={() => actions.decrement(habit)} size={48} color={c.text} />
           </Row>
         ) : habit.type !== 'TIMER' ? (
-          <Row gap={8} style={{ marginTop: 14 }}>
+          <Row gap={8} style={{ marginTop: 14, flexWrap: 'wrap' }}>
             {habit.type === 'YES_NO' ? (
-              <PillButton label={view.doneToday ? 'Undo today' : 'Mark done'} Leading={UI.Check} onPress={() => actions.toggleYesNo(habit)} style={{ flex: 1 }} kind={view.doneToday ? 'ghost' : 'primary'} />
+              <PillButton label={view.doneToday ? 'Undo today' : 'Mark done'} Leading={UI.Check} onPress={() => actions.toggleYesNo(habit)} style={styles.primaryAction} kind={view.doneToday ? 'ghost' : 'primary'} />
             ) : (
               <>
-                <PillButton label={quickLabel} Leading={UI.Plus} onPress={quickAdd} style={{ flex: 1 }} />
+                {/* The amount stays readable: on a narrow phone "Other" and Undo wrap under it rather than squeezing "+250 ml". */}
+                <PillButton label={quickLabel} Leading={UI.Plus} onPress={quickAdd} style={styles.primaryAction} />
                 {isWater || habit.type === 'COUNT' || habit.snackType ? <PillButton label="Other" kind="ghost" onPress={() => setAmount({ mode: 'add' })} /> : null}
                 <IconButton Glyph={UI.Undo} label={`Undo last ${habit.name} entry`} onPress={() => actions.decrement(habit)} size={48} color={c.text} />
               </>
@@ -311,7 +315,7 @@ export default function HabitDetailScreen() {
         <Row gap={12}>
           <IconTile Glyph={UI.Bell} color={color} size={40} />
           <View style={{ flex: 1 }}>
-            <Txt role="title2">Remind me</Txt>
+            <Txt role="title2" heading>Remind me</Txt>
             <Txt role="footnote" tone="secondary">
               {paused ? `Paused · ${describePolicy(view.policy, policyContext)}` : describePolicy(view.policy, policyContext)}
             </Txt>
@@ -359,7 +363,7 @@ export default function HabitDetailScreen() {
       <Card>
         <Row style={{ justifyContent: 'space-between', paddingVertical: 4 }}>
           <View style={{ flex: 1 }}>
-            <Txt role="title2">Rule</Txt>
+            <Txt role="title2" heading>Rule</Txt>
             <Txt role="footnote" tone="secondary">
               {describeRule(habit, view.rule, units)} · {view.rule.freezesPerMonth} freezes a month
             </Txt>
@@ -374,7 +378,7 @@ export default function HabitDetailScreen() {
         <Divider />
         <Row style={{ justifyContent: 'space-between', paddingVertical: 10 }}>
           <View>
-            <Txt role="title2">Pin to Today</Txt>
+            <Txt role="title2" heading>Pin to Today</Txt>
             <Txt role="footnote" tone="secondary">
               Keeps this habit near the top
             </Txt>
@@ -417,6 +421,7 @@ function Stat({ label, value, unit, gold }: { label: string; value: string; unit
 }
 
 const styles = StyleSheet.create({
+  primaryAction: { flexGrow: 1, flexBasis: 160 },
   stage: {
     paddingHorizontal: 10,
     paddingVertical: 4,

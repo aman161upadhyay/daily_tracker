@@ -156,7 +156,7 @@ export function ToastHost({ replaceEpoch }: { replaceEpoch: number }) {
           </Txt>
         </PressableScale>
         {current.actionLabel ? (
-          <PressableScale accessibilityRole="button" accessibilityLabel={current.actionLabel} onPress={act} style={{ minHeight: 40, minWidth: 48, paddingHorizontal: 12, borderRadius: 12, justifyContent: 'center', alignItems: 'center' }}>
+          <PressableScale accessibilityRole="button" accessibilityLabel={current.actionLabel} onPress={act} hitSlop={{ top: 8, bottom: 8, right: 8 }} style={{ minHeight: 40, minWidth: 48, paddingHorizontal: 12, borderRadius: 12, justifyContent: 'center', alignItems: 'center' }}>
             <Txt role="callout" color={c.greenBright} style={{ fontFamily: FONTS.extrabold }}>
               {current.actionLabel}
             </Txt>

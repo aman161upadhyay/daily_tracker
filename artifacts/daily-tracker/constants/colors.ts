@@ -98,7 +98,8 @@ const light: typeof dark = {
   // Text and icon inks: 6.3:1 (green) and 5.3:1 (gold) on the raised surface, where footnotes sit.
   // #16A34A reads as green on white but is 2.9:1 on #EEF2EF.
   greenBright: '#166534',
-  greenMist: '#3B9D5D',
+  // Written as small text on its own 16 % tint (the Moderate evidence pill): 5.5:1 on white, 4.9:1 on the raised surface.
+  greenMist: '#226538',
   lime: '#7A8A1F',
   gold: '#9A7A1F',
   goldBright: '#7A6016',
@@ -107,7 +108,7 @@ const light: typeof dark = {
   violetSoft: '#6D3FE0',
   danger: '#C62828',
   cat: {
-    hydration: '#13897A',
+    hydration: '#10786B', // a card title at 17 px: 5.4:1 on white, 4.7:1 on the raised surface (#13897A was 4.3:1)
     movement: '#107A37',
     mind: '#6D3FE0',
     cycle: '#C2487A',

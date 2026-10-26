@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SleepSummaryCard, StepsSummaryCard, sleepCardView, stepsCardView, stepsCardViewFromHabit } from '@/components/body/BodySummaryCards';
 import { METRIC_META, metricColor } from '@/components/body/metrics';
@@ -18,6 +18,7 @@ import { UI } from '@/components/ui/icons';
 import { Dot, IconButton, IconTile, PillButton, Row, SectionHeader } from '@/components/ui/primitives';
 import { Avatar, Screen, ScreenHeader } from '@/components/ui/Screen';
 import { Txt } from '@/components/ui/Txt';
+import { SPACE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
 import type { Habit } from '@/src/domain/models';
 import { formatClock, formatDayLong, formatNumber, formatVolume } from '@/src/domain/time/format';
@@ -68,6 +69,9 @@ export default function TodayScreen() {
   const showMind = active.some((h) => h.mindKind) || summary.mindMinutes > 0;
 
   const beforeNoon = nowMin < 12 * 60;
+  const { width, fontScale } = useWindowDimensions();
+  // Room beside the ring for "1,350 / 2,000 ml": about 150 dp at the default font size.
+  const narrow = width - 2 * SPACE.screen - 2 * SPACE.cardPad - 164 - 16 < 150 * Math.min(fontScale, 1.6);
   const centerValue = beforeNoon ? remaining.value : String(summary.snacksDone);
   const centerLabel = beforeNoon ? `${remaining.unit} to go` : summary.snacksDone === 1 ? 'snack' : 'snacks';
 
@@ -189,7 +193,8 @@ export default function TodayScreen() {
       <SampleDataChip />
 
       <Card featured>
-        <Row gap={16} style={{ alignItems: 'center' }}>
+        {/* A narrow phone (or a large font) stacks the legend under the ring: beside a 164 dp ring at 320 dp wide, every total truncated. */}
+        <View style={narrow ? styles.ringsStacked : styles.ringsBeside}>
           <TodayRings values={summary.rings} size={164}>
             <Txt role="display" style={{ fontSize: 26, lineHeight: 30 }}>
               {centerValue}
@@ -198,13 +203,13 @@ export default function TodayScreen() {
               {centerLabel}
             </Txt>
           </TodayRings>
-          <View style={{ flex: 1, gap: 12 }}>
+          <View style={narrow ? styles.legendStacked : styles.legendBeside}>
             <Legend color={c.cat.hydration} label="Hydration" value={`${logged.value} / ${goal.value} ${goal.unit}`} />
             {/* With nothing asked today (no movement or mind habit, or every quota met), the count stands alone: "6 / 0" reads as broken. */}
             <Legend color={c.cat.movement} label="Movement" value={summary.snacksTarget > 0 ? `${summary.snacksDone} / ${summary.snacksTarget} snacks` : `${summary.snacksDone} snacks`} />
             <Legend color={c.cat.mind} label="Mind" value={summary.mindTarget > 0 ? `${formatNumber(summary.mindMinutes)} / ${formatNumber(summary.mindTarget)} min` : `${formatNumber(summary.mindMinutes)} min`} />
           </View>
-        </Row>
+        </View>
       </Card>
 
       <NudgeCard
@@ -320,6 +325,10 @@ function newestOn<T extends { day: string }>(log: readonly T[], day: string, at:
 }
 
 const styles = StyleSheet.create({
+  ringsBeside: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  ringsStacked: { alignItems: 'center', gap: 16 },
+  legendBeside: { flex: 1, gap: 12 },
+  legendStacked: { alignSelf: 'stretch', gap: 12 },
   legend: {
     alignItems: 'flex-start',
   },

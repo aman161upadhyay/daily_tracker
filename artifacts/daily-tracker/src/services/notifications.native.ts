@@ -136,6 +136,23 @@ export async function openExactAlarmSettings(): Promise<void> {
   await Linking.openSettings();
 }
 
+/** The Android channels, registered (idempotently) so a notification has somewhere to land. */
+async function registerChannels(): Promise<void> {
+  if (!ANDROID) return;
+  await Promise.all(
+    (Object.keys(CHANNELS) as NudgeChannel[]).map((id) =>
+      Notifications.setNotificationChannelAsync(id, {
+        name: CHANNELS[id].name,
+        description: CHANNELS[id].description,
+        importance: CHANNELS[id].importance,
+        lightColor: '#1DB954',
+        vibrationPattern: id === 'summary' ? undefined : [0, 120],
+        ...(CHANNELS[id].lockscreenVisibility !== undefined ? { lockscreenVisibility: CHANNELS[id].lockscreenVisibility } : {}),
+      }),
+    ),
+  );
+}
+
 /** Channels and action categories; cheap to call again (re-registers only when the tap size changes). */
 export async function prepare(tapMl: number, units: Units = 'ml'): Promise<void> {
   const signature = `${tapMl}|${units}`;
@@ -143,20 +160,7 @@ export async function prepare(tapMl: number, units: Units = 'ml'): Promise<void>
   // The button says what it logs in the unit the app shows: "+8.5 oz" for a 250 ml tap in ounces.
   const tap = formatVolume(tapMl, units);
   const tapLabel = `+${tap.value} ${tap.unit}`;
-  if (ANDROID) {
-    await Promise.all(
-      (Object.keys(CHANNELS) as NudgeChannel[]).map((id) =>
-        Notifications.setNotificationChannelAsync(id, {
-          name: CHANNELS[id].name,
-          description: CHANNELS[id].description,
-          importance: CHANNELS[id].importance,
-          lightColor: '#1DB954',
-          vibrationPattern: id === 'summary' ? undefined : [0, 120],
-          ...(CHANNELS[id].lockscreenVisibility !== undefined ? { lockscreenVisibility: CHANNELS[id].lockscreenVisibility } : {}),
-        }),
-      ),
-    );
-  }
+  await registerChannels();
   const noOpen = { opensAppToForeground: false };
   await Promise.all([
     Notifications.setNotificationCategoryAsync('rotation', [
@@ -633,28 +637,48 @@ export function cancelMindEnd(): Promise<void> {
   return mindBellOp(() => Notifications.cancelScheduledNotificationAsync(MIND_END_ID).catch(() => {}));
 }
 
+// The test ring's schedule and cancel run one at a time and the newest request wins, like the mind
+// bell: a cancel issued while an earlier send was still clearing the old ring must not be followed
+// by that send's schedule.
+let testRingQueue: Promise<unknown> = Promise.resolve();
+let testRingGen = 0;
+function testRingOp(op: () => Promise<void>): Promise<void> {
+  const run = testRingQueue.then(op, op);
+  testRingQueue = run.catch(() => undefined);
+  return run;
+}
+
 /**
- * The one test ring: scheduled like a real nudge (same channel, same trigger, so it meets the
+ * The one test ring: scheduled like a real nudge (the nudges channel, registered first so a test
+ * sent before the scheduler's own prepare has somewhere to land; the same trigger, so it meets the
  * same battery and alarm rules), outside the plan. Its data names no nudge — a tap opens the app
- * and nothing is logged.
+ * and nothing is logged. Refused with SupersededError when a newer send or a cancel overtook it.
  */
-export async function scheduleTestRing(atMs: number): Promise<void> {
-  await Notifications.cancelScheduledNotificationAsync(TEST_RING_ID).catch(() => {});
-  await Notifications.scheduleNotificationAsync({
-    identifier: TEST_RING_ID,
-    content: {
-      title: 'Test reminder',
-      body: 'Reminders reach this phone. Nothing to log — swipe this away.',
-      data: { kind: 'TEST' },
-      sound: 'default',
-      ...(ANDROID ? { color: '#1DB954' } : {}),
-    },
-    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: atMs, channelId: 'nudges' },
+export function scheduleTestRing(atMs: number): Promise<void> {
+  const gen = ++testRingGen;
+  return testRingOp(async () => {
+    if (gen !== testRingGen) throw new SupersededError();
+    await registerChannels();
+    await Notifications.cancelScheduledNotificationAsync(TEST_RING_ID).catch(() => {});
+    if (gen !== testRingGen) throw new SupersededError();
+    await Notifications.scheduleNotificationAsync({
+      identifier: TEST_RING_ID,
+      content: {
+        title: 'Test reminder',
+        body: 'Reminders reach this phone. Nothing to log — swipe this away.',
+        data: { kind: 'TEST' },
+        sound: 'default',
+        ...(ANDROID ? { color: '#1DB954' } : {}),
+      },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: atMs, channelId: 'nudges' },
+    });
   });
 }
 
-export async function cancelTestRing(): Promise<void> {
-  await Notifications.cancelScheduledNotificationAsync(TEST_RING_ID).catch(() => {});
+/** Cancels the test ring. Rejects when the OS refuses: the ring then still stands, and the card says so. */
+export function cancelTestRing(): Promise<void> {
+  ++testRingGen;
+  return testRingOp(() => Notifications.cancelScheduledNotificationAsync(TEST_RING_ID));
 }
 
 /** Every ~3 h the OS lets us re-plan so tomorrow's nudges exist even if the app stays closed. */

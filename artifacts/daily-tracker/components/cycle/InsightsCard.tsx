@@ -20,7 +20,7 @@ export function InsightsCard({ insights }: { insights: CycleInsights }) {
       <Row gap={12} style={{ marginBottom: empty ? 8 : 12 }}>
         <IconTile Glyph={UI.Sparkle} color={c.gold} size={36} />
         <View style={{ flex: 1 }}>
-          <Txt role="title2">Insights</Txt>
+          <Txt role="title2" heading>Insights</Txt>
           <Txt role="footnote" tone="secondary">
             {loggedCycles === 0 ? 'From the symptoms you log in the day sheet.' : `From ${loggedCycles} logged ${loggedCycles === 1 ? 'cycle' : 'cycles'}.`}
           </Txt>

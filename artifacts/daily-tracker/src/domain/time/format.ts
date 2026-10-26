@@ -36,6 +36,12 @@ export function formatDayShort(day: string): string {
   return `${MONTHS_SHORT[month - 1]} ${d}`;
 }
 
+/** "Jan 2025" — for a date far enough back that the year is the point. */
+export function formatMonthYear(day: string): string {
+  const { year, month } = parseDay(day);
+  return `${MONTHS_SHORT[month - 1]} ${year}`;
+}
+
 /** "Mon" */
 export function formatWeekdayShort(day: string): string {
   const { year, month, day: d } = parseDay(day);

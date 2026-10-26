@@ -129,12 +129,12 @@ export function AmountSheet({ visible, onClose, habit, mode = 'add', day, curren
           placeholder={`Custom ${typedUnit || 'amount'}`.trim()}
           placeholderTextColor={c.textTertiary}
           keyboardType="decimal-pad"
-          style={[TYPE.body, styles.input, { color: c.text, backgroundColor: c.surface, borderColor: c.hairline, flex: 1 }]}
+          style={[TYPE.body, styles.input, { color: c.text, backgroundColor: c.surface, borderColor: c.hairline, flex: 1, minWidth: 0 }]}
           accessibilityLabel="Custom amount"
           returnKeyType="done"
           onSubmitEditing={() => typedValid && commit(parsed)}
         />
-        <PillButton label={mode === 'set' ? 'Set' : 'Log'} onPress={() => commit(parsed)} disabled={!typedValid} />
+        <PillButton label={mode === 'set' ? 'Set' : 'Log'} onPress={() => commit(parsed)} disabled={!typedValid} style={{ flexShrink: 0 }} />
       </Row>
       {tooLarge ? (
         <Txt role="caption" tone="tertiary" style={{ marginTop: 6 }}>

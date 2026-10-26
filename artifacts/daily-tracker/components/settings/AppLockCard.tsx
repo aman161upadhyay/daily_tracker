@@ -38,7 +38,7 @@ export function AppLockCard() {
     <Card>
       <Row style={{ justifyContent: 'space-between', paddingVertical: 4 }}>
         <View style={{ flex: 1, paddingRight: 12 }}>
-          <Txt role="title2">App lock</Txt>
+          <Txt role="title2" heading>App lock</Txt>
           <Txt role="footnote" tone="secondary">
             {hint}
           </Txt>

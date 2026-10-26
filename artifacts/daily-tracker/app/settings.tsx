@@ -190,7 +190,7 @@ export default function SettingsScreen() {
         <Divider />
         <Row style={{ justifyContent: 'space-between', paddingVertical: 12 }}>
           <View style={{ flex: 1 }}>
-            <Txt role="title2">Cycle tracking</Txt>
+            <Txt role="title2" heading>Cycle tracking</Txt>
             <Txt role="footnote" tone="secondary">
               Adds the Cycle tab. Off by default; kept inside the app (and in the phone backup, if that is on).
             </Txt>
@@ -212,7 +212,7 @@ export default function SettingsScreen() {
             <Divider />
             <Row style={{ justifyContent: 'space-between', paddingVertical: 12 }}>
               <View style={{ flex: 1 }}>
-                <Txt role="title2">Birth control</Txt>
+                <Txt role="title2" heading>Birth control</Txt>
                 <Txt role="footnote" tone="secondary">
                   Hides the fertile window and ovulation; periods and phases stay.
                 </Txt>
@@ -222,7 +222,7 @@ export default function SettingsScreen() {
             <Divider />
             <Row style={{ justifyContent: 'space-between', paddingVertical: 12 }}>
               <View style={{ flex: 1 }}>
-                <Txt role="title2">Discreet notifications</Txt>
+                <Txt role="title2" heading>Discreet notifications</Txt>
                 <Txt role="footnote" tone="secondary">
                   Cycle reminders say only “You have a reminder”. They are hidden on the lock screen either way.
                 </Txt>
@@ -232,7 +232,7 @@ export default function SettingsScreen() {
             <Divider />
             <Row style={{ justifyContent: 'space-between', paddingVertical: 12 }}>
               <View style={{ flex: 1 }}>
-                <Txt role="title2">Show on Today</Txt>
+                <Txt role="title2" heading>Show on Today</Txt>
                 <Txt role="footnote" tone="secondary">
                   A small Cycle card (day and phase) on the Today tab. Off keeps it to the Cycle tab.
                 </Txt>
@@ -246,7 +246,7 @@ export default function SettingsScreen() {
             <Divider />
             <Row style={{ justifyContent: 'space-between', paddingVertical: 12 }}>
               <View style={{ flex: 1 }}>
-                <Txt role="title2">Cycle data</Txt>
+                <Txt role="title2" heading>Cycle data</Txt>
                 <Txt role="footnote" tone="secondary">
                   {`${s.cycle.history.length} ${s.cycle.history.length === 1 ? 'period' : 'periods'}, ${state.cycleLogs.length} day ${state.cycleLogs.length === 1 ? 'log' : 'logs'}. Turning tracking off keeps them.`}
                 </Txt>
@@ -283,7 +283,7 @@ function Setting({ label, hint, children }: { label: string; hint?: string; chil
   return (
     <View style={styles.setting}>
       <View style={{ marginBottom: 8 }}>
-        <Txt role="title2">{label}</Txt>
+        <Txt role="title2" heading>{label}</Txt>
         {hint ? (
           <Txt role="footnote" tone="secondary">
             {hint}

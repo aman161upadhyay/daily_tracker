@@ -8,7 +8,7 @@ import { SqliteStore } from '../src/data/sql/sqliteStore';
 import { parseState } from '../src/data/store';
 import { EXERCISE_TYPE, exerciseLabel, isStrengthExercise, isWalk } from '../src/domain/body/exerciseTypes';
 import { mergeBody, normalizeBody } from '../src/domain/body/merge';
-import { bedtimeSpreadMin, bucketWeekly, formatSleep, lastNight, latestWeight, originName, workoutsThisWeek } from '../src/domain/body/stats';
+import { bedtimeSpreadMin, bucketWeekly, formatSleep, lastNight, latestWeight, originName, weightSpanText, workoutsThisWeek } from '../src/domain/body/stats';
 import { EMPTY_BODY, type BodyBatch, type Workout } from '../src/domain/body/types';
 import { addDays, instantOf } from '../src/domain/time/trackingDay';
 import { PRESET_BY_ID } from '../src/library/presets';
@@ -232,6 +232,8 @@ describe('body read models', () => {
     assert.deepEqual(latestWeight(mergeBody(EMPTY_BODY, { weight: [w2] })), { kg: 75.2, day: TODAY });
     const both = latestWeight(mergeBody(EMPTY_BODY, { weight: [w1, w2] }))!;
     assert.equal(both.delta30?.toFixed(1), '-0.8');
+    assert.equal(both.sinceDays, 35);
+    assert.equal(weightSpanText(both.sinceDay!, both.sinceDays!), 'over 35 days');
   });
 
   it('counts the week’s workouts without walks or hidden sessions', () => {

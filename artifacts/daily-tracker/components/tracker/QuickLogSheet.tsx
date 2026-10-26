@@ -59,12 +59,12 @@ export function QuickLogSheet({ visible, onClose }: { visible: boolean; onClose:
             placeholder={`Custom ${units}`}
             placeholderTextColor={c.textTertiary}
             keyboardType="decimal-pad"
-            style={[TYPE.body, styles.input, { color: c.text, backgroundColor: c.surface, borderColor: c.hairline, flex: 1 }]}
+            style={[TYPE.body, styles.input, { color: c.text, backgroundColor: c.surface, borderColor: c.hairline, flex: 1, minWidth: 0 }]}
             accessibilityLabel={`Custom water amount in ${units}`}
             returnKeyType="done"
             onSubmitEditing={() => customValid && logWater(customMl)}
           />
-          <PillButton label="Log" compact onPress={() => logWater(customMl)} disabled={!customValid} />
+          <PillButton label="Log" compact onPress={() => logWater(customMl)} disabled={!customValid} style={{ flexShrink: 0 }} />
         </Row>
         {tooLarge ? (
           <Txt role="caption" tone="danger" style={{ marginTop: 6 }} accessibilityLiveRegion="polite">
@@ -102,6 +102,7 @@ export function QuickLogSheet({ visible, onClose }: { visible: boolean; onClose:
             <Chip
               key={min}
               label={`${min} min`}
+              accessibilityLabel={`Log ${min} ${min === 1 ? 'minute' : 'minutes'} of ${m.label.toLowerCase()}`}
               color={c.cat.mind}
               onPress={() => {
                 actions.logMind(m.kind, min);
@@ -118,7 +119,7 @@ export function QuickLogSheet({ visible, onClose }: { visible: boolean; onClose:
 function Group({ title, color, children }: { title: string; color: string; children: React.ReactNode }) {
   return (
     <View style={styles.group}>
-      <Txt role="callout" color={color} style={{ marginBottom: 8 }}>
+      <Txt role="callout" color={color} heading style={{ marginBottom: 8 }}>
         {title}
       </Txt>
       <View style={styles.chips}>{children}</View>

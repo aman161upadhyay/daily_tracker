@@ -1,5 +1,5 @@
-import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import React, { useEffect, useId, useRef } from 'react';
+import { AccessibilityInfo, Modal, Platform, Pressable, ScrollView, StyleSheet, View, findNodeHandle, useWindowDimensions } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SPACE } from '@/constants/typography';
@@ -31,16 +31,40 @@ export function Sheet({ visible, title, onClose, children }: SheetProps) {
   // top of it on Android (a deep link that opens a sheet would show the lock what it hides). The
   // sheet waits, and appears once the gate is down.
   const locked = useAppLocked();
+  // The dialog is named by its title (aria-labelledby on the web, the label on Android), and a
+  // screen reader lands on the title when the sheet presents — not on Close, which said nothing
+  // about what had opened.
+  const titleId = useId();
+  const titleRef = useRef<View>(null);
+  const shown = visible && !locked;
+  useEffect(() => {
+    if (!shown || Platform.OS === 'web') return;
+    const timer = setTimeout(
+      () => {
+        const node = titleRef.current ? findNodeHandle(titleRef.current) : null;
+        if (node) AccessibilityInfo.setAccessibilityFocus(node);
+      },
+      reduceMotion ? 50 : 400,
+    );
+    return () => clearTimeout(timer);
+  }, [shown, reduceMotion]);
   return (
     <Modal visible={visible && !locked} transparent animationType={reduceMotion ? 'none' : 'slide'} onRequestClose={onClose} statusBarTranslucent>
       <View style={styles.root}>
-        <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: c.scrim }]} onPress={onClose} accessibilityLabel="Close" accessibilityRole="button" />
-        <View style={[styles.sheet, { backgroundColor: c.surfaceRaised, borderColor: c.hairline, paddingBottom: Math.max(insets.bottom, 16), maxHeight }]}>
+        {/* The scrim closes on a tap but stays out of the focus order: the Close button is the same action with a name. */}
+        <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: c.scrim }]} onPress={onClose} accessible={false} focusable={false} importantForAccessibility="no-hide-descendants" />
+        <View
+          style={[styles.sheet, { backgroundColor: c.surfaceRaised, borderColor: c.hairline, paddingBottom: Math.max(insets.bottom, 16), maxHeight }]}
+          role="dialog"
+          aria-modal
+          aria-labelledby={titleId}
+          accessibilityLabel={title}
+        >
           <View style={[styles.grabber, { backgroundColor: c.hairline }]} />
           <View style={styles.header}>
-            <Txt role="title1" style={{ flex: 1 }}>
-              {title}
-            </Txt>
+            <View ref={titleRef} accessible accessibilityRole="header" accessibilityLabel={title} nativeID={titleId} style={{ flex: 1 }}>
+              <Txt role="title1">{title}</Txt>
+            </View>
             <IconButton Glyph={UI.Close} label="Close" onPress={onClose} size={36} color={c.textSecondary} haptic={false} />
           </View>
           {/* A tap on Set/Log while the keyboard is up acts at once instead of only closing the keyboard. */}

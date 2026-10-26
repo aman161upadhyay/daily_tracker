@@ -395,6 +395,7 @@ export function sanitizeSettings(raw: unknown): Partial<Settings> {
   }
   // Optional fields without a default.
   if (isInstantMs(base.offUntil)) out.offUntil = base.offUntil;
+  if (isInstantMs(base.lastExportAt)) out.lastExportAt = base.lastExportAt;
   return out as Partial<Settings>;
 }
 

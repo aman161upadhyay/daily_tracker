@@ -2,7 +2,8 @@
  * Read models for the Body tab, computed from the Health Connect mirrors.
  * Pure: days in, numbers out.
  */
-import { addDays, lastNDays, minutesOfDay, weekStartOf } from '@/src/domain/time/trackingDay';
+import { formatMonthYear } from '@/src/domain/time/format';
+import { addDays, dayDiff, lastNDays, minutesOfDay, weekStartOf } from '@/src/domain/time/trackingDay';
 
 /** Minutes after midnight at a UTC offset (local wall clock), for an instant. */
 export function minutesAtOffset(instantMs: number, offsetMin: number): number {
@@ -209,14 +210,27 @@ export function bedtimeSpreadMin(body: BodyState, calendarToday: string, zone: s
   return Math.round(Math.sqrt(variance));
 }
 
-export function latestWeight(body: BodyState): { kg: number; day: string; delta30?: number } | undefined {
+/**
+ * The newest reading and how it compares with the newest reading at least 30 days before it. The
+ * reference can be much older than 30 days (a person who weighs in twice a year): `sinceDay` and
+ * `sinceDays` say what the difference really spans, so the screen never writes "over 30 days" for a
+ * two-year gap.
+ */
+export function latestWeight(body: BodyState): { kg: number; day: string; delta30?: number; sinceDay?: string; sinceDays?: number } | undefined {
   if (body.weight.length === 0) return undefined;
   const sorted = [...body.weight].sort((a, b) => a.at - b.at);
   const last = sorted[sorted.length - 1]!;
   const cutoff = addDays(last.day, -30);
   const earlier = sorted.filter((w) => w.day <= cutoff);
   const ref = earlier[earlier.length - 1];
-  return { kg: last.kg, day: last.day, ...(ref ? { delta30: last.kg - ref.kg } : {}) };
+  return { kg: last.kg, day: last.day, ...(ref ? { delta30: last.kg - ref.kg, sinceDay: ref.day, sinceDays: dayDiff(ref.day, last.day) } : {}) };
+}
+
+/** "over 30 days" when the reference is about a month back; the real span otherwise. */
+export function weightSpanText(sinceDay: string, sinceDays: number): string {
+  if (sinceDays <= 45) return `over ${sinceDays} days`;
+  if (sinceDays <= 400) return `over ${Math.round(sinceDays / 30.4)} months`;
+  return `since ${formatMonthYear(sinceDay)}`;
 }
 
 export function latestResting(body: BodyState): { bpm: number; day: string } | undefined {
@@ -249,8 +263,10 @@ export function bucketWeekly(values: number[], mode: 'sum' | 'avg'): number[] {
 }
 
 export function formatSleep(minutes: number): string {
-  const h = Math.floor(minutes / 60);
-  const m = Math.round(minutes % 60);
+  // Whole minutes first, then hours: 479.8 is "8h", never "7h 60m".
+  const total = Math.round(minutes);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
   if (h === 0) return `${m}m`;
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }

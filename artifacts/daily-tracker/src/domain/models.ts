@@ -277,6 +277,8 @@ export interface Settings {
   remindersEnabled: boolean;
   /** Off mode (travel, sick day): no nudges until this epoch ms. */
   offUntil?: number;
+  /** When a backup file was last handed to the share sheet — not proof that any app kept it. */
+  lastExportAt?: number;
   /** "Your week" summary notification; weekday 0 = Monday … 6 = Sunday, minute after midnight. */
   weeklySummary: { enabled: boolean; weekday: number; minute: number };
   /** Habits the home-screen widget shows, in order (first = big tile). Empty = pick automatically. */

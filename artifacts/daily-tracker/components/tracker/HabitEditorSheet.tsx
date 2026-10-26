@@ -269,7 +269,7 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
         <Divider />
         <Row style={{ justifyContent: 'space-between' }}>
           <View>
-            <Txt role="title2">Pin to Today</Txt>
+            <Txt role="title2" heading>Pin to Today</Txt>
             <Txt role="footnote" tone="secondary">
               Keeps this habit near the top
             </Txt>

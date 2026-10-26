@@ -179,7 +179,7 @@ export default function OnboardingScreen() {
           <Row gap={12}>
             <IconTile Glyph={UI.Archive} color={c.gold} size={40} />
             <View style={{ flex: 1 }}>
-              <Txt role="title2">A backup this version can't open</Txt>
+              <Txt role="title2" heading>A backup this version can't open</Txt>
               <Txt role="footnote" tone="secondary" style={{ marginTop: 2 }}>
                 {`Android restored a backup${unreadable.writtenAt ? ` from ${new Date(unreadable.writtenAt).toLocaleDateString()}` : ''}, but this app cannot read it: ${unreadable.reason} Keep it and it stays on this phone — Settings offers it again after you update the app.`}
               </Txt>
@@ -202,7 +202,7 @@ export default function OnboardingScreen() {
           <Row gap={12}>
             <IconTile Glyph={UI.Archive} color={c.gold} size={40} />
             <View style={{ flex: 1 }}>
-              <Txt role="title2">Welcome back</Txt>
+              <Txt role="title2" heading>Welcome back</Txt>
               <Txt role="footnote" tone="secondary" style={{ marginTop: 2 }}>
                 {`Android restored a backup${restore.writtenAt ? ` from ${new Date(restore.writtenAt).toLocaleDateString()}` : ''} with ${describeImport(restore.state)}.`}
               </Txt>

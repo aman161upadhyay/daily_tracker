@@ -40,7 +40,7 @@ export function HealthConnectCard({ confirm }: Props) {
       <Row gap={12} style={{ alignItems: 'flex-start' }}>
         <IconTile Glyph={UI.Connect} color={c.cat.body} size={40} />
         <View style={{ flex: 1 }}>
-          <Txt role="title2">Health Connect</Txt>
+          <Txt role="title2" heading>Health Connect</Txt>
           <Txt role="footnote" tone="secondary" style={{ marginTop: 2 }}>
             {status}
           </Txt>

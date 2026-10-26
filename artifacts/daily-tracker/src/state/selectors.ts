@@ -364,32 +364,38 @@ export interface TodaySummary {
   rings: { hydration: number; movement: number; mind: number };
 }
 
+/**
+ * What a habit asks of `today` for the category rings: its per-day target, or nothing once a weekly
+ * or monthly quota is met and the day was not started (a day actually started still counts, so a
+ * fourth session in a three-day week fills its ring rather than vanishing).
+ */
+function askedToday(state: TrackerState, h: Habit, today: string): number {
+  const rule = ruleFor(state, h.id, today);
+  if (!rule) return 0;
+  if (rule.cadence === 'DAILY') return rule.target;
+  const view = habitView(state, h, today);
+  const periodMet = (view.periodDone ?? 0) >= (view.periodQuota ?? 0);
+  return !periodMet || view.todayValue > 0 ? rule.target : 0;
+}
+
 export function todaySummary(state: TrackerState, today: string, nowMs: number, zone: string): TodaySummary {
   const s = state.settings;
-  const nowMin = minutesOfDay(nowMs, zone);
+  // Minutes on the tracking day's own clock: between midnight and the day boundary the day's active
+  // window has ended, so the expected intake is the whole goal — not a new morning's zero, which
+  // would turn "1,750 ml behind" into "on pace" at 00:00 with nothing logged.
+  const nowMin = minutesOfDay(nowMs, zone) + (calendarDayOf(nowMs, zone) > today ? 24 * 60 : 0);
   const loggedMl = state.water.reduce((acc, w) => (w.day === today ? acc + w.ml : acc), 0);
   const water = waterStatus(loggedMl, s.waterGoalMl, nowMin, s.activeStartMin, s.activeEndMin, s.tapSizeMl);
 
   // Today's movement ask: each habit's per-day target — a "3 climbs, 3 days a week" habit asks for
   // 3 climbs on a day it is done, not one — counted only while its week or month still needs days.
+  // The Mind ring asks the same way: a weekly meditation done on Monday owes nothing on Tuesday.
   const movementHabits = activeHabits(state).filter((h) => h.snackType && !isSugarShield(h));
-  let snacksTarget = 0;
-  for (const h of movementHabits) {
-    const rule = ruleFor(state, h.id, today);
-    if (!rule) continue;
-    if (rule.cadence === 'DAILY') {
-      snacksTarget += rule.target;
-      continue;
-    }
-    const view = habitView(state, h, today);
-    const periodMet = (view.periodDone ?? 0) >= (view.periodQuota ?? 0);
-    // Once the quota is met, only a day actually started still counts towards the ring.
-    if (!periodMet || view.todayValue > 0) snacksTarget += rule.target;
-  }
+  const snacksTarget = movementHabits.reduce((acc, h) => acc + askedToday(state, h, today), 0);
   const snacksDone = state.snacks.filter((x) => x.day === today && x.trigger !== 'SUGAR_SHIELD').length;
 
   const mindHabits = activeHabits(state).filter((h) => h.mindKind);
-  const mindTarget = mindHabits.reduce((acc, h) => acc + (ruleFor(state, h.id, today)?.target ?? 0), 0);
+  const mindTarget = mindHabits.reduce((acc, h) => acc + askedToday(state, h, today), 0);
   const mindMinutes = state.mind.reduce((acc, m) => (m.day === today ? acc + m.minutes : acc), 0);
 
   return {

@@ -54,7 +54,7 @@ export function CycleCalendar({ month, today, timeline, birthControl, loggedDays
     <View>
       <Row style={styles.header}>
         <IconButton Glyph={UI.Back} label="Previous month" onPress={() => onMonthChange(shiftMonth(month, -1))} size={36} color={c.text} />
-        <PressableScale haptic={false} onPress={() => onMonthChange(thisMonth)} accessibilityRole="button" accessibilityLabel={monthTitle(month)} accessibilityHint={month === thisMonth ? undefined : 'Jumps to this month'} style={{ flex: 1 }}>
+        <PressableScale haptic={false} onPress={() => onMonthChange(thisMonth)} accessibilityRole="button" accessibilityLabel={monthTitle(month)} accessibilityHint={month === thisMonth ? undefined : 'Jumps to this month'} hitSlop={{ top: 13, bottom: 13 }} style={{ flex: 1 }}>
           <Txt role="title2" align="center" accessibilityLiveRegion="polite">
             {monthTitle(month)}
           </Txt>

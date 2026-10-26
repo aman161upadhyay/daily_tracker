@@ -10,6 +10,8 @@ export interface TxtProps extends Omit<TextProps, 'role'> {
   tone?: Tone;
   color?: string;
   align?: TextStyle['textAlign'];
+  /** A real heading (a screen or section title), so a screen reader can jump between them. `role` is only typography. */
+  heading?: boolean;
 }
 
 function toneColor(c: Colors, tone: Tone): string {
@@ -49,7 +51,14 @@ const MAX_SCALE: Record<TypeRole, number> = {
   caption: 2,
 };
 
-export function Txt({ role = 'body', tone = 'primary', color, align, style, maxFontSizeMultiplier, ...rest }: TxtProps) {
+export function Txt({ role = 'body', tone = 'primary', color, align, style, maxFontSizeMultiplier, heading, ...rest }: TxtProps) {
   const c = useColors();
-  return <Text maxFontSizeMultiplier={maxFontSizeMultiplier ?? MAX_SCALE[role]} {...rest} style={[TYPE[role], { color: color ?? toneColor(c, tone), textAlign: align }, style]} />;
+  return (
+    <Text
+      maxFontSizeMultiplier={maxFontSizeMultiplier ?? MAX_SCALE[role]}
+      {...(heading ? { accessibilityRole: 'header' as const } : {})}
+      {...rest}
+      style={[TYPE[role], { color: color ?? toneColor(c, tone), textAlign: align }, style]}
+    />
+  );
 }

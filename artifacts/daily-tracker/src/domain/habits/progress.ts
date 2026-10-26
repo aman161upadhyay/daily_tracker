@@ -23,6 +23,20 @@ export function ratioOf(value: number, target: number): number {
   return clamp01(value / target);
 }
 
+/** Whether a day's own value met the day's target (a day with no target counts when something was logged). */
+export function dayMet(r: Pick<DayRatio, 'value' | 'target'>): boolean {
+  return r.target > 0 ? r.value >= r.target : r.value > 0;
+}
+
+/**
+ * How many of these days met their own target. For a weekly or monthly habit `ratio` carries the
+ * period's accumulated progress (one Monday session reads 1.0 all week), so the count asks each
+ * day about itself: that habit shows one day met, not seven.
+ */
+export function daysMet(ratios: readonly DayRatio[]): number {
+  return ratios.filter(dayMet).length;
+}
+
 /**
  * Adherence = completion rate over the trailing 14 tracking days, with
  * today's partial progress counted proportionally. Habits younger than three

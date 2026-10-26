@@ -9,6 +9,7 @@ import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
 import { MIN_PASSWORD_LENGTH, type EncryptedBackup } from '@/src/data/backupCrypto';
 import { describeImport, exportState, inspectExport, pickImport, unlockExportAsync } from '@/src/data/transfer';
+import { backupAge } from '@/src/domain/backup/backupAge';
 import { deleteKeptSnapshots, markCleanupPending, readKeptSnapshots, type Snapshot } from '@/src/services/backup';
 import type { TrackerState } from '@/src/state/types';
 import { useTracker } from '@/src/state/TrackerProvider';
@@ -24,7 +25,7 @@ const message = (err: unknown) => (err instanceof Error ? err.message : String(e
  */
 export function BackupCard({ confirm }: { confirm: Confirm }) {
   const c = useColors();
-  const { state, actions, storageError, commitPending } = useTracker();
+  const { state, actions, storageError, commitPending, nowMs, zone } = useTracker();
   const s = state.settings;
   const [transfer, setTransfer] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -60,12 +61,15 @@ export function BackupCard({ confirm }: { confirm: Confirm }) {
       .finally(() => setBusy(false));
   };
 
+  const age = backupAge(s.lastExportAt, nowMs, zone);
   const runExport = async (password: string | undefined) => {
     setExporting(false);
     setBusy(true);
     setTransfer(null);
     try {
       await exportState(state, password);
+      // The moment the file was handed over, for the "last exported" line — not a claim it was kept.
+      actions.updateSettings({ lastExportAt: Date.now() });
       setTransfer({
         tone: 'ok',
         text: password ? 'Backup created and encrypted. Only the password opens it; there is no way to recover a forgotten one.' : 'Backup created. Keep it somewhere safe; it contains everything you logged.',
@@ -143,6 +147,11 @@ export function BackupCard({ confirm }: { confirm: Confirm }) {
         <PillButton label="Export backup" Leading={UI.Download} kind="ghost" onPress={() => setExporting(true)} disabled={busy} />
         <PillButton label="Import backup" Leading={UI.Upload} kind="ghost" onPress={doImport} disabled={busy} />
       </Row>
+      {!s.sampleData ? (
+        <Txt role="footnote" tone={age.stale ? 'gold' : 'secondary'} style={{ marginTop: 8 }}>
+          {age.text}
+        </Txt>
+      ) : null}
       {transfer ? (
         <Txt role="footnote" color={transfer.tone === 'error' ? c.danger : c.greenBright} style={{ marginTop: 10 }}>
           {transfer.text}
@@ -153,7 +162,7 @@ export function BackupCard({ confirm }: { confirm: Confirm }) {
           <Divider />
           <Row style={{ justifyContent: 'space-between', paddingTop: 12 }}>
             <View style={{ flex: 1, paddingRight: 12 }}>
-              <Txt role="title2">Android phone backup</Txt>
+              <Txt role="title2" heading>Android phone backup</Txt>
               <Txt role="footnote" tone="secondary">
                 {s.cloudBackup
                   ? 'If phone backup is on, Android keeps a copy with your Google account so a new phone restores it — only encrypted with your screen lock (Android 9 or newer). Turn off to keep everything on this phone only.'
@@ -220,7 +229,7 @@ function PasswordField({ value, onChange, placeholder, onSubmit }: { value: stri
         style={[TYPE.body, styles.input, { color: c.text, backgroundColor: c.surface, borderColor: c.hairline }]}
         accessibilityLabel="Backup password"
       />
-      <PillButton label={visible ? 'Hide' : 'Show'} kind="ghost" compact onPress={() => setVisible((v) => !v)} />
+      <PillButton label={visible ? 'Hide' : 'Show'} kind="ghost" compact onPress={() => setVisible((v) => !v)} style={{ flexShrink: 0 }} />
     </Row>
   );
 }
@@ -327,6 +336,9 @@ function UnlockSheet({ file, onClose, onUnlocked }: { file: EncryptedBackup | nu
 const styles = StyleSheet.create({
   input: {
     flex: 1,
+    // On the web a text field keeps an intrinsic width unless told it may shrink; without this the
+    // Show / Log button beside it left a 320 dp sheet.
+    minWidth: 0,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 14,

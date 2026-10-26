@@ -46,7 +46,7 @@ export function ConnectionCard({ hc, nowMs, zone, sample, hasData }: Props) {
         <Row gap={12} style={{ alignItems: 'flex-start' }}>
           <IconTile Glyph={UI.Connect} color={gold} size={44} />
           <View style={{ flex: 1 }}>
-            <Txt role="title2">Health Connect</Txt>
+            <Txt role="title2" heading>Health Connect</Txt>
             <Txt role="footnote" tone="secondary" style={{ marginTop: 2 }}>
               {sample ? 'Sample numbers below' : 'Not available in this preview'}
             </Txt>
@@ -73,7 +73,7 @@ export function ConnectionCard({ hc, nowMs, zone, sample, hasData }: Props) {
         <Row gap={12}>
           <IconTile Glyph={UI.Connect} color={gold} size={44} />
           <View style={{ flex: 1 }}>
-            <Txt role="title2">Health Connect</Txt>
+            <Txt role="title2" heading>Health Connect</Txt>
             <Txt role="footnote" tone="secondary">
               Checking…
             </Txt>
@@ -90,7 +90,7 @@ export function ConnectionCard({ hc, nowMs, zone, sample, hasData }: Props) {
         <Row gap={12} style={{ alignItems: 'flex-start' }}>
           <IconTile Glyph={UI.Connect} color={gold} size={44} />
           <View style={{ flex: 1 }}>
-            <Txt role="title2">Health Connect</Txt>
+            <Txt role="title2" heading>Health Connect</Txt>
             <Txt role="footnote" tone="secondary" style={{ marginTop: 2 }}>
               {update ? 'Needs an update' : 'Not installed on this phone'}
             </Txt>
@@ -116,7 +116,7 @@ export function ConnectionCard({ hc, nowMs, zone, sample, hasData }: Props) {
         <Row gap={12} style={{ alignItems: 'flex-start' }}>
           <IconTile Glyph={UI.Connect} color={gold} size={44} />
           <View style={{ flex: 1 }}>
-            <Txt role="title2">Health Connect</Txt>
+            <Txt role="title2" heading>Health Connect</Txt>
             <Txt role="footnote" tone="secondary" style={{ marginTop: 2 }}>
               {hasData ? 'Disconnected · imports paused' : 'Ready to connect'}
             </Txt>
@@ -149,7 +149,7 @@ export function ConnectionCard({ hc, nowMs, zone, sample, hasData }: Props) {
       <Row gap={12} style={{ alignItems: 'flex-start' }}>
         <IconTile Glyph={UI.Connect} color={gold} size={44} />
         <View style={{ flex: 1 }}>
-          <Txt role="title2">Health Connect</Txt>
+          <Txt role="title2" heading>Health Connect</Txt>
           <Txt role="footnote" tone="secondary" style={{ marginTop: 2 }}>
             {`Connected · ${types} of 7 data types · ${describeLastSync(hc.lastSyncAt, nowMs, zone, clock)}`}
           </Txt>

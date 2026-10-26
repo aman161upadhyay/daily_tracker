@@ -63,7 +63,9 @@ export function useCategoryColor(): (key: CategoryKey) => string {
 export function SectionHeader({ title, action, onAction, style }: { title: string; action?: string; onAction?: () => void; style?: StyleProp<ViewStyle> }) {
   return (
     <View style={[styles.sectionHeader, style]}>
-      <Txt role="title1">{title}</Txt>
+      <Txt role="title1" heading>
+        {title}
+      </Txt>
       {action && onAction ? (
         <PressableScale haptic={false} onPress={onAction} accessibilityRole="button" accessibilityLabel={action} hitSlop={8} style={styles.sectionAction}>
           <Txt role="callout" tone="green">
@@ -305,7 +307,7 @@ export function Stepper({
           style={[TYPE.title2, styles.stepperValue, styles.stepperInput, { color: c.text, borderColor: c.tint }]}
         />
       ) : (
-        <Pressable onPress={() => open(parse ? shown : String(value))} accessibilityRole="button" accessibilityLabel={`${label}: ${shown}. Tap to type ${inputKind === 'time' ? 'a time' : inputKind === 'amount' ? 'an amount' : 'a number'}${bounds}`} hitSlop={6}>
+        <Pressable onPress={() => open(parse ? shown : String(value))} accessibilityRole="button" accessibilityLabel={`${label}: ${shown}. Tap to type ${inputKind === 'time' ? 'a time' : inputKind === 'amount' ? 'an amount' : 'a number'}${bounds}`} hitSlop={{ top: 14, bottom: 14, left: 6, right: 6 }}>
           <Txt role="title2" style={styles.stepperValue} align="center" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
             {shown}
           </Txt>

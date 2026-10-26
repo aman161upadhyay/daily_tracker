@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Platform, Switch, View } from 'react-native';
 import { Card } from '@/components/ui/Card';
 import { UI } from '@/components/ui/icons';
@@ -8,7 +8,7 @@ import { useColors } from '@/hooks/useColors';
 import type { ScheduledNudge } from '@/src/domain/nudges/planner';
 import { formatClock, parseClockInput, weekdayName, type ClockFormat } from '@/src/domain/time/format';
 import { addDays, calendarDayOf, instantOf, minutesOfDay } from '@/src/domain/time/trackingDay';
-import { NOTIFICATIONS_SUPPORTED, cancelTestRing, exactAlarmsAllowed, getPermission, onSyncHealth, openExactAlarmSettings, openNotificationSettings, requestPermission, scheduleTestRing, syncHealth, type PermissionState, type SyncHealth } from '@/src/services/notifications';
+import { NOTIFICATIONS_SUPPORTED, SupersededError, cancelTestRing, exactAlarmsAllowed, getPermission, onSyncHealth, openExactAlarmSettings, openNotificationSettings, requestPermission, scheduleTestRing, syncHealth, type PermissionState, type SyncHealth } from '@/src/services/notifications';
 import { REMINDER_TEST_CHECKS, TEST_RING_LEAD_MS, reminderTestLine, reminderTestPhase, type ReminderTest } from '@/src/domain/nudges/reminderTest';
 import { nudgePlan } from '@/src/state/selectors';
 import { useTracker } from '@/src/state/TrackerProvider';
@@ -66,23 +66,63 @@ export function RemindersCard() {
   const paused = s.offUntil !== undefined && s.offUntil > nowMs;
 
   // The reminder self-test: one ring a minute out, then the question — the app cannot see its own
-  // notification on a locked screen, so the person answers. Kept for this visit of the screen.
+  // notification on a locked screen, so the person answers. Kept for this visit of the screen. One
+  // request at a time (the button disables while the OS is asked, and a flag covers the gap before
+  // the render); a result that arrives after the card is gone is dropped.
   const [test, setTest] = useState<ReminderTest | null>(null);
   const [testResult, setTestResult] = useState<'ok' | 'missed' | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
+  const [testBusy, setTestBusy] = useState(false);
+  const testInFlight = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const testPhase = reminderTestPhase(test, nowMs);
+  const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
   const startTest = () => {
+    if (testInFlight.current) return;
+    testInFlight.current = true;
     const dueAt = Date.now() + TEST_RING_LEAD_MS;
     setTestResult(null);
     setTestError(null);
-    scheduleTestRing(dueAt).then(
-      () => setTest({ dueAt }),
-      (err: unknown) => setTestError(err instanceof Error ? err.message : String(err)),
-    );
+    setTestBusy(true);
+    scheduleTestRing(dueAt)
+      .then(
+        () => {
+          if (mounted.current) setTest({ dueAt });
+        },
+        (err: unknown) => {
+          // A newer request overtook this one: that request reports for itself.
+          if (mounted.current && !(err instanceof SupersededError)) setTestError(`The test could not be scheduled: ${errorText(err)}`);
+        },
+      )
+      .finally(() => {
+        testInFlight.current = false;
+        if (mounted.current) setTestBusy(false);
+      });
   };
+  // The ring is forgotten only once the OS has really dropped it; a refused cancel is said, and the
+  // test stays so Cancel can be tried again.
   const stopTest = () => {
-    setTest(null);
-    void cancelTestRing();
+    if (testInFlight.current) return;
+    testInFlight.current = true;
+    setTestError(null);
+    cancelTestRing()
+      .then(
+        () => {
+          if (mounted.current) setTest(null);
+        },
+        (err: unknown) => {
+          if (mounted.current) setTestError(`The test could not be cancelled (${errorText(err)}); it may still ring.`);
+        },
+      )
+      .finally(() => {
+        testInFlight.current = false;
+      });
   };
 
   const pauseFor = (hours: number | 'day') => {
@@ -140,7 +180,7 @@ export function RemindersCard() {
       <View style={{ paddingVertical: 12, gap: 10 }}>
         <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <View style={{ flex: 1 }}>
-            <Txt role="title2">Reminders</Txt>
+            <Txt role="title2" heading>Reminders</Txt>
             <Txt role="footnote" tone="secondary">
               Movement, water, timed habits and the weekly summary
             </Txt>
@@ -176,7 +216,7 @@ export function RemindersCard() {
         <>
           <Divider />
           <View style={{ paddingVertical: 12, gap: 10 }}>
-            <Txt role="title2">Test</Txt>
+            <Txt role="title2" heading>Test</Txt>
             {testPhase === 'idle' ? (
               <>
                 <Txt role="footnote" tone="secondary">
@@ -195,17 +235,22 @@ export function RemindersCard() {
                   : null}
                 {testError ? (
                   <Txt role="footnote" tone="danger">
-                    The test could not be scheduled: {testError}
+                    {testError}
                   </Txt>
                 ) : null}
                 <Row gap={8} style={{ flexWrap: 'wrap' }}>
-                  <PillButton label={testResult ? 'Test again' : 'Send a test reminder'} Leading={UI.Bell} kind="ghost" onPress={startTest} />
+                  <PillButton label={testBusy ? 'Scheduling…' : testResult ? 'Test again' : 'Send a test reminder'} Leading={UI.Bell} kind="ghost" disabled={testBusy} onPress={startTest} />
                   {testResult === 'missed' ? <PillButton label="Open app settings" kind="ghost" onPress={() => void openNotificationSettings()} /> : null}
                 </Row>
               </>
             ) : test ? (
               <>
                 <Txt role="body">{reminderTestLine(test, nowMs, zone, clock)}</Txt>
+                {testError ? (
+                  <Txt role="footnote" tone="danger">
+                    {testError}
+                  </Txt>
+                ) : null}
                 {testPhase === 'waiting' ? (
                   <Row gap={8}>
                     <PillButton label="Cancel the test" kind="ghost" onPress={stopTest} />
@@ -226,7 +271,10 @@ export function RemindersCard() {
                       onPress={() => {
                         setTest(null);
                         setTestResult('missed');
-                        void cancelTestRing();
+                        // Past its minute the ring has fired or is late; a refused cancel is still said.
+                        cancelTestRing().catch((err: unknown) => {
+                          if (mounted.current) setTestError(`The test could not be cancelled (${errorText(err)}); it may still ring.`);
+                        });
                       }}
                     />
                   </Row>
@@ -241,7 +289,7 @@ export function RemindersCard() {
         <>
           <Divider />
           <View style={{ paddingVertical: 12, gap: 10 }}>
-            <Txt role="title2">Pause</Txt>
+            <Txt role="title2" heading>Pause</Txt>
             {paused ? (
               <Row gap={8} style={{ alignItems: 'center' }}>
                 <UI.BellSlash size={18} color={c.violet} />
@@ -264,7 +312,7 @@ export function RemindersCard() {
           <View style={{ paddingVertical: 12, gap: 10 }}>
             <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ flex: 1 }}>
-                <Txt role="title2">Weekly summary</Txt>
+                <Txt role="title2" heading>Weekly summary</Txt>
                 <Txt role="footnote" tone="secondary">
                   {weekdayName(s.weeklySummary.weekday)}s — how the week went, in one line (the last day of your week)
                 </Txt>
@@ -283,7 +331,7 @@ export function RemindersCard() {
 
           <Divider />
           <View style={{ paddingVertical: 12, gap: 6 }}>
-            <Txt role="title2">Next up</Txt>
+            <Txt role="title2" heading>Next up</Txt>
             {plan.length === 0 ? (
               <Txt role="footnote" tone="secondary">
                 Nothing planned right now — everything is done, paused, or outside active hours.

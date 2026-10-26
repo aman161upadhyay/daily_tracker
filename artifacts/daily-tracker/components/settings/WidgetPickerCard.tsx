@@ -33,7 +33,7 @@ export function WidgetPickerCard() {
         <Row gap={10} style={{ alignItems: 'center' }}>
           <UI.Widget size={20} color={c.gold} />
           <View style={{ flex: 1 }}>
-            <Txt role="title2">Home-screen widget</Txt>
+            <Txt role="title2" heading>Home-screen widget</Txt>
             <Txt role="footnote" tone="secondary">
               Up to {WIDGET_MAX} habits, each with a one-tap log. Automatic picks water, movement and mind.
             </Txt>

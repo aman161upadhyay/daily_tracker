@@ -50,6 +50,7 @@ export function EvidenceBlock({ preset }: { preset: Preset }) {
               onPress={() => Linking.openURL(src.url).catch(() => {})}
               accessibilityRole="link"
               accessibilityLabel={`Source: ${src.label}`}
+              hitSlop={{ top: 8, bottom: 8 }}
               style={styles.source}
             >
               <UI.External size={14} color={c.greenBright} weight="bold" />

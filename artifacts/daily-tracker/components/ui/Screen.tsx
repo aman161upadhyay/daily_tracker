@@ -49,7 +49,9 @@ export function ScreenHeader({ title, subtitle, right }: ScreenHeaderProps) {
             {subtitle}
           </Txt>
         ) : null}
-        <Txt role="largeTitle">{title}</Txt>
+        <Txt role="largeTitle" heading>
+          {title}
+        </Txt>
       </View>
       {right ? <View style={styles.headerRight}>{right}</View> : null}
     </View>

@@ -33,8 +33,9 @@ export function ActivityList({ habit }: ActivityListProps) {
   const records = useMemo(() => habitActivity(state, habit, days, units), [state, habit, days, units]);
   const imported = records.some((r) => !r.removable);
 
+  const whenOf = (r: ActivityRecord) => (r.day === today ? `at ${formatClock(minutesOfDay(r.at, zone), clock)}` : `on ${formatDayShort(r.day)}`);
   const remove = (r: ActivityRecord) => {
-    const when = r.day === today ? `at ${formatClock(minutesOfDay(r.at, zone), clock)}` : `on ${formatDayShort(r.day)}`;
+    const when = whenOf(r);
     confirmDestructive('Remove this entry?', `${r.amount} ${when} comes off that day's total.`, 'Remove', () => {
       // The exact record comes back on Undo — same id, time and origin — not a new one logged now.
       const gone = actions.removeLog(r.log, r.id);
@@ -49,6 +50,20 @@ export function ActivityList({ habit }: ActivityListProps) {
     if (g && g.day === r.day) g.rows.push(r);
     else groups.push({ day: r.day, rows: [r] });
   }
+  // The time in a Remove button's name, and when three taps landed in the same minute, which of
+  // the three: four "Remove 250 ml entry" buttons read alike to a screen reader.
+  const baseName = (r: ActivityRecord) => `Remove ${r.amount} entry ${whenOf(r)}`;
+  const alike = new Map<string, number>();
+  for (const r of records) if (r.removable) alike.set(baseName(r), (alike.get(baseName(r)) ?? 0) + 1);
+  const seen = new Map<string, number>();
+  const removeName = (r: ActivityRecord) => {
+    const name = baseName(r);
+    const total = alike.get(name) ?? 1;
+    if (total === 1) return name;
+    const nth = (seen.get(name) ?? 0) + 1;
+    seen.set(name, nth);
+    return `${name}, ${nth} of ${total}`;
+  };
 
   return (
     <View>
@@ -75,7 +90,7 @@ export function ActivityList({ habit }: ActivityListProps) {
                       {r.via ? ` · ${r.via}` : ''}
                     </Txt>
                   </Row>
-                  {r.removable ? <IconButton Glyph={UI.Trash} label={`Remove ${r.amount} entry`} onPress={() => remove(r)} size={36} color={c.textSecondary} /> : <View style={{ width: 36, height: 36 }} />}
+                  {r.removable ? <IconButton Glyph={UI.Trash} label={removeName(r)} onPress={() => remove(r)} size={36} color={c.textSecondary} /> : <View style={{ width: 36, height: 36 }} />}
                 </Row>
                 {i < g.rows.length - 1 ? <Divider /> : null}
               </View>

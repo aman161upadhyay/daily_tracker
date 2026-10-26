@@ -84,7 +84,7 @@ export default function CycleScreen() {
       <Screen>
         <ScreenHeader title="Cycle" subtitle={formatDayLong(calendarToday)} />
         <Card>
-          <Txt role="title2">Cycle tracking is off</Txt>
+          <Txt role="title2" heading>Cycle tracking is off</Txt>
           <Txt role="body" tone="secondary" style={{ marginTop: 6 }}>
             {cycle.history.length > 0 || state.cycleLogs.length > 0 ? 'Your periods and day logs are kept. Turn tracking on to see them again.' : 'Turn it on to log periods, see your phase and set cycle reminders. Off by default; nothing is shared.'}
           </Txt>
@@ -116,13 +116,14 @@ export default function CycleScreen() {
               {prediction.clamped && !cycle.birthControl ? 'A short cycle: ovulation is placed right after the period, so this is a rough guide.' : `Based on ${prediction.usableCycles} ${prediction.usableCycles === 1 ? 'cycle' : 'cycles'} and your typical length; it sharpens after three.`}
             </Txt>
           ) : null}
-          <Row gap={8} style={{ marginTop: 14 }}>
+          <Row gap={8} style={{ marginTop: 14, flexWrap: 'wrap' }}>
+            {/* The period button keeps its whole label; on a narrow phone "Log today" wraps under it. */}
             {offer.kind === 'end' ? (
-              <PillButton label="Period ended today" kind={offer.prominent ? 'primary' : 'ghost'} color={color} compact onPress={() => actions.periodEnd()} style={{ flex: 1 }} />
+              <PillButton label="Period ended today" kind={offer.prominent ? 'primary' : 'ghost'} color={color} compact onPress={() => actions.periodEnd()} style={styles.primaryAction} />
             ) : offer.kind === 'ended-today' ? (
-              <PillButton label="Undo “ended today”" kind="ghost" compact onPress={() => actions.updatePeriod(offer.start, { end: null })} style={{ flex: 1 }} />
+              <PillButton label="Undo “ended today”" kind="ghost" compact onPress={() => actions.updatePeriod(offer.start, { end: null })} style={styles.primaryAction} />
             ) : (
-              <PillButton label="Period started today" color={color} compact onPress={() => actions.periodStart()} style={{ flex: 1 }} />
+              <PillButton label="Period started today" color={color} compact onPress={() => actions.periodStart()} style={styles.primaryAction} />
             )}
             <PillButton label={loggedDays.has(calendarToday) ? 'Edit today' : 'Log today'} kind="ghost" compact Leading={UI.Edit} onPress={() => setDay(calendarToday)} />
           </Row>
@@ -132,7 +133,7 @@ export default function CycleScreen() {
           <Row gap={12}>
             <IconTile Glyph={UI.Cycle} color={color} size={44} />
             <View style={{ flex: 1 }}>
-              <Txt role="title2">No periods logged yet</Txt>
+              <Txt role="title2" heading>No periods logged yet</Txt>
               <Txt role="footnote" tone="secondary">
                 Log the first day of your last few periods on the calendar below; predictions start with the first and sharpen after three.
               </Txt>
@@ -379,6 +380,7 @@ function UpcomingRow({ color, title, value, detail }: { color: string; title: st
 }
 
 const styles = StyleSheet.create({
+  primaryAction: { flexGrow: 1, flexBasis: 190 },
   prediction: {
     flexDirection: 'row',
     alignItems: 'center',

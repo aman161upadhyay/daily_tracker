@@ -64,8 +64,9 @@ export function NudgeCard({ nudge, suggestion, hasRotation, activeStartMin, nowM
         </View>
         <IconButton Glyph={UI.Gear} label="Reminder settings" onPress={onSettings} size={40} color={c.textSecondary} haptic={false} />
       </Row>
+      {/* The primary keeps a readable width; on a narrow phone the other two wrap under it instead of squeezing "Done now" to "D…". */}
       <View style={styles.actions}>
-        <PillButton label="Done now" onPress={onDone} compact Leading={UI.Check} style={{ flex: 1 }} />
+        <PillButton label="Done now" onPress={onDone} compact Leading={UI.Check} style={styles.primary} />
         <PillButton label="Snooze 10 min" onPress={onSnooze} compact kind="ghost" />
         <IconButton Glyph={UI.Shuffle} label="Swap for another snack" onPress={onSwap} size={40} color={c.text} />
       </View>
@@ -74,8 +75,10 @@ export function NudgeCard({ nudge, suggestion, hasRotation, activeStartMin, nowM
 }
 
 const styles = StyleSheet.create({
+  primary: { flexGrow: 1, flexBasis: 150 },
   actions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 8,
     marginTop: 14,

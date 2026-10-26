@@ -82,4 +82,47 @@ describe('the reminder self-test (IDEA21)', () => {
     assert.equal((os.scheduled.get(TEST_RING_ID)!.trigger as { date: number }).date, nowMs + 120_000);
     await native.cancelTestRing();
   });
+
+  it('a cancel issued while an earlier send is still clearing the old ring wins (ADV21-01)', async () => {
+    const { native, os } = loadNotificationService();
+    resetOs(os);
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    // The first send's cancel-before-schedule is suspended; a second send and a cancel arrive meanwhile.
+    os.hold = (op, id) => (op === 'cancel' && id === TEST_RING_ID && !released ? held : undefined);
+    let released = false;
+    const first = native.scheduleTestRing(100_000);
+    const second = native.scheduleTestRing(200_000);
+    const cancel = native.cancelTestRing();
+    released = true;
+    release();
+    await assert.rejects(first, (err: Error) => err.name === 'SupersededError');
+    await assert.rejects(second, (err: Error) => err.name === 'SupersededError');
+    await cancel;
+    assert.equal(os.scheduled.has(TEST_RING_ID), false, 'no send sneaked its ring in after the cancel');
+  });
+
+  it('a refused cancel is reported, not swallowed (ADV21-02)', async () => {
+    const { native, os } = loadNotificationService();
+    resetOs(os);
+    await native.scheduleTestRing(Date.now() + 60_000);
+    os.hold = (op, id) => (op === 'cancel' && id === TEST_RING_ID ? Promise.reject(new Error('cancel refused')) : undefined);
+    await assert.rejects(native.cancelTestRing(), /cancel refused/);
+    assert.equal(os.scheduled.has(TEST_RING_ID), true, 'the ring still stands');
+    os.hold = undefined;
+    await native.cancelTestRing();
+    assert.equal(os.scheduled.has(TEST_RING_ID), false);
+  });
+
+  it('registers the channels before it schedules, so a test sent before the scheduler prepared lands (ADV21-03)', async () => {
+    const { native, os } = loadNotificationService();
+    resetOs(os);
+    let channels = 0;
+    os.onChannel = () => {
+      channels += 1;
+    };
+    await native.scheduleTestRing(Date.now() + 60_000);
+    assert.ok(channels > 0, 'setNotificationChannelAsync was called');
+    await native.cancelTestRing();
+  });
 });
