@@ -14,6 +14,8 @@ export interface NudgeCardProps {
   suggestion?: string;
   /** Whether any movement snack is enabled for nudging (the card is only shown when movement habits exist). */
   hasRotation: boolean;
+  /** Movement reminders that ring at chosen times (on, not part of the rotation). */
+  fixedReminders: number;
   activeStartMin: number;
   activeEndMin: number;
   /** "until 3:30 PM" while the global pause runs (`pausedUntilText`); the card then says so instead of guessing. */
@@ -26,15 +28,18 @@ export interface NudgeCardProps {
 }
 
 /** "Next: 10 squats · in 24 min" with Done now / Snooze / Swap. Gold frame while live. */
-export function NudgeCard({ nudge, suggestion, hasRotation, activeStartMin, activeEndMin, nowMin, pausedUntil, onDone, onSnooze, onSwap, onSettings }: NudgeCardProps) {
+export function NudgeCard({ nudge, suggestion, hasRotation, fixedReminders, activeStartMin, activeEndMin, nowMin, pausedUntil, onDone, onSnooze, onSwap, onSettings }: NudgeCardProps) {
   const c = useColors();
   const clock = useClockFormat();
 
   if (!nudge) {
     // Says why nothing is planned, and promises no clock time the planner did not set: the first
     // slot of a day follows the active start by the interval, so "resume at 9:00 AM" was never true.
+    // Set-time reminders are not "off": the rotation this card follows is simply not in use.
     const text = !hasRotation
-      ? "Every movement reminder is off or paused. Turn one on from the habit's Reminders."
+      ? fixedReminders > 0
+        ? `${fixedReminders === 1 ? 'Your movement reminder rings' : 'Your movement reminders ring'} at the times set in ${fixedReminders === 1 ? "the habit's" : "each habit's"} Reminders; automatic nudges are off.`
+        : "Every movement reminder is off or paused. Turn one on from the habit's Reminders."
       : pausedUntil
         ? `Nudges are paused ${pausedUntil}. Resume them in Settings → Reminders.`
         : nowMin < activeStartMin
@@ -47,7 +52,7 @@ export function NudgeCard({ nudge, suggestion, hasRotation, activeStartMin, acti
         <Row gap={12}>
           <IconTile Glyph={UI.Bell} color={c.textTertiary} size={40} />
           <View style={{ flex: 1 }}>
-            <Txt role="title2">{!hasRotation ? 'No movement nudges' : pausedUntil ? 'Nudges paused' : 'No nudge due'}</Txt>
+            <Txt role="title2">{!hasRotation ? (fixedReminders > 0 ? 'No automatic nudges' : 'No movement nudges') : pausedUntil ? 'Nudges paused' : 'No nudge due'}</Txt>
             <Txt role="footnote" tone="secondary">
               {text}
             </Txt>

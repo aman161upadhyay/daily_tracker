@@ -37,11 +37,18 @@ export function BackupCard({ confirm }: { confirm: Confirm }) {
   const [kept, setKept] = useState<Snapshot[]>([]);
   const backupFailure = useBackupFailure();
   // The same queued delete BackupSync runs, from a button: "deleted" must end up meaning deleted.
+  // The failed delete is retried, not a wider one: a set-aside cleanup must leave the current copy.
   const retryDelete = () => {
+    if (!backupFailure || backupFailure.what === 'write') return;
+    const what = backupFailure.what;
+    const job = what === 'delete' ? deleteSnapshot : deleteKeptSnapshots;
     setBusy(true);
-    afterSnapshots(deleteSnapshot)
-      .then(() => reportBackup('delete', null))
-      .catch((err) => reportBackup('delete', err))
+    afterSnapshots(job)
+      .then(() => {
+        reportBackup(what, null);
+        if (what === 'delete-kept') setKept([]);
+      })
+      .catch((err) => reportBackup(what, err))
       .finally(() => setBusy(false));
   };
 
@@ -64,7 +71,10 @@ export function BackupCard({ confirm }: { confirm: Confirm }) {
     setBusy(true);
     markCleanupPending('kept')
       .then(() => deleteKeptSnapshots())
-      .then(() => setKept([]))
+      .then(() => {
+        setKept([]);
+        reportBackup('delete-kept', null);
+      })
       .catch((err) => {
         console.warn('[backup] kept snapshot', err);
         setTransfer({ tone: 'error', text: `The set-aside copy could not be removed just now: ${message(err)}` });
@@ -190,9 +200,11 @@ export function BackupCard({ confirm }: { confirm: Confirm }) {
               <Txt role="caption" tone="secondary" style={{ flex: 1 }}>
                 {backupFailure.what === 'write'
                   ? `The copy for Android phone backup could not be written (${backupFailure.message}). Android backs up the previous copy, if there is one; the app tries again when you come back to it. An exported file is the sure copy.`
-                  : `The phone-backup copy could not be deleted (${backupFailure.message}); it is still on this phone. The app tries again on its next start.`}
+                  : backupFailure.what === 'delete'
+                    ? `The phone-backup copy could not be deleted (${backupFailure.message}); it is still on this phone. The app tries again on its next start.`
+                    : `The set-aside copies from an older build could not be removed (${backupFailure.message}); they are still on this phone. Your current copy is not affected. The app tries again on its next start.`}
               </Txt>
-              {backupFailure.what === 'delete' ? <PillButton label="Retry" kind="ghost" compact onPress={retryDelete} disabled={busy} /> : null}
+              {backupFailure.what !== 'write' ? <PillButton label="Retry" kind="ghost" compact onPress={retryDelete} disabled={busy} /> : null}
             </Row>
           ) : null}
           {kept.length > 0 ? (

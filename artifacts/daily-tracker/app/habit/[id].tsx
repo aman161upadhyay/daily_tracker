@@ -108,9 +108,11 @@ export default function HabitDetailScreen() {
   const todayUnit = weekly ? (view.periodLabel ?? 'this period') : habit.type === 'YES_NO' ? 'today' : `of ${habitAmountText(habit, view.target, state.settings.units)} today`;
   // Each day about itself — for a weekly habit `ratio` is the week's accumulated progress, and one
   // Monday session would otherwise count as seven days met by Sunday.
-  const completed14 = daysMet(view.ratios14);
-  // Only days since the habit existed count as "last N": a two-day-old habit is not 1 of 14.
+  // Only days since the habit existed count as "last N": a two-day-old habit is not 1 of 14 — and
+  // the met days come from the same span: sessions logged from Quick Log before the habit existed
+  // are its history, but "14 of last 1" is not a thing a person can have done.
   const span = adherenceSpan(habit.createdDay, today);
+  const completed14 = daysMet(view.ratios14.slice(-span.days));
   const last14 = lastNDays(today, span.days);
   const periodNoun = view.rule.cadence === 'DAILY' ? 'day' : view.rule.cadence === 'WEEKLY' ? 'week' : 'month';
   const plural = (n: number) => (n === 1 ? periodNoun : `${periodNoun}s`);

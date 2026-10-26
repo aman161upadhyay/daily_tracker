@@ -45,8 +45,17 @@ export async function authenticate(): Promise<boolean> {
  */
 export async function setScreenProtection(enabled: boolean): Promise<ProtectionResult> {
   try {
-    if (enabled) await ScreenCapture.preventScreenCaptureAsync(PROTECTION_KEY);
-    else await ScreenCapture.allowScreenCaptureAsync(PROTECTION_KEY);
+    if (enabled) {
+      // The library remembers the key and skips the native call the second time, but FLAG_SECURE
+      // lives on the activity's window: when Android recreates the activity and keeps this runtime
+      // (a locale change, "Don't keep activities", memory pressure), the new window has no flag
+      // while the remembered key says it does. Releasing the key first makes every call reach the
+      // window — the gate calls this on each foreground, and Settings' Retry too.
+      await ScreenCapture.allowScreenCaptureAsync(PROTECTION_KEY);
+      await ScreenCapture.preventScreenCaptureAsync(PROTECTION_KEY);
+    } else {
+      await ScreenCapture.allowScreenCaptureAsync(PROTECTION_KEY);
+    }
     return { ok: true };
   } catch (err) {
     // Reported, not swallowed: the lock's privacy promise is only as good as this call (Settings shows it with a Retry).

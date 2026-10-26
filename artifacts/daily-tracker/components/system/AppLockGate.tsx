@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { AppState, type AppStateStatus, Modal, StyleSheet, View } from 'react-native';
+import { AppState, type AppStateStatus, Modal, Platform, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { UI } from '@/components/ui/icons';
 import { IconTile, PillButton } from '@/components/ui/primitives';
@@ -65,6 +65,22 @@ export function AppLockGate() {
     setScreenProtection(enabled).then((r) => alive && setProtectionStatus(enabled ? { enabled, ...r } : null));
     return () => {
       alive = false;
+    };
+  }, [enabled]);
+
+  // The protection lives on the activity's window. Android may recreate the activity and keep this
+  // runtime (a locale change, "Don't keep activities", memory pressure): the new window has none of
+  // it while the setting says it does. Re-applied on every foreground, and recorded like the first.
+  useEffect(() => {
+    if (!enabled || Platform.OS === 'web') return;
+    let alive = true;
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next !== 'active') return;
+      setScreenProtection(true).then((r) => alive && setProtectionStatus({ enabled: true, ...r }));
+    });
+    return () => {
+      alive = false;
+      sub.remove();
     };
   }, [enabled]);
 

@@ -9,8 +9,12 @@ import { useSyncExternalStore } from 'react';
 
 export interface BackupFailure {
   at: number;
-  /** `write`: the snapshot could not be written. `delete`: the copy could not be removed. */
-  what: 'write' | 'delete';
+  /**
+   * `write`: the snapshot could not be written. `delete`: the copy (and every set-aside one) could
+   * not be removed — what "off" and "Erase everything" promise. `delete-kept`: only the set-aside
+   * copies an older build could not read were to go; the current copy stays, and so must a Retry.
+   */
+  what: 'write' | 'delete' | 'delete-kept';
   message: string;
 }
 
@@ -23,10 +27,13 @@ export function setBackupFailure(next: BackupFailure | null): void {
   for (const l of listeners) l();
 }
 
-/** Record a failure of `what`, or clear the shown one when a later attempt of the same kind succeeded. */
+/**
+ * Record a failure of `what`, or clear the shown one when a later attempt of the same kind succeeded.
+ * A delete of everything also clears a failed delete of the set-aside copies (they went with it).
+ */
 export function reportBackup(what: BackupFailure['what'], err: unknown | null): void {
   if (err === null) {
-    if (failure && failure.what === what) setBackupFailure(null);
+    if (failure && (failure.what === what || (what === 'delete' && failure.what === 'delete-kept'))) setBackupFailure(null);
     return;
   }
   setBackupFailure({ at: Date.now(), what, message: err instanceof Error ? err.message : String(err) });

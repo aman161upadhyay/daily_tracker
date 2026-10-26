@@ -5,7 +5,7 @@
  * persists, flags the running app to reload, then redraws every widget.
  */
 import React from 'react';
-import { requestWidgetUpdate, type WidgetTaskHandlerProps } from 'react-native-android-widget';
+import { getWidgetInfo, requestWidgetUpdateById, type WidgetTaskHandlerProps } from 'react-native-android-widget';
 import { createStore } from '@/src/data/createStore';
 import { withHeadlessLock } from '@/src/services/headlessLock';
 import type { FiredRecord } from '@/src/services/notifications';
@@ -54,19 +54,30 @@ function draw(render: (el: React.JSX.Element) => void, model: WidgetModel, width
   }
 }
 
-/** Redraw every placed widget (all sizes) from one model; a throw inside the tree draws the fallback instead. */
+/**
+ * Redraw every placed widget (all sizes) from one model; a throw inside one widget's tree draws
+ * the fallback on that widget and the others still draw. Each widget goes through
+ * `requestWidgetUpdateById`, whose promise covers its render: the library's `requestWidgetUpdate`
+ * renders every widget in a detached `forEach(async …)`, so its promise resolved before any tree
+ * was built and a throw there was an unhandled rejection the catch below never saw.
+ */
 export async function drawAllWidgets(model: WidgetModel): Promise<void> {
-  try {
-    await requestWidgetUpdate({
-      widgetName: WIDGET_NAME,
-      renderWidget: (info) => <TrackerWidget model={model} width={info.width} height={info.height} />,
-    });
-  } catch (err) {
-    console.error('Widget draw failed', err);
-    await requestWidgetUpdate({
-      widgetName: WIDGET_NAME,
-      renderWidget: (info) => <WidgetFallback width={info.width} height={info.height} />,
-    });
+  const placed = await getWidgetInfo(WIDGET_NAME);
+  for (const { widgetId } of placed) {
+    try {
+      await requestWidgetUpdateById({
+        widgetName: WIDGET_NAME,
+        widgetId,
+        renderWidget: (info) => <TrackerWidget model={model} width={info.width} height={info.height} />,
+      });
+    } catch (err) {
+      console.error('Widget draw failed', err);
+      await requestWidgetUpdateById({
+        widgetName: WIDGET_NAME,
+        widgetId,
+        renderWidget: (info) => <WidgetFallback width={info.width} height={info.height} />,
+      }).catch((again) => console.error('Widget fallback draw failed', again));
+    }
   }
 }
 

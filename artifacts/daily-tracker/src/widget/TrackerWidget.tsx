@@ -1,8 +1,17 @@
+'use no memo';
 /**
  * The home-screen widget, drawn with react-native-android-widget primitives
  * (they become Android RemoteViews, not React Native views). Only ever
  * imported lazily from `src/services/widget.native.ts`, so Expo Go and web
  * never evaluate it.
+ *
+ * The directive above keeps the React Compiler (`experiments.reactCompiler`
+ * in app.json) out of this file: the widget library builds its tree by
+ * calling these components as plain functions, outside React, and a compiled
+ * component starts with a memo-cache hook call that throws "Invalid hook
+ * call" there — the widget, and its fallback tile, would never draw in a
+ * release build. `tests/round26.test.ts` compiles this file the way Metro
+ * does and asserts no compiler runtime is left in it.
  */
 import React from 'react';
 import { PixelRatio } from 'react-native';

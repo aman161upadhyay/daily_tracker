@@ -196,7 +196,7 @@ the block survives every `--clean` prebuild.
 higher over the existing one and rejects only a lower one (`INSTALL_FAILED_VERSION_DOWNGRADE`).
 This project still raises `expo.android.versionCode` in `app.json` on every release (M3 shipped 3,
 M4 4, M5 5, M6 6, then one per council round: round 3 → 7, round 4 → 8, round 5 → 9, round 6 → 10, round 7 → 11, round 8 → 12, round 9 → 13, round 10 → 14, round 11 → 15)
-so that "which build is this phone on" has one answer; `version` follows the tag (`0.29.0` = `v0.29`).
+so that "which build is this phone on" has one answer; `version` follows the tag (`0.30.0` = `v0.30`).
 `app.json` is the source of truth; when this paragraph and `app.json` disagree, `app.json` is right.
 
 Google Play is deliberately not part of this recipe; `./gradlew bundleRelease` produces the AAB if
@@ -260,6 +260,12 @@ so Android 8.0 is the floor. The permission sheet only lists the data types decl
 manifest (`app.json` → `android.permissions`); if a type is missing there, it is silently absent
 from the sheet rather than denied. A debug build on an Android 14+ phone sometimes needs one
 reboot before Health Connect shows the app in its list.
+
+The widget file (`src/widget/TrackerWidget.tsx`) must keep `'use no memo'` as its first line:
+`app.json` turns the React Compiler on for the whole app, and the widget library calls the widget
+components as plain functions outside React, where a compiled component throws "Invalid hook
+call". `pnpm test` compiles that file the way Metro does and fails if the directive is missing, so
+a blank widget on the phone with that error in logcat means the test was skipped.
 
 ## When something fails
 

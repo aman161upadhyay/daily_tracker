@@ -644,6 +644,11 @@ export function scheduleMindEnd(endAtMs: number, minutes: number, kind: MindKind
     await Notifications.cancelScheduledNotificationAsync(MIND_END_ID).catch(() => {});
     // A cancel (or a newer schedule) requested while that await ran supersedes this one.
     if (gen !== mindBellGen) return;
+    // The Timer channel is created here, not only by the nudge scheduler's prepare(): a person who
+    // keeps reminders off never runs that, and Android would land the bell on Expo's fallback
+    // channel, out of reach of the Timer control Settings describes.
+    await registerChannels();
+    if (gen !== mindBellGen) return;
     const payload = mindEndPayload(endAtMs, minutes, kind);
     await Notifications.scheduleNotificationAsync({
       identifier: MIND_END_ID,

@@ -449,6 +449,19 @@ export function rotationItems(state: TrackerState): RotationItem[] {
     .map((h) => ({ habitId: h.id, snackType: h.snackType as SnackType, label: h.name }));
 }
 
+/**
+ * Movement habits whose reminder is on and rings at chosen times — outside the rotation the nudge
+ * card follows. The card must not call these "off": the person chose their times.
+ */
+export function fixedMovementReminders(state: TrackerState): number {
+  return activeHabits(state)
+    .filter((h) => h.snackType && !isSugarShield(h))
+    .filter((h) => {
+      const p = policyFor(state, h.id);
+      return !!p && p.enabled && p.kind === 'FIXED';
+    }).length;
+}
+
 /** The snack habit the rotation suggests next (what a tap on the automatic movement tile logs). */
 export function rotationHabit(state: TrackerState, today: string): Habit | undefined {
   const items = rotationItems(state);

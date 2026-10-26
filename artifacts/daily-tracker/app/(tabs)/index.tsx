@@ -27,7 +27,7 @@ import { pausedUntilText, shortPolicyText } from '@/src/domain/nudges/describePo
 import { useClockFormat, useHabitViews, useHighlights, useLiveNudge, useTodaySummary } from '@/src/state/hooks';
 import { type PinnedCardId } from '@/src/domain/today/pinned';
 import { ringsCentre } from '@/src/domain/today/ringsCentre';
-import { cycleTimeline, habitDayValue, mindSeries, policyFor, rotationItems, ruleFor, snackSeries, snackSuggestion, waterSeries } from '@/src/state/selectors';
+import { cycleTimeline, habitDayValue, mindSeries, policyFor, fixedMovementReminders, rotationItems, ruleFor, snackSeries, snackSuggestion, waterSeries } from '@/src/state/selectors';
 import { displayPhase, PHASE_LABELS, phaseQualifier } from '@/src/domain/cycle/timeline';
 import { formatDayShort } from '@/src/domain/time/format';
 import { dayDiff } from '@/src/domain/time/trackingDay';
@@ -228,6 +228,7 @@ export default function TodayScreen() {
       <NudgeCard
         nudge={nudge}
         hasRotation={rotationItems(state).length > 0}
+        fixedReminders={fixedMovementReminders(state)}
         suggestion={nudge ? snackSuggestion(nudge.item.snackType) : undefined}
         activeStartMin={s.activeStartMin}
         activeEndMin={s.activeEndMin}

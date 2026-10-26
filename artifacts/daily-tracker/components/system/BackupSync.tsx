@@ -33,13 +33,17 @@ export function BackupSync() {
   const enqueue = (job: () => Promise<void>) => {
     afterSnapshots(job).catch((err) => console.warn('[backup]', err));
   };
-  /** A delete the person was promised ("off", "Erase everything"): its outcome is shown in Your data. */
-  const enqueueDelete = (job: () => Promise<void>) => {
+  /**
+   * A delete the person was promised ("off", "Erase everything", or forgetting the set-aside copies):
+   * its outcome is shown in Your data under its own name, so a Retry there runs the same delete and
+   * not a wider one — retrying a set-aside cleanup must never remove the current copy.
+   */
+  const enqueueDelete = (job: () => Promise<void>, what: 'delete' | 'delete-kept') => {
     afterSnapshots(job)
-      .then(() => reportBackup('delete', null))
+      .then(() => reportBackup(what, null))
       .catch((err) => {
         console.warn('[backup]', err);
-        reportBackup('delete', err);
+        reportBackup(what, err);
       });
   };
 
@@ -75,8 +79,8 @@ export function BackupSync() {
     };
     cleanupPending()
       .then((pending) => {
-        if (pending === 'all') enqueueDelete(deleteSnapshot);
-        else if (pending === 'kept') enqueueDelete(deleteKeptSnapshots);
+        if (pending === 'all') enqueueDelete(deleteSnapshot, 'delete');
+        else if (pending === 'kept') enqueueDelete(deleteKeptSnapshots, 'delete-kept');
       })
       .catch((err) => console.warn('[backup]', err));
     run();
@@ -104,7 +108,7 @@ export function BackupSync() {
           // The delete still runs now; only the restart safety net is missing, which the person hears of if the delete fails too.
           console.warn('[backup]', err);
         })
-        .then(() => enqueueDelete(deleteSnapshot));
+        .then(() => enqueueDelete(deleteSnapshot, 'delete'));
       if (erased) enqueue(() => purgeTransferCache({ all: true }));
     }
   }, [ready, state]);

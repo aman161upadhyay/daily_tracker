@@ -15,10 +15,10 @@ Last updated: 2026-10-26, autonomous session (council rounds 1–20 fixed; see j
 |---|---|
 | App | Daily Tracker — private Android tracker: habits · water · movement snacks · meditation · opt-in cycle · home-screen widget · configurable nudges · Health Connect import · app lock · encrypted backups |
 | Code | `artifacts/daily-tracker/` — Expo SDK 57, React Native 0.86, TypeScript, Expo Router, expo-sqlite |
-| Version | `app.json` `version 0.29.0`, `versionCode 29`, tag `v0.29` (M6 complete + council rounds 1–25) |
+| Version | `app.json` `version 0.30.0`, `versionCode 30`, tag `v0.30` (M6 complete + council rounds 1–26) |
 | Repo | https://github.com/aman161upadhyay/daily_tracker.git, branch `main`, commits authored as Aman |
 | Milestones | M0 skeleton ✅ · M1 storage/streaks/onboarding ✅ · M2 nudges/notifications ✅ · M3 widget ✅ · M4 Health Connect/Body ✅ · M5 cycle ✅ · M6 theme/lock/backup/signing ✅ (`docs/IMPLEMENTATION_PLAN.md`) |
-| Verified here | type-check (three packages), 521 unit tests (incl. a 75-sequence randomised nudge simulation and a seeded state fuzz), Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks (incl. the Health Connect rationale activity), web walkthroughs by a browser-driving tester |
+| Verified here | type-check (three packages), 527 unit tests (incl. the widget file compiled as Metro compiles a release build, a 75-sequence randomised nudge simulation and a seeded state fuzz), Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks (incl. the Health Connect rationale activity), web walkthroughs by a browser-driving tester |
 | Never run yet | a real Android device. Everything native (widget taps, notification buttons with the app closed, Health Connect, app lock, Auto Backup, signed APK) is coded and reviewed but untested on hardware — `docs/DEVICE_CHECKLIST.md` lists the exact rows |
 | User's next step | `docs/GET_IT_ON_YOUR_PHONE.md` (plain-language build guide) |
 
@@ -697,6 +697,33 @@ contradicts one, write down why.
     `console.warn` and the screen kept describing the promise as kept — "Android keeps a copy" over a
     copy that was not being written, a lock that promised blocked screenshots it had not blocked.
 
+110. **Code that runs outside React is compiled as if it did not.** `src/widget/TrackerWidget.tsx`
+    opens with `'use no memo'`: the widget library builds its tree by calling the components as plain
+    functions, and a component the React Compiler has touched begins with a memo-cache hook call that
+    throws "Invalid hook call" there. A test compiles the file exactly as Metro does for a release
+    build (babel-preset-expo, the metro caller, the compiler on) and asserts no compiler runtime is
+    left in it — and compiles a probe without the directive to prove the harness has the compiler
+    on. **Why:** `experiments.reactCompiler` has been on since the start; every widget, and the
+    round-25 fallback tile, would have thrown on the first installed build. Nothing in the suite ran
+    the widget through the compiler because the tests run through tsx, which does not have one.
+
+111. **A library promise is read from its source before it is relied on.** `requestWidgetUpdate`
+    renders every placed widget inside a detached `forEach(async …)`: its promise resolves before any
+    tree is built, so a `try / catch` around it catches nothing. The app enumerates the widgets
+    (`getWidgetInfo`) and draws each through `requestWidgetUpdateById`, whose promise covers the
+    render, with the fallback behind each one. Likewise `preventScreenCaptureAsync` remembers its
+    key in JavaScript and skips the native call the second time, while the flag it sets lives on an
+    activity window Android may recreate: the key is released and re-applied on every foreground.
+    **Why:** both wrappers looked like awaited operations and were not; the round-25 fallback
+    stood on the first, the lock's privacy promise on the second.
+
+112. **A Retry retries the operation that failed, at its own scope.** Your data's Retry for a
+    failed delete runs the delete whose failure it shows: `delete` (everything — "off", "Erase")
+    or `delete-kept` (only the set-aside copies an older build could not read); the current copy
+    is never removed by a retry of the narrower one. **Why:** the round-25 Retry always deleted
+    everything, so retrying a cleanup of old copies deleted the one live backup while the setting
+    still said the phone keeps a copy.
+
 ### How council findings are judged
 - Accept when: evidence is concrete (file:line, reproducible), it violates a paradigm or a user constraint,
   or it would break on a real phone. Severity drives order: data loss / crash / privacy > wrong behaviour >
@@ -807,12 +834,41 @@ Dates are America/New_York. Commits are on `main`.
 | 2026-10-26 night | **Round-25 fixes:** `WidgetTile.logs` from the tap handler's rule, the ring's click action and `ringLabel` both derived from it (R25-A1 / R25-A2, paradigm 107); week-over-week water and snack comparisons gated on two lived weeks (F25-01, paradigm 108); `ringsCentre` — Today's centre names what the person tracks and "Start empty" is not owed 2,000 ml, the Hydration legend reads "Not tracked", the nudge card is shown only with movement habits and its empty state says "No movement nudges" when every reminder is off (F25-02 / F25-03); `WidgetSync` draws the committed state while a save has failed (E25-01); `backupHealth` and the Your data notice with Retry for the phone-backup copy's write and delete (E25-02); the mind bell's cancel retries three times and a surviving bell is said on the screen or as a toast (E25-03); `SyncHealth.background` and two Reminders notices for a refused response task / background re-plan, Expo Go named as normal (E25-04); `WidgetFallback` behind every widget draw (E25-05); `setScreenProtection` returns its outcome, `protectionState`, and the App lock card's notice with Retry (E25-06). |
 | 2026-10-26 night | Verification: tsc clean, 521 tests (13 new in `tests/round25.test.ts`: every sample tile's `logs` equals the handler's verdict, the Steps ring, a met daily yes/no, a met week with today open, a snack habit at target, water and rotation; the water and snack comparisons on day 8 / Sunday / day 14 with up and down weeks; `ringsCentre` across the four kinds of person; the backup-failure clearing rule; the protection status), browser walk of Today with sample data and a "Start empty" install on the preview (see §6 Round 25), `expo export` release bundle; pushed as `v0.29`. |
 
+| 2026-10-26 night | **Council round 26** — three lenses over the round-25 result: a diff review with probes, five forty-day journeys through the pure core (3,006 equality checks: a water-only person across the DST change, weekly habits with freezes and a re-added preset, a day-boundary change mid-month, sessions ending after midnight, erase → Start fresh) and an Android platform lens read from the installed library sources (React Compiler, widget rendering, activity recreation, channels, Auto Backup, 16 KB pages). One high and three mediums from the diff, two mediums from the journeys, two highs and two mediums from the platform lens; nothing critical. |
+| 2026-10-26 night | **Round-26 fixes:** `'use no memo'` on the widget file with a compile-as-Metro test (AND26-01, paradigm 110); every placed widget drawn one by one through `requestWidgetUpdateById` with the fallback behind each, foreground refresh included (AND26-03 / R26-DIFF-02, paradigm 111); screenshot protection released and re-applied on every foreground so a recreated activity gets its flag back (AND26-02); the Timer channel registered before the mind bell is scheduled (AND26-04); `BackupFailure.what` gains `delete-kept` and Your data's Retry runs the delete that failed (R26-DIFF-01, paradigm 112); `fixedMovementReminders` and the nudge card's "No automatic nudges" for a person whose movement reminders ring at set times (R26-DIFF-03); a failed foreground re-submit of the mind bell said on the screen (R26-DIFF-04); `buildEmptyState` gives the new Water habit the kept goal as its target (J26-01); the habit page's "Days met" counts inside the span it names (J26-02). |
+| 2026-10-26 night | Verification: tsc clean, 527 tests (6 new in `tests/round26.test.ts`: a probe component is compiled by the harness and the widget file is not, the backup-failure clearing rules across the three kinds, the set-time count with a paused one and the Sugar Shield left out, the kept goal in the new Water rule at 3,000 and 1,500 ml, "Days met" at most 1 of last 1 after forty earlier sessions), browser walk of Today / a habit page / Mind / Settings on the preview, `expo export` release bundle; pushed as `v0.30`. |
+
 (Entries for each council round follow below as they happen.)
 
 ## 6. Council log
 
 Format per round: lens → findings (severity · title · disposition · commit). Dispositions: **fixed**,
 **rejected** (reason), **deferred** (needs user/phone).
+
+### Round 26 (2026-10-26 night)
+
+Three lenses over the round-25 result — a diff review with probes, five scripted forty-day journeys through the pure core (3,006 equality checks between selectors that describe one fact, `/tmp`-only script) and an Android platform lens read from the installed library sources (no device).
+
+**Android platform**
+- AND26-01 high · `experiments.reactCompiler` compiles every component in `TrackerWidget.tsx` (a memo-cache hook call opens each); the widget library calls them as plain functions, outside React, where that call throws — no installed build would have drawn the widget, or the round-25 fallback · **fixed** — `'use no memo'` as the file's first line; `tests/round26.test.ts` compiles the file with babel-preset-expo under the metro caller with the compiler on and asserts no compiler runtime remains (and that a probe without the directive does get compiled) (paradigm 110).
+- AND26-02 high · `preventScreenCaptureAsync` remembers its key and skips the native call the second time, while FLAG_SECURE lives on the activity's window: an activity Android recreates with the runtime kept ("Don't keep activities", a locale change, memory pressure) has no flag and the lock still says it does · **fixed** — `setScreenProtection(true)` releases the key and re-applies it, and the gate calls it on every foreground, recording the outcome as before (paradigm 111).
+- AND26-03 med · = R26-DIFF-02 (below).
+- AND26-04 med · the mind bell was scheduled against the `mind` channel without creating it; a person who keeps reminders off never runs the scheduler's `prepare()`, and Android lands the bell on Expo's fallback channel, outside the Timer control Settings describes · **fixed** — `registerChannels()` inside the bell's serialised schedule.
+- Judged correct (from the sources): exact alarms read `canScheduleExactAlarms` and Expo uses `setExactAndAllowWhileIdle` when allowed; a process death between the widget tap's persist and its revision mark loads SQLite whole on the next start; `FlexWidget` + `TextWidget` + `OPEN_APP` is a supported fallback shape; the backup rules allowlist `files/backup/` and leave SQLite out; RN 0.86 / expo-sqlite build with flexible page sizes (the signed artifact still owes the 16 KB check in BUILD_ANDROID); the headless task's 30-second budget has no bound the sources can prove on a slow phone (carried as the paradigm-76 tradeoff).
+
+**Diff review**
+- R26-DIFF-01 high · Your data's Retry always ran `deleteSnapshot` (everything), also when the failure it showed was the set-aside cleanup — a retry removed the one live backup while the setting still promised a copy · **fixed** — `BackupFailure.what` is `write` / `delete` / `delete-kept`; BackupSync reports the pending cleanup under its own kind; the Retry runs the matching delete, says which copies it concerns, and a delete of everything clears a set-aside failure but not the other way round (paradigm 112; test).
+- R26-DIFF-02 med · the round-25 fallback stood on `requestWidgetUpdate`, whose `forEach(async …)` resolves before any tree is built: a throw in the tree was an unhandled rejection, the stale widget stayed, the catch never ran (the headless single-widget `draw()` is synchronous and was right) · **fixed** — `drawAllWidgets` enumerates `getWidgetInfo` and awaits `requestWidgetUpdateById` per widget, fallback per widget; `refreshWidgets` (foreground) calls it instead of its own copy (paradigm 111).
+- R26-DIFF-03 med · "Every movement reminder is off or paused" was said to a person whose movement reminders ring at set times (FIXED policies are not rotation items) · **fixed** — `fixedMovementReminders`; the card reads "No automatic nudges — your movement reminders ring at the times set in each habit's Reminders"; test with a paused one and the Sugar Shield left out.
+- R26-DIFF-04 med · the foreground re-submit of the mind bell cancels the old bell before scheduling the new one; a refusal there left no bell and a comment claiming the first one stood · **fixed** — the screen says "The end bell could not be re-set after coming back, so the phone will not ring when time is up. Keep the screen on until the timer ends."
+- Judged correct: the bell cancel's retries serialise ahead of later schedules without superseding them; `SyncHealth` identity; a water-only person's "Due now" never depended on the hidden card; `ringsCentre` against the pinned cards.
+
+**Forty-day journeys**
+- J26-01 med · "Start fresh" / "Erase everything" kept the settings (a 3,000 ml goal) but built the new Water habit from the preset (2,000 ml): the habit page said done a litre before Today, the widget and the reminders did · **fixed** — `buildEmptyState` writes the kept goal into the new rule; tests at 3,000 and 1,500 ml.
+- J26-02 med · a Meditate habit added after weeks of Quick Log sessions read "Days met 14 of last 1" (the numerator over fourteen days, the denominator over the habit's age) · **fixed** — the habit page counts met days inside `adherenceSpan`; test.
+- Judged correct: forty days of widget taps agree across the habit, the ring, the remaining amount and the widget through the DST change; both 1:30 AM instants on November 1 belong to October 31 under a 4 AM boundary; weekly quotas, freezes, a missed week, archive and re-add keep history without duplicates; a boundary change leaves earlier assignments and totals intact; sessions ending after midnight are dated by their end; erase clears highlights, logs and the widget.
+
+**Browser walk on 0.30.0** — scripted Chromium against the preview with sample data: Today, a habit page ("Days met 14 of last 14" for a habit older than the window), the Mind screen, Settings; no console errors.
 
 ### Round 25 (2026-10-26 night)
 
@@ -1694,7 +1750,7 @@ Five lenses over the round-6 result, each a fresh read-only session with its own
 - PIPE10-03 — reconstruction of merged reminders scheduled by v0.12 (they are replaced on the first sync after the update).
 
 ### Device verification owed
-- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10, T1–T11, U1–U11, V1–V11, X1–X11, Y1–Y14, Z1–Z13, AA1–AA16, AB1–AB11, AC1–AC8, AD1–AD7, AE1–AE6, AF1–AF5, AG1–AG6, AH1–AH2, AI1–AI3, AJ1–AJ4, AK1–AK4, AL1–AL3, AM1–AM4, AN1–AN6, AO1–AO4, AP1–AP6 have never been run on hardware. First build on the laptop is the next real milestone — and the reminder self-test (Settings → Reminders → Test) is the first thing to run on it.
+- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10, T1–T11, U1–U11, V1–V11, X1–X11, Y1–Y14, Z1–Z13, AA1–AA16, AB1–AB11, AC1–AC8, AD1–AD7, AE1–AE6, AF1–AF5, AG1–AG6, AH1–AH2, AI1–AI3, AJ1–AJ4, AK1–AK4, AL1–AL3, AM1–AM4, AN1–AN6, AO1–AO4, AP1–AP6, AQ1–AQ5 have never been run on hardware. First build on the laptop is the next real milestone — and the reminder self-test (Settings → Reminders → Test) is the first thing to run on it.
 - Residual risk carried knowingly: two JavaScript runtimes writing SQLite at once (UPG6-03, row V11). If the device run shows a lost write there, the fix is a database revision compared inside the write transaction.
 - Rows added in round 7: X1–X5 (exact alarms and the offline re-plan — the two library defaults the platform lens read in the sources), X6 (sheets in a short window), X7–X9 (Today without the trio, cycle off / hidden), X10–X11 (long titles, the drink ceiling).
 - Rows added in round 8: Y1–Y3 (snapshot replacement, kept copies, journaled deletes), Y4–Y6 (speculative and birth-control reminders, estimated wording), Y7–Y10 (widget sizes, font scale, notice), Y11–Y14 (drink reconcile, one night across sources, late records and backfill, permission names).
@@ -1711,6 +1767,7 @@ Five lenses over the round-6 result, each a fresh read-only session with its own
 - Rows added in round 20: AK1 (a phone set to 24-hour time writes every time "21:30" under Automatic, and follows the switch when it is flipped in the background), AK2 (an archived preset added again with chosen days rings on those days and keeps its history), AK3 (an encrypted export of a large state keeps the busy label moving and Cancel responsive), AK4 (amounts typed on German and Arabic keyboards); AJ4 now expects 0.24.0.
 - Rows added in round 21: AL1 (the reminder self-test on a locked phone, then with the app killed; "No" lists the checks), AL2 (Cancel during an unlock: no replace confirmation afterwards; a wrong password's error does not reach the next sheet), AL3 (a crafted backup with a fractional rotation offset is refused at import).
 - Rows added in round 22: AM1 (TalkBack: a sheet announces its title on open, headings are reachable by heading navigation on Today, Settings and a habit page), AM2 (a 320-dp-class phone or display size "Largest": the rings card stacks, "Done now" / "+250 ml" / "Period started today" whole, the Log sheet's button inside the sheet), AM3 (the self-test's Cancel under a refused cancel — hard to stage; at least: Send twice quickly leaves one ring, Cancel leaves none), AM4 (a test sent on a fresh install before any reminder was planned still rings — the channel exists).
+- Rows added in round 26: AQ1 (the widget draws at all in an installed build — the React Compiler row; a fallback tile forced by a debug throw), AQ2 (screenshot protection after Android recreates the activity: Developer options → "Don't keep activities", leave and return, take a screenshot), AQ3 (the mind bell on the Timer channel for a person with reminders off), AQ4 (Retry of a set-aside cleanup leaves the current copy), AQ5 (a failed re-submit of the mind bell shows on the screen).
 - Rows added in round 25: AP1 (the Steps ring opens the habit; a met daily ring opens it; an open ring logs — each as TalkBack says), AP2 (a widget redraw under a failed save shows the saved number), AP3 (the phone-backup copy's write and delete failures shown in Your data; Retry), AP4 (a discarded meditation's bell: none rings; if the cancel fails, the notice names the time), AP5 (Reminders' notices for a refused button task / background re-plan — expected in Expo Go, absent in the installed app), AP6 (App lock's screenshot protection: a screenshot attempt is blocked; the notice and Retry if the phone refuses).
 - Rows added in round 24: AO1 (a met week on the widget: "nothing due", a full ring, TalkBack's "Double-tap to log the next snack" still true), AO2 (the cycle reminder sheet's discard question under Back and the scrim), AO3 (the empty nudge card during a pause, before and after the active hours, on a spent day), AO4 (a hand-logged Steps card opening the habit page).
 - Rows added in round 23: AN1 (Android 15, gesture and 3-button navigation: every sheet's last button and the Toast's Undo above the navigation bar), AN2 (a 568-dp-tall phone with the keyboard up: amounts, names, backup passwords and stepper values stay reachable; the password field opens the keyboard on its own), AN3 (font scale 1.3 / 2.0 at 390 and 320 dp: calendar dates, the onboarding numbers, badges, tabs, long totals), AN4 (Back during a habit edit, a running timer and a confirm Alert: the discard question, the timer pausing and resuming, a dismissed confirm deleting nothing), AN5 (split screen at the smallest window: Mind and onboarding scroll, a sheet's Close and the lock's Unlock reachable, nothing private shown), AN6 (opposite app and phone themes: a cold start's splash-to-palette transition, confirm Alerts in the app's palette after the fix, status and navigation icons legible); AJ4 now expects 0.27.0.

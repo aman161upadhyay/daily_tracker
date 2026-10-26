@@ -162,8 +162,10 @@ export default function MindScreen() {
     const sub = AppState.addEventListener('change', (st) => {
       if (st !== 'active' || !bellSet.current || bellAt.current - now() < 1000) return;
       scheduleMindEnd(bellAt.current, Math.round(totalMs / 60_000), kind).catch((err) => {
-        // The first schedule stood; this re-submission failing means the bell keeps the precision it had.
+        // The re-submission clears the first bell before it sets the new one (same identifier, one
+        // queue), so a refusal here leaves no bell at all: said on the screen, not in a console line.
         console.warn('Could not re-submit the end bell', err);
+        setBellError('The end bell could not be re-set after coming back, so the phone will not ring when time is up. Keep the screen on until the timer ends.');
       });
     });
     return () => sub.remove();

@@ -266,8 +266,11 @@ export function buildEmptyState(today: string, keepSettings?: TrackerState['sett
   };
   if (opts.withWater ?? true) {
     const { habit, rule, policy } = habitFromPreset(PRESET_BY_ID.water!, 'h_water', today);
+    // The goal lives twice (the setting and the Water habit's target) and is one number: a kept
+    // 3,000 ml setting with the preset's 2,000 ml target made the habit page say "done" a litre
+    // before Today, the widget and the reminders did.
     state.habits.push(habit);
-    state.rules.push(rule);
+    state.rules.push({ ...rule, target: base.waterGoalMl });
     state.policies.push(policy);
   }
   return state;
