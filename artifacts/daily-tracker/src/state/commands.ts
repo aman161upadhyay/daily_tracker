@@ -41,16 +41,25 @@ export function isNudgePayload(data: unknown): data is NudgePayload {
   return typeof d.nudgeId === 'string' && Array.isArray(d.habitIds) && typeof d.day === 'string';
 }
 
-/** Log "the natural unit" for a habit from a notification: one snack, one tap of water, today's target otherwise. */
-export function completeFromNudge(state: TrackerState, habit: Habit, ctx: CommandContext, source: EntrySource = 'MANUAL'): Action[] {
+/**
+ * Log "the natural unit" for a habit from a notification or a widget tap: one snack, one tap of
+ * water, today's target otherwise. `trigger` labels the snack row (notification = NUDGE, widget = WIDGET).
+ */
+export function completeFromNudge(
+  state: TrackerState,
+  habit: Habit,
+  ctx: CommandContext,
+  source: EntrySource = 'MANUAL',
+  trigger: Exclude<SnackTrigger, 'SUGAR_SHIELD'> = 'NUDGE',
+): Action[] {
   const { nowMs: at, zone, today: day } = ctx;
   if (habit.presetId === 'water') {
     return [{ type: 'ADD_WATER', entry: { id: ctx.newId(), at, zone, day, ml: state.settings.tapSizeMl, source } }];
   }
   if (habit.snackType) {
     const meta = SNACK_LABELS[habit.snackType];
-    const trigger: SnackTrigger = habit.presetId === 'sugar-shield' ? 'SUGAR_SHIELD' : 'NUDGE';
-    return [{ type: 'LOG_SNACK', snack: { id: ctx.newId(), at, zone, day, type: habit.snackType, reps: meta.defaultReps, seconds: meta.defaultSeconds, trigger } }];
+    const snackTrigger: SnackTrigger = habit.presetId === 'sugar-shield' ? 'SUGAR_SHIELD' : trigger;
+    return [{ type: 'LOG_SNACK', snack: { id: ctx.newId(), at, zone, day, type: habit.snackType, reps: meta.defaultReps, seconds: meta.defaultSeconds, trigger: snackTrigger } }];
   }
   const view = habitView(state, habit, day);
   if (view.todayRatio >= 1) return [];
@@ -62,6 +71,16 @@ export function completeFromNudge(state: TrackerState, habit: Habit, ctx: Comman
     return [{ type: 'LOG_MIND', session: { id: ctx.newId(), startAt: at - remaining * 60_000, endAt: at, zone, day, kind: habit.mindKind, minutes: remaining } }];
   }
   return [{ type: 'ADD_ENTRY', entry: { id: ctx.newId(), habitId: habit.id, day, at, zone, value: remaining, source } }];
+}
+
+/**
+ * A tap on a widget tile: the same natural unit as a notification "Done", recorded as a widget
+ * write. An unknown or archived habit (stale widget after a change in the app) logs nothing.
+ */
+export function widgetTapActions(state: TrackerState, habitId: string, ctx: CommandContext): Action[] {
+  const habit = state.habits.find((h) => h.id === habitId && !h.archived);
+  if (!habit) return [];
+  return completeFromNudge(state, habit, ctx, 'AUTO_WIDGET', 'WIDGET');
 }
 
 export function nudgeEventAction(payload: Pick<NudgePayload, 'nudgeId' | 'habitIds'>, kind: NudgeEventKind, ctx: CommandContext, untilMs?: number): Action {

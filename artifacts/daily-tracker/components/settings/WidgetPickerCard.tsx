@@ -11,9 +11,9 @@ import { useTracker } from '@/src/state/TrackerProvider';
 export const WIDGET_MAX = 3;
 
 /**
- * Which habits the home-screen widget shows. Empty = automatic (water, the
- * movement rotation and mind). The widget itself ships with the first installed
- * build; the choice is saved now so it is ready.
+ * Which habits the home-screen widget shows, in order. Empty = automatic (water,
+ * the snack that is up next in the movement rotation, and mind). The widget
+ * itself exists only in the installed Android build (`src/widget/`).
  */
 export function WidgetPickerCard() {
   const c = useColors();
@@ -54,7 +54,8 @@ export function WidgetPickerCard() {
         </Row>
         <Txt role="caption" tone="secondary">
           {chosen.length >= WIDGET_MAX ? `That is the limit of ${WIDGET_MAX}; deselect one to pick another. ` : ''}
-          The widget arrives with the first installed Android build; your selection is saved now.
+          Tap a ring on the widget to log; tap its name to open the habit. A small widget shows the first
+          habit only. Expo Go and the web preview have no widget.
         </Txt>
       </View>
     </Card>

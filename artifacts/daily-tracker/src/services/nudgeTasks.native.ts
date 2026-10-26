@@ -1,17 +1,26 @@
 /**
  * Headless entry points (Android): notification buttons pressed while the app
  * is in the background or closed, and the periodic re-plan. Imported once from
- * the root layout so the tasks are defined before anything else runs.
+ * the entry file (`index.js`) so the tasks are defined whenever the bundle
+ * loads, including when Android starts it without rendering the app.
  */
 import * as BackgroundTask from 'expo-background-task';
 import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
 import { createStore } from '@/src/data/createStore';
 import { reducer } from '@/src/state/reducer';
-import { applyAll, isNudgePayload, nudgeResponseActions } from '@/src/state/commands';
+import { applyAll, isNudgePayload, nudgeResponseActions, type CommandContext } from '@/src/state/commands';
 import type { NudgeActionKind } from '@/src/domain/nudges/planner';
+import type { TrackerState } from '@/src/state/types';
 import { BACKGROUND_REPLAN_TASK, NUDGE_RESPONSE_TASK, markHandled } from './notifications';
 import { contextFor, markHeadlessWrite, replanHeadless } from './replan';
+import { refreshWidgets } from './widget';
+
+/** A headless write changed what the home-screen widget shows. */
+async function afterHeadlessWrite(next: TrackerState, ctx: CommandContext): Promise<void> {
+  await markHeadlessWrite();
+  await refreshWidgets(next, ctx.today, ctx.nowMs, ctx.zone).catch((err) => console.warn('Widget refresh failed', err));
+}
 
 interface ResponseData {
   actionIdentifier?: string;
@@ -32,7 +41,7 @@ async function handleHeadlessResponse(data: ResponseData): Promise<void> {
   const applied = applyAll(state, nudgeResponseActions(state, payload, action, ctx), reducer);
   const next = await replanHeadless(applied, ctx);
   await store.persist(state, next);
-  await markHeadlessWrite();
+  await afterHeadlessWrite(next, ctx);
 }
 
 TaskManager.defineTask(NUDGE_RESPONSE_TASK, async ({ data, error }) => {
@@ -55,7 +64,7 @@ TaskManager.defineTask(BACKGROUND_REPLAN_TASK, async () => {
     const next = await replanHeadless(state, ctx);
     if (next !== state) {
       await store.persist(state, next);
-      await markHeadlessWrite();
+      await afterHeadlessWrite(next, ctx);
     }
     return BackgroundTask.BackgroundTaskResult.Success;
   } catch (err) {

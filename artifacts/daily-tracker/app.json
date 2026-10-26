@@ -2,7 +2,7 @@
   "expo": {
     "name": "Daily Tracker",
     "slug": "daily-tracker",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "daily-tracker",
@@ -16,8 +16,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#0D120F"
       },
-      "edgeToEdgeEnabled": true,
-      "versionCode": 2,
+      "versionCode": 3,
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.SCHEDULE_EXACT_ALARM",
@@ -41,6 +40,29 @@
           "icon": "./assets/images/notification-icon.png",
           "color": "#1DB954",
           "defaultChannel": "nudges"
+        }
+      ],
+      [
+        "react-native-android-widget",
+        {
+          "fonts": [
+            "./assets/fonts/Manrope-SemiBold.ttf",
+            "./assets/fonts/Manrope-ExtraBold.ttf"
+          ],
+          "widgets": [
+            {
+              "name": "Tracker",
+              "label": "Daily Tracker",
+              "description": "Up to three habits with one-tap logging. Pick them in Settings.",
+              "minWidth": "110dp",
+              "minHeight": "60dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000,
+              "previewImage": "./assets/widget/preview.png"
+            }
+          ]
         }
       ]
     ],
