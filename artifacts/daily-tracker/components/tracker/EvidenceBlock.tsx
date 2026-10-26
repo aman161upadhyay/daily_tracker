@@ -72,7 +72,7 @@ export function EvidenceBlock({ preset }: { preset: Preset }) {
 const styles = StyleSheet.create({
   pill: {
     paddingHorizontal: 8,
-    height: 22,
+    minHeight: 22,
     borderRadius: 999,
     justifyContent: 'center',
   },

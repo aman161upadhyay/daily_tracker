@@ -3,6 +3,7 @@
  * only knows when it handed a file to the share sheet — where that file went, and whether it is
  * still there, is the other app's business — so the line never claims a copy is safe anywhere.
  */
+import type { TrackerState } from '../../state/types';
 import { formatDayShort } from '../time/format';
 import { calendarDayOf, dayDiff } from '../time/trackingDay';
 
@@ -13,6 +14,16 @@ export interface BackupAge {
   text: string;
   /** No export yet, or the last one is BACKUP_STALE_DAYS or more old. */
   stale: boolean;
+}
+
+/**
+ * The state as the export file should carry it: stamped with this export's own moment, so a restore
+ * of someone's first backup does not say "No backup exported yet" and a restore of a later one does
+ * not carry the export before it. The live settings take the same stamp only once the file was
+ * handed over.
+ */
+export function withExportStamp(state: TrackerState, at: number): TrackerState {
+  return { ...state, settings: { ...state.settings, lastExportAt: at } };
 }
 
 export function backupAge(lastExportAt: number | undefined, nowMs: number, zone: string): BackupAge {

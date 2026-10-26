@@ -88,7 +88,8 @@ export function CycleCalendar({ month, today, timeline, birthControl, loggedDays
                   isSelected ? { borderColor: c.text, borderWidth: 2 } : isToday ? { borderColor: c.green, borderWidth: 2 } : null,
                 ]}
               >
-                <Txt role="callout" color={future && !fill ? c.textTertiary : c.text} align="center">
+                {/* Grid digits scale to 1.5 (see DayPickerSheet): the disc cannot widen with the font. */}
+                <Txt role="callout" maxFontSizeMultiplier={1.5} color={future && !fill ? c.textTertiary : c.text} align="center">
                   {String(num)}
                 </Txt>
                 {info?.isOvulation && !birthControl ? <View style={[styles.ovulation, { borderColor: c.green }]} /> : null}

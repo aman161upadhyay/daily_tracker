@@ -361,6 +361,9 @@ export interface TodaySummary {
   snacksTarget: number;
   mindMinutes: number;
   mindTarget: number;
+  /** The category has habits and asks nothing today because every week or month quota is met: "nothing due", not an untouched day. */
+  snacksSettled: boolean;
+  mindSettled: boolean;
   rings: { hydration: number; movement: number; mind: number };
 }
 
@@ -376,6 +379,23 @@ function askedToday(state: TrackerState, h: Habit, today: string): number {
   const view = habitView(state, h, today);
   const periodMet = (view.periodDone ?? 0) >= (view.periodQuota ?? 0);
   return !periodMet || view.todayValue > 0 ? rule.target : 0;
+}
+
+/** A weekly or monthly habit whose quota is met on a day not started: it owes nothing today. */
+function quotaMetToday(state: TrackerState, h: Habit, today: string): boolean {
+  const rule = ruleFor(state, h.id, today);
+  if (!rule || rule.cadence === 'DAILY') return false;
+  const view = habitView(state, h, today);
+  return (view.periodDone ?? 0) >= (view.periodQuota ?? 0) && view.todayValue === 0;
+}
+
+/**
+ * "Nothing due today" for a category: it has habits, none asks anything today, and at least one is
+ * quiet because its week or month is met (not because it has no rule yet). A met quota draws a full
+ * ring and says so; an empty 0 / 0 ring looked like an untouched day.
+ */
+function settledToday(state: TrackerState, habits: Habit[], today: string, target: number): boolean {
+  return habits.length > 0 && target === 0 && habits.some((h) => quotaMetToday(state, h, today));
 }
 
 export function todaySummary(state: TrackerState, today: string, nowMs: number, zone: string): TodaySummary {
@@ -398,16 +418,21 @@ export function todaySummary(state: TrackerState, today: string, nowMs: number, 
   const mindTarget = mindHabits.reduce((acc, h) => acc + askedToday(state, h, today), 0);
   const mindMinutes = state.mind.reduce((acc, m) => (m.day === today ? acc + m.minutes : acc), 0);
 
+  const snacksSettled = settledToday(state, movementHabits, today, snacksTarget);
+  const mindSettled = settledToday(state, mindHabits, today, mindTarget);
+
   return {
     water,
     snacksDone,
     snacksTarget,
     mindMinutes,
     mindTarget,
+    snacksSettled,
+    mindSettled,
     rings: {
       hydration: ratioOf(loggedMl, s.waterGoalMl),
-      movement: ratioOf(snacksDone, snacksTarget),
-      mind: ratioOf(mindMinutes, mindTarget),
+      movement: snacksSettled ? 1 : ratioOf(snacksDone, snacksTarget),
+      mind: mindSettled ? 1 : ratioOf(mindMinutes, mindTarget),
     },
   };
 }

@@ -21,7 +21,7 @@ import { Txt } from '@/components/ui/Txt';
 import { SPACE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
 import type { Habit } from '@/src/domain/models';
-import { formatClock, formatDayLong, formatNumber, formatVolume } from '@/src/domain/time/format';
+import { formatClock, formatDayLong, formatNumber, formatVolume, settledLegend } from '@/src/domain/time/format';
 import { minutesOfDay } from '@/src/domain/time/trackingDay';
 import { shortPolicyText } from '@/src/domain/nudges/describePolicy';
 import { useClockFormat, useHabitViews, useHighlights, useLiveNudge, useTodaySummary } from '@/src/state/hooks';
@@ -141,7 +141,7 @@ export default function TodayScreen() {
         color={c.cat.movement}
         icon="squat"
         value={String(summary.snacksDone)}
-        unit={summary.snacksTarget > 0 ? `of ${summary.snacksTarget}` : 'today'}
+        unit={summary.snacksTarget > 0 ? `of ${summary.snacksTarget}` : summary.snacksSettled ? 'nothing due' : 'today'}
         detail={lastSnack ? `Last: ${snackSuggestion(lastSnack.type)}` : 'None yet today'}
         timestamp={lastSnack ? formatClock(minutesOfDay(lastSnack.at, zone), clock) : undefined}
         chart={{ values: snackSeries(state, today, 7), goal: summary.snacksTarget }}
@@ -155,7 +155,7 @@ export default function TodayScreen() {
         color={c.cat.mind}
         icon="lotus"
         value={formatNumber(summary.mindMinutes)}
-        unit={summary.mindTarget > 0 ? `of ${formatNumber(summary.mindTarget)} min` : 'min today'}
+        unit={summary.mindTarget > 0 ? `of ${formatNumber(summary.mindTarget)} min` : summary.mindSettled ? 'min · nothing due' : 'min today'}
         detail={lastMind ? (lastMind.kind === 'MEDITATION' ? 'Meditation' : 'Breathing') : 'Open the timer to start'}
         timestamp={lastMind ? formatClock(minutesOfDay(lastMind.endAt, zone), clock) : undefined}
         chart={{ values: mindSeries(state, today, 7), goal: summary.mindTarget, kind: 'line' }}
@@ -205,9 +205,10 @@ export default function TodayScreen() {
           </TodayRings>
           <View style={narrow ? styles.legendStacked : styles.legendBeside}>
             <Legend color={c.cat.hydration} label="Hydration" value={`${logged.value} / ${goal.value} ${goal.unit}`} />
-            {/* With nothing asked today (no movement or mind habit, or every quota met), the count stands alone: "6 / 0" reads as broken. */}
-            <Legend color={c.cat.movement} label="Movement" value={summary.snacksTarget > 0 ? `${summary.snacksDone} / ${summary.snacksTarget} snacks` : `${summary.snacksDone} snacks`} />
-            <Legend color={c.cat.mind} label="Mind" value={summary.mindTarget > 0 ? `${formatNumber(summary.mindMinutes)} / ${formatNumber(summary.mindTarget)} min` : `${formatNumber(summary.mindMinutes)} min`} />
+            {/* With nothing asked today (no movement or mind habit, or every quota met), the count stands alone: "6 / 0" reads as broken;
+                a met week or month says so, since a full ring with "0 snacks" would read as an untouched day. */}
+            <Legend color={c.cat.movement} label="Movement" value={summary.snacksTarget > 0 ? `${summary.snacksDone} / ${summary.snacksTarget} snacks` : summary.snacksSettled ? settledLegend(summary.snacksDone, 'snacks') : `${summary.snacksDone} snacks`} />
+            <Legend color={c.cat.mind} label="Mind" value={summary.mindTarget > 0 ? `${formatNumber(summary.mindMinutes)} / ${formatNumber(summary.mindTarget)} min` : summary.mindSettled ? settledLegend(summary.mindMinutes, 'min') : `${formatNumber(summary.mindMinutes)} min`} />
           </View>
         </View>
       </Card>

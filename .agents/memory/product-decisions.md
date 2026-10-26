@@ -342,6 +342,36 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   bounded steppers clamping silently, `/shield` without the habit. A tester's "15 taps → 30 entries"
   was its selector matching Today's and the Habits tab's identical + buttons — re-check tap counts
   four ways (spaced, tight, DOM click, touchscreen) before chasing a double dispatch.
+- Round 22 (2026-10-26 night) rules, paradigms 96–99: a count asks each day about itself — "Days met" is
+  `daysMet` (the day's own value vs its target), never the accumulated period ratio; both category rings
+  share `askedToday` (a met weekly / monthly quota owes nothing today). A number's label says its real span
+  (`weightSpanText`: days ≤ 45, months ≤ 400, else "since Mon YYYY"); durations round whole minutes before
+  splitting hours. Pace runs on the tracking day's clock (minutes + 1440 once the calendar day turned before
+  the 3 am boundary). Accessibility rules: `Txt heading` for real titles (not inside buttons); `Sheet` is a
+  named dialog that takes focus on present and the scrim is out of the a11y tree; wrapping action rows keep
+  the primary's `flexBasis`; rings card stacks under ~360 dp; inputs `minWidth: 0` + buttons `flexShrink: 0`;
+  48 dp via hitSlop except adjacent calendar grid cells (accepted exception); repeated action names carry the
+  time and "2 of 5" when a minute is shared; light greenMist #226538, hydration #10786B. The test ring's
+  schedule / cancel are serialised with a generation, a refused cancel is reported ("may still ring") and the
+  test is kept, channels are registered before the test. The backup check-in (`Settings.lastExportAt`,
+  `backupAge`) says when a file was handed to the share sheet, never that a copy exists anywhere; hidden on
+  sample data. Noted low, unfixed: trailing-sign parser leniency ("5-" → 5). Dispositions in §6 Round 22.
+- Round 23 (2026-10-26 night) rules, paradigms 100–103: a sheet with a draft (habit editor, New habit,
+  reminder editor) routes Back / scrim / Close / Cancel through `requestClose`, which asks "Discard changes?"
+  only when the draft differs from what it opened with — compared as resulting data, not form rows (TimeRow
+  keys are generated) — and Save never asks (`confirmDestructive`: Alert native, window.confirm web). A met
+  weekly / monthly quota is "settled" (`snacksSettled` / `mindSettled`: habits exist, ask 0, some habit's
+  quota met with today 0) → full ring + `settledLegend` ("Nothing due today" / "N snacks · nothing more
+  due"). The export file is serialised from `withExportStamp(state, at)`; the live setting is stamped after
+  the hand-over. Font scale: grid digits `maxFontSizeMultiplier` 1.5, onboarding step number 1.3, badges use
+  `minHeight` (never disable scaling wholesale). `Appearance.setColorScheme(pref)` from the theme setting,
+  `'unspecified'` for System (RN 0.86 typing; `null` is rejected by tsc). Docs are verified against the
+  tooling: the exact-alarms escape hatch keeps `index.ts`; Build-Tools 36.0.0 named verbatim (no `sort -V` on
+  macOS); env-var Gradle signing needs `cd artifacts/daily-tracker/android`; Node floors 22.13 / 24.3; the
+  database file is `dailytracker.db`; the channel is "Movement & habit nudges". Browser e2e: the tester
+  subagent once reported a dismissed confirm closing the sheet — not reproducible in a scripted Chromium
+  run (Playwright at /mnt/pid2/node_modules/playwright-core + the nix chromium 140 binary; scripts in
+  /tmp/pw) through six paths; prefer the scripted harness to re-verify a tester FAIL before changing code.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app

@@ -9,7 +9,9 @@ first time and 2–3 minutes after that.
 
 1. **Android Studio** (current stable) with the default SDK. In *SDK Manager* make sure these are
    installed: *Android SDK Platform 36* (or whatever `expo prebuild` asks for), *Android SDK
-   Build-Tools*, *Android SDK Platform-Tools* (adb), *Android SDK Command-line Tools*. Add to your
+   Build-Tools 36.0.0* (the version React Native 0.86's Gradle catalog names; `zipalign` and
+   `apksigner` below are taken from that folder), *Android SDK Platform-Tools* (adb), *Android SDK
+   Command-line Tools*. Add to your
    shell profile (macOS/Linux; on Windows use the environment-variables dialog):
    ```bash
    export ANDROID_HOME="$HOME/Library/Android/sdk"        # Linux: $HOME/Android/Sdk
@@ -17,7 +19,9 @@ first time and 2–3 minutes after that.
    ```
    A JDK 17 or newer is required; Android Studio's bundled one works (`JAVA_HOME` → the
    `jbr` folder inside the Android Studio install) and so does Temurin 17/21.
-2. **Node 22 or 24** and **pnpm 10** (the repo refuses npm/yarn on purpose). Two commands, one per
+2. **Node 22.13.0 or newer in the 22.x line, or 24.3.0 or newer in the 24.x line** (React Native
+   0.86's `engines` range; an early 22.x fails its install check) and **pnpm 10** (the repo refuses
+   npm/yarn on purpose). Two commands, one per
    line (Windows PowerShell 5 does not understand `&&`):
    ```bash
    corepack enable
@@ -53,10 +57,11 @@ What to expect:
   Android project. `android/` is generated and git-ignored; never edit it by hand (changes would be
   lost on the next `--clean`). It may also touch `package.json` to list `expo`/`react`/`react-native`
   under `dependencies` — they already are, so the tree should stay clean.
-- The first Gradle run downloads 1–2 GB: Gradle, the Android Gradle plugin, and — because React
-  Native 0.86 (the version `package.json` pins for Expo SDK 57) builds its native core from
-  source — the **NDK and CMake** (the SDK manager fetches the versions the project asks for; accept
-  the licences when prompted). Later runs are incremental.
+- The first Gradle run downloads 1–2 GB: Gradle, the Android Gradle plugin, React Native's
+  prebuilt Android artifacts (the generated project consumes the `react-android` Maven artifact,
+  not a source build of the core), and the **NDK and CMake** that the native modules and the
+  generated JNI code need (the SDK manager fetches the versions the project asks for; accept the
+  licences when prompted). Later runs are incremental.
 - `run:android` leaves Metro running; the phone loads JavaScript from the laptop over USB
   (`adb reverse`), so edits reload live. Quit with Ctrl-C; the installed app keeps the last bundle
   it loaded and will try to reconnect to Metro on the next launch — for a build that works without
@@ -68,12 +73,16 @@ What to expect:
   without it an offline phone stops re-planning reminders after about 36 hours. If the install ever
   prints a patch-apply failure, the package version moved: run `pnpm patch expo-background-task`,
   re-apply the one-line change in `BackgroundTaskScheduler.kt` (`NetworkType.CONNECTED` →
-  `NetworkType.NOT_REQUIRED`) and `pnpm patch-commit`. The second is `modules/exact-alarms/`, a
+  `NetworkType.NOT_REQUIRED`) and `pnpm patch-commit <patchDir>`, using the edit directory that
+  `pnpm patch` printed. The second is `modules/exact-alarms/`, a
   30-line local Expo module that asks `AlarmManager.canScheduleExactAlarms()`, so Settings can say
   whether "Alarms & reminders" is allowed. Expo's autolinking picks it up from the `modules/` folder;
   it needs nothing in `app.json`. **Escape hatch:** if the Kotlin in it fails to compile on your
-  machine, delete the folder and build again — the app then simply cannot tell whether exact timing
-  is on (it says so in Settings) and everything else works.
+  machine, remove `modules/exact-alarms/android/` and `modules/exact-alarms/expo-module.config.json`
+  but **keep `modules/exact-alarms/index.ts`** — the notification service imports that file, and
+  deleting the whole folder stops the JavaScript bundle from building. Run prebuild again, then
+  rebuild; the kept wrapper reports exact timing as unknown when the native module is absent (it
+  says so in Settings) and everything else works.
 - **Prebuild check** (30 seconds, catches a plugin that silently stopped applying):
   `android/app/src/main/AndroidManifest.xml` must show `android:fullBackupContent` and
   `android:dataExtractionRules` on `<application>`; an `<activity android:name=".HealthRationaleActivity">`
@@ -99,8 +108,9 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 **16 KB page-size check (once per dependency change).** Android 15+ phones can run with 16 KB
 memory pages, and Play requires it for new uploads; every native library in the APK must be
 aligned for it. The sources in this dependency set enable the flag (React Native, expo-modules-core,
-expo-sqlite), but only the built APK proves it:
-`$ANDROID_HOME/build-tools/<version>/zipalign -c -P 16 -v 4 app/build/outputs/apk/release/app-release.apk | tail -3`
+expo-sqlite), but only the built APK proves it. Run this from `artifacts/daily-tracker/android`
+(the APK path is relative to it):
+`$ANDROID_HOME/build-tools/36.0.0/zipalign -c -P 16 -v 4 app/build/outputs/apk/release/app-release.apk | tail -3`
 must end in `Verification succesful` (sic), and the APK must install and open on a 16 KB emulator
 image (Android Studio → Device Manager → a system image marked "16 KB page size") or on a Pixel
 with Developer options → "Boot with 16 KB page size". A failure names the `.so`; the fix is updating
@@ -148,6 +158,7 @@ the block survives every `--clean` prebuild.
    `ORG_GRADLE_PROJECT_DT_RELEASE_STORE_PASSWORD` (and the same prefix for the other three) as
    project properties, no escaping involved:
    ```bash
+   cd artifacts/daily-tracker/android       # the Gradle wrapper lives here (after a prebuild), not at the repo root
    ORG_GRADLE_PROJECT_DT_RELEASE_STORE_FILE=$HOME/keystores/daily-tracker-release.jks \
    ORG_GRADLE_PROJECT_DT_RELEASE_STORE_PASSWORD='…' ORG_GRADLE_PROJECT_DT_RELEASE_KEY_ALIAS=daily-tracker \
    ORG_GRADLE_PROJECT_DT_RELEASE_KEY_PASSWORD='…' ./gradlew assembleRelease
@@ -162,7 +173,7 @@ the block survives every `--clean` prebuild.
    pnpm exec expo prebuild --platform android --clean
    cd android
    ./gradlew assembleRelease
-   "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME"/build-tools | grep -E '^[0-9.]+$' | sort -V | tail -1)/apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk
+   "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk
    adb install -r app/build/outputs/apk/release/app-release.apk
    ```
    Windows PowerShell:
@@ -185,7 +196,7 @@ the block survives every `--clean` prebuild.
 higher over the existing one and rejects only a lower one (`INSTALL_FAILED_VERSION_DOWNGRADE`).
 This project still raises `expo.android.versionCode` in `app.json` on every release (M3 shipped 3,
 M4 4, M5 5, M6 6, then one per council round: round 3 → 7, round 4 → 8, round 5 → 9, round 6 → 10, round 7 → 11, round 8 → 12, round 9 → 13, round 10 → 14, round 11 → 15)
-so that "which build is this phone on" has one answer; `version` follows the tag (`0.26.0` = `v0.26`).
+so that "which build is this phone on" has one answer; `version` follows the tag (`0.27.0` = `v0.27`).
 `app.json` is the source of truth; when this paragraph and `app.json` disagree, `app.json` is right.
 
 Google Play is deliberately not part of this recipe; `./gradlew bundleRelease` produces the AAB if
@@ -257,7 +268,7 @@ reboot before Health Connect shows the app in its list.
 | `Use pnpm instead` during install | You ran npm/yarn. Use `pnpm install` at the repo root. |
 | `SDK location not found` | `ANDROID_HOME` not exported, or create `android/local.properties` with `sdk.dir=/path/to/sdk` (git-ignored). |
 | `Unsupported class file major version` / Gradle JVM errors | Wrong JDK on `PATH`. Point `JAVA_HOME` at a JDK 17+. |
-| `modules/exact-alarms` fails to compile | Delete the `modules/exact-alarms/` folder and rebuild (see "Every build" above). Settings then shows the neutral "Exact timing" button instead of the exact status. |
+| `modules/exact-alarms` fails to compile | Remove `modules/exact-alarms/android/` and `modules/exact-alarms/expo-module.config.json`, keep `modules/exact-alarms/index.ts`, prebuild and rebuild (see "Every build" above). Settings then shows the neutral "Exact timing" button instead of the exact status. |
 | `patch-package` / `pnpm patch` apply error on install | `expo-background-task` moved past 57.0.21. Re-create the patch as described above, or remove the `patchedDependencies` entry to build without it (reminders then re-plan only while online). |
 | Widget not in the picker | The build predates the plugin: run prebuild with `--clean`, rebuild, and reinstall. Some launchers need a reboot to list new widgets. |
 | Widget shows "Open Daily Tracker…" | Fresh install with no habits yet: finish onboarding, then the widget redraws. |

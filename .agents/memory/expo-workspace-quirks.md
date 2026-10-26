@@ -175,3 +175,13 @@ Hermes compiler path for bundle checks: `node_modules/.pnpm/hermes-compiler@*/no
 - expo-localization 57 installs cleanly with `CI=1 pnpm exec expo install`; its config plugin is inert
   without options (it was added to app.json by the install). `getCalendars()[0].uses24hourClock` is
   Android's `DateFormat.is24HourFormat`; on web it derives from Intl `hourCycle`.
+
+## Scripted browser checks without the tester subagent
+A headless Chromium + Playwright harness exists in this container: import `chromium` from
+`/mnt/pid2/node_modules/playwright-core/index.mjs` and launch with `executablePath` =
+`/nix/store/d7y5039fgn5432kgkn0cv09hda4a7nxz-playwright-chromium-cjk-1.55.0-1187/chrome-linux/chrome`,
+`args: ['--no-sandbox']` (paths may move; `find / -maxdepth 6 -name playwright-core`, `ls /nix/store | grep chromium`).
+Point it at the expo web preview URL; "Explore with sample data instead" on onboarding, then save
+`storageState` and reuse it. Habits live at `<url>habits` (the tab bar is not a role=tab). Useful when a
+tester report needs a second opinion — it is faster and deterministic (`page.on('dialog')` with
+dismiss / accept decides the confirm path). Scripts from round 23 are in /tmp/pw (not persisted).

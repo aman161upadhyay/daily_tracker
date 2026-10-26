@@ -9,6 +9,14 @@ export function weekdayName(index: number): string {
 }
 const WEEKDAYS_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+/**
+ * The rings legend for a category whose week or month is met and asks nothing today: "Nothing due
+ * today", or the day's count with "nothing more due" when something was logged anyway.
+ */
+export function settledLegend(done: number, unit: 'snacks' | 'min'): string {
+  return done === 0 ? 'Nothing due today' : `${formatNumber(done)} ${unit} · nothing more due`;
+}
+
 export function formatNumber(n: number): string {
   const rounded = Math.round(n);
   const sign = rounded < 0 ? '-' : '';

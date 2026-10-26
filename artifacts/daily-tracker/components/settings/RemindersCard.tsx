@@ -107,10 +107,14 @@ export function RemindersCard() {
   };
   // The ring is forgotten only once the OS has really dropped it; a refused cancel is said, and the
   // test stays so Cancel can be tried again.
+  // Cancelling is shown like scheduling: a slow OS left "Cancel the test" looking actionable while
+  // further taps did nothing.
+  const [cancelBusy, setCancelBusy] = useState(false);
   const stopTest = () => {
     if (testInFlight.current) return;
     testInFlight.current = true;
     setTestError(null);
+    setCancelBusy(true);
     cancelTestRing()
       .then(
         () => {
@@ -122,6 +126,7 @@ export function RemindersCard() {
       )
       .finally(() => {
         testInFlight.current = false;
+        if (mounted.current) setCancelBusy(false);
       });
   };
 
@@ -253,7 +258,7 @@ export function RemindersCard() {
                 ) : null}
                 {testPhase === 'waiting' ? (
                   <Row gap={8}>
-                    <PillButton label="Cancel the test" kind="ghost" onPress={stopTest} />
+                    <PillButton label={cancelBusy ? 'Cancelling…' : 'Cancel the test'} kind="ghost" disabled={cancelBusy} onPress={stopTest} />
                   </Row>
                 ) : (
                   <Row gap={8}>

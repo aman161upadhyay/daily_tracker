@@ -59,7 +59,7 @@ You need four things: **Android Studio** (makes Android apps), **Node** (runs th
    ```
 6. **Check.** Type each of these; each should print a version number, not "command not found":
    ```bash
-   node -v        # v22 or v24
+   node -v        # v22.13.0+ or v24.3.0+
    pnpm -v        # 10.x
    git --version
    java -version  # 17 or 21
@@ -88,7 +88,7 @@ You need four things: **Android Studio** (makes Android apps), **Node** (runs th
    Then **close PowerShell and open it again** (the new settings only apply to new windows).
 6. **Check.** Type each of these; each should print a version number:
    ```powershell
-   node -v        # v22 or v24
+   node -v        # v22.13.0+ or v24.3.0+
    pnpm -v        # 10.x
    git --version
    java -version  # 17 or 21
@@ -214,7 +214,7 @@ Then try the list in `docs/DEVICE_CHECKLIST.md` if you want to check every featu
    on a Mac (Finder → Go → Go to Folder…, paste exactly that, including the `~`) and
    `C:\dev\daily_tracker\artifacts\daily-tracker\android\app\build\outputs\apk\release\app-release.apk`
    on Windows (paste it into the File Explorer address bar).
-   Rename a copy to something like `DailyTracker-0.26.apk` (the `version` from `app.json`) if you like.
+   Rename a copy to something like `DailyTracker-0.27.apk` (the `version` from `app.json`) if you like.
 2. Send it any way you want: Google Drive link, WhatsApp, email, AirDrop-style apps.
 3. On their phone they tap the file. Android asks to allow installing from that app (Files,
    Chrome, WhatsApp…) → **Allow** → **Install**. Two different prompts can appear, and they mean

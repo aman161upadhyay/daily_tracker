@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { confirmDestructive } from '../ui/confirm';
 import { Divider, PillButton, Row } from '../ui/primitives';
 import { Sheet } from '../ui/Sheet';
 import { Txt } from '../ui/Txt';
@@ -23,15 +24,26 @@ export interface ReminderPolicySheetProps {
  */
 export function ReminderPolicySheet({ visible, onClose, habit, policy, context, onSave }: ReminderPolicySheetProps) {
   const [d, setD] = useState<PolicyDraft>(() => policyDraftFrom(policy, context));
+  // The policy the sheet opened with, as data: Back, the scrim, Close and Cancel ask before edits are lost.
+  const opening = () => JSON.stringify(policyFromPolicyDraft({ habitId: habit.id, ...policy }, policyDraftFrom(policy, context), context));
+  const [initial, setInitial] = useState(opening);
   useEffect(() => {
-    if (visible) setD(policyDraftFrom(policy, context));
+    if (visible) {
+      setD(policyDraftFrom(policy, context));
+      setInitial(opening());
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, policy]);
   const preview = policyFromPolicyDraft({ habitId: habit.id, ...policy }, d, context);
   const paused = isPaused(policy) && d.mode !== 'NONE';
+  const dirty = JSON.stringify(preview) !== initial;
+  const requestClose = () => {
+    if (dirty) confirmDestructive('Discard changes?', 'The reminder edits are not saved.', 'Discard', onClose);
+    else onClose();
+  };
 
   return (
-    <Sheet visible={visible} title="Reminders" onClose={onClose}>
+    <Sheet visible={visible} title="Reminders" onClose={requestClose}>
       <Txt role="footnote" tone="secondary" style={{ marginBottom: 8 }}>
         {habit.name}
       </Txt>
@@ -44,7 +56,7 @@ export function ReminderPolicySheet({ visible, onClose, habit, policy, context, 
 
       <Divider />
       <Row gap={8} style={{ marginTop: 16 }}>
-        <PillButton label="Cancel" kind="ghost" onPress={onClose} />
+        <PillButton label="Cancel" kind="ghost" onPress={requestClose} />
         <PillButton
           label="Save"
           onPress={() => {

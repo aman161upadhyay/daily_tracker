@@ -9,7 +9,7 @@ import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
 import { MIN_PASSWORD_LENGTH, type EncryptedBackup } from '@/src/data/backupCrypto';
 import { describeImport, exportState, inspectExport, pickImport, unlockExportAsync } from '@/src/data/transfer';
-import { backupAge } from '@/src/domain/backup/backupAge';
+import { backupAge, withExportStamp } from '@/src/domain/backup/backupAge';
 import { deleteKeptSnapshots, markCleanupPending, readKeptSnapshots, type Snapshot } from '@/src/services/backup';
 import type { TrackerState } from '@/src/state/types';
 import { useTracker } from '@/src/state/TrackerProvider';
@@ -67,9 +67,11 @@ export function BackupCard({ confirm }: { confirm: Confirm }) {
     setBusy(true);
     setTransfer(null);
     try {
-      await exportState(state, password);
-      // The moment the file was handed over, for the "last exported" line — not a claim it was kept.
-      actions.updateSettings({ lastExportAt: Date.now() });
+      // The file carries this export's own stamp; the live setting takes it only once the file was
+      // handed over — a record of the hand-over, not a claim that any app kept the file.
+      const at = Date.now();
+      await exportState(withExportStamp(state, at), password);
+      actions.updateSettings({ lastExportAt: at });
       setTransfer({
         tone: 'ok',
         text: password ? 'Backup created and encrypted. Only the password opens it; there is no way to recover a forgotten one.' : 'Backup created. Keep it somewhere safe; it contains everything you logged.',

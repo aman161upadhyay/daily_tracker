@@ -140,7 +140,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 3,
     paddingHorizontal: 6,
-    height: 20,
+    // A floor, not a height: at a 1.3 font scale the caption's line grew past 20 dp and clipped.
+    minHeight: 20,
     borderRadius: 999,
   },
   target: {

@@ -375,7 +375,8 @@ function Step({ n, title, hint, children }: { n: number; title: string; hint?: s
     <Card>
       <Row gap={10} style={{ marginBottom: 12 }}>
         <View style={[styles.stepNo, { backgroundColor: withAlpha(c.green, 0.16) }]}>
-          <Txt role="caption" color={c.greenBright}>
+          {/* The step number sits in a 24 dp disc beside a title that scales to 1.6; at 2× it overflowed the disc. */}
+          <Txt role="caption" maxFontSizeMultiplier={1.3} color={c.greenBright}>
             {n}
           </Txt>
         </View>

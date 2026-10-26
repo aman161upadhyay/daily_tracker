@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { confirmDestructive } from '../ui/confirm';
 import { StyleSheet, Switch, TextInput, View } from 'react-native';
 import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
@@ -86,14 +87,28 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
   const [reminder, setReminder] = useState<PolicyDraft>(() => policyDraftFrom(undefined, policyContext));
   const reminderPreview = policyFromPolicyDraft({ habitId: habit?.id ?? 'new' }, reminder, policyContext);
 
+  // What the sheet opened with, as plain data (row keys never reach a policy), so Back, the scrim
+  // and Close can tell an untouched sheet from one with edits worth a question.
+  const opening = () => ({
+    draft: JSON.stringify(draftFrom(habit, rule)),
+    policy: JSON.stringify(policyFromPolicyDraft({ habitId: habit?.id ?? 'new' }, policyDraftFrom(undefined, policyContext), policyContext)),
+  });
+  const [initial, setInitial] = useState(opening);
   useEffect(() => {
     if (visible) {
       setD(draftFrom(habit, rule));
       setFreezesTouched(!!habit);
       setReminder(policyDraftFrom(undefined, policyContext));
+      setInitial(opening());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, habit, rule]);
+  const dirty = JSON.stringify(d) !== initial.draft || (!editing && JSON.stringify(reminderPreview) !== initial.policy);
+  // Android's Back closes a Modal at once; with edits on the sheet it asks first (Save closes without asking).
+  const requestClose = () => {
+    if (dirty) confirmDestructive('Discard changes?', editing ? 'Your edits to this habit are not saved.' : 'The new habit is not saved.', 'Discard', onClose);
+    else onClose();
+  };
 
   const set = (patch: Partial<HabitDraft>) => setD((prev) => ({ ...prev, ...patch }));
   const setType = (type: HabitType) => set({ type, unit: DEFAULT_UNIT[type], target: type === 'YES_NO' ? 1 : type === 'TIMER' ? 10 : type === 'AMOUNT' ? 500 : 3 });
@@ -119,7 +134,7 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
   };
 
   return (
-    <Sheet visible={visible} title={editing ? 'Edit habit' : 'New habit'} onClose={onClose}>
+    <Sheet visible={visible} title={editing ? 'Edit habit' : 'New habit'} onClose={requestClose}>
       <View style={{ gap: 18 }}>
         <Field label="Name">
           <TextInput

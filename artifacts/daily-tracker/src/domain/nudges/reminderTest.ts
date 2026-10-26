@@ -33,7 +33,7 @@ export function reminderTestLine(test: ReminderTest, nowMs: number, zone: string
 
 /** What to check when the ring did not come, in the order that finds the cause most often. */
 export const REMINDER_TEST_CHECKS: readonly string[] = [
-  'Notifications are allowed for Daily Tracker, and its "Nudges" channel is not silenced.',
+  'Notifications are allowed for Daily Tracker, and its "Movement & habit nudges" channel is not silenced.',
   'Battery: Settings → Apps → Daily Tracker → Battery → Unrestricted. Phones that "optimise" the app hold its alarms until the screen is on.',
   'Alarms & reminders is allowed for the app (the button above), so a ring is not pushed to the next maintenance window.',
   'Do Not Disturb and Focus modes can hide reminders; a test while one is on tells you nothing.',

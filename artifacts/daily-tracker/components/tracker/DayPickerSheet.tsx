@@ -88,7 +88,8 @@ export function DayPickerSheet({ visible, onClose, habit, today, ratiosFor, firs
           return (
             <PressableScale key={day} haptic={false} disabled={!open} onPress={() => onPick(day)} accessibilityRole="button" accessibilityLabel={a11y} aria-disabled={!open} style={styles.cell}>
               <View style={[styles.disc, full ? { backgroundColor: fullFill } : ring, isToday && !full && !ring ? { borderColor: c.green, borderWidth: 2 } : null]}>
-                <Txt role="callout" color={!open ? c.textTertiary : full ? inkOnFull : isToday ? c.green : c.text} align="center">
+                {/* Grid digits scale to 1.5: a 7-column grid cannot widen, and at 2× a two-digit date overflowed its 36 dp disc. */}
+                <Txt role="callout" maxFontSizeMultiplier={1.5} color={!open ? c.textTertiary : full ? inkOnFull : isToday ? c.green : c.text} align="center">
                   {String(n)}
                 </Txt>
               </View>

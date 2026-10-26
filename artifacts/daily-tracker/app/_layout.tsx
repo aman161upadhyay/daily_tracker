@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from "react";
-import { Platform, useColorScheme, View } from "react-native";
+import { Appearance, Platform, useColorScheme, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -183,6 +183,17 @@ function ThemeRoot() {
   useEffect(() => {
     if (Platform.OS !== "web") SystemUI.setBackgroundColorAsync(palette.bg).catch(() => {});
   }, [palette.bg]);
+  // Native dialogs (the confirm Alerts) and a Modal's navigation bar follow the activity's night
+  // mode, not our palette: a Dark choice on a light phone showed white Alerts over a dark app.
+  // "System" hands the choice back to the phone.
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    try {
+      Appearance.setColorScheme(pref === "system" ? "unspecified" : pref);
+    } catch {
+      // An older runtime without the setter: the palette still applies to everything we draw.
+    }
+  }, [pref]);
 
   return (
     <SchemeContext.Provider value={scheme}>
