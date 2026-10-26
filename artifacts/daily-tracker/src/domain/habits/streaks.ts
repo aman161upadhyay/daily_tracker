@@ -130,7 +130,9 @@ export function evaluateStreak(input: StreakInput): StreakResult {
     for (let d = start; d <= end; d = addDays(d, 1)) {
       if (off.has(d)) continue;
       available++;
-      if (d <= input.today && input.valueOf(d) >= rule.target) done++;
+      // Each day is judged against the target in force on that day (the same rule the Today
+      // card and the charts use), so "3 of 4 this week" never disagrees with the streak.
+      if (d <= input.today && input.valueOf(d) >= ruleOn(rules, d).target) done++;
     }
     const required = rule.cadence === 'DAILY' ? 1 : Math.max(1, Math.round((rule.timesPerPeriod * available) / bounds.length));
 

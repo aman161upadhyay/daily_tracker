@@ -160,6 +160,8 @@ const styles = StyleSheet.create({
   cell: {
     width: `${100 / 7}%`,
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48, // the touch target; the coloured disc inside stays 36 dp
     paddingVertical: 2,
   },
   disc: {

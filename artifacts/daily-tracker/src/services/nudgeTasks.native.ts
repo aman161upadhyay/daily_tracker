@@ -14,14 +14,17 @@ import type { NudgeActionKind } from '@/src/domain/nudges/planner';
 import type { TrackerState } from '@/src/state/types';
 import { performBodySync } from './bodySync';
 import { HEALTH_CONNECT_SUPPORTED } from './healthConnect';
-import { BACKGROUND_REPLAN_TASK, NUDGE_RESPONSE_TASK, markHandled, unmarkHandled } from './notifications';
+import { withHeadlessLock } from './headlessLock';
+import { BACKGROUND_REPLAN_TASK, NUDGE_RESPONSE_TASK, beginHandling, endHandling } from './notifications';
 import { contextFor, markHeadlessWrite, replanHeadless } from './replan';
+import { maybeSnapshot } from './snapshotSync';
 import { refreshWidgets } from './widget';
 
-/** A headless write changed what the home-screen widget shows. */
+/** A headless write changed what the home-screen widget shows (and what Android should back up). */
 async function afterHeadlessWrite(next: TrackerState, ctx: CommandContext): Promise<void> {
   await markHeadlessWrite();
   await refreshWidgets(next, ctx.today, ctx.nowMs, ctx.zone).catch((err) => console.warn('Widget refresh failed', err));
+  await maybeSnapshot(next, ctx.nowMs).catch((err) => console.warn('Snapshot after headless write failed', err));
 }
 
 interface ResponseData {
@@ -34,21 +37,31 @@ async function handleHeadlessResponse(data: ResponseData): Promise<void> {
   if (!isNudgePayload(payload) || !data.actionIdentifier) return;
   const action = data.actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER ? 'TAP' : (data.actionIdentifier as NudgeActionKind);
   const key = `${data.notification?.request?.identifier ?? payload.nudgeId}|${action}|${data.notification?.date ?? ''}`;
-  // Claim first (the foreground listener may see the same press), release if the write fails,
-  // so a press is never both unapplied and marked as done.
-  if (!(await markHandled(key))) return;
+  // Claim in memory first (the foreground listener may see the same press); the durable mark is
+  // written only once the state write committed, so a crash in between replays rather than loses
+  // the press — and the nudge-event ledger makes the replay a no-op.
+  if (!(await beginHandling(key))) return;
+  let committed = false;
   try {
-    const store = await createStore();
-    const state = await store.load();
-    if (!state) return;
-    const ctx = contextFor(state);
-    const applied = applyAll(state, nudgeResponseActions(state, payload, action, ctx), reducer);
-    const next = await replanHeadless(applied, ctx);
-    await store.persist(state, next);
-    await afterHeadlessWrite(next, ctx);
-  } catch (err) {
-    await unmarkHandled(key).catch(() => undefined);
-    throw err;
+    const written = await withHeadlessLock(async () => {
+      const store = await createStore();
+      const state = await store.load();
+      if (!state) return null;
+      const ctx = contextFor(state);
+      const applied = applyAll(state, nudgeResponseActions(state, payload, action, ctx), reducer);
+      let next = applied;
+      try {
+        next = await replanHeadless(applied, ctx);
+      } catch (err) {
+        console.warn('Re-plan after a notification button failed; the log is still saved', err);
+      }
+      await store.persist(state, next);
+      return { next, ctx };
+    });
+    committed = true;
+    if (written) await afterHeadlessWrite(written.next, written.ctx);
+  } finally {
+    await endHandling(key, committed).catch(() => undefined);
   }
 }
 
@@ -65,24 +78,28 @@ TaskManager.defineTask(NUDGE_RESPONSE_TASK, async ({ data, error }) => {
 
 TaskManager.defineTask(BACKGROUND_REPLAN_TASK, async () => {
   try {
-    const store = await createStore();
-    const state = await store.load();
-    if (!state) return BackgroundTask.BackgroundTaskResult.Success;
-    const ctx = contextFor(state);
-    let next = await replanHeadless(state, ctx);
-    // Pull Health Connect while we are awake anyway, when background reads were granted.
-    if (HEALTH_CONNECT_SUPPORTED && next.settings.healthConnectEnabled && next.body.sync.background) {
-      try {
-        const { actions } = await performBodySync(next, ctx);
-        next = applyAll(next, actions, reducer);
-      } catch (err) {
-        console.warn('Background Health Connect sync failed', err);
+    const written = await withHeadlessLock(async () => {
+      const store = await createStore();
+      const state = await store.load();
+      if (!state) return null;
+      const ctx = contextFor(state);
+      let next = await replanHeadless(state, ctx);
+      // Pull Health Connect while we are awake anyway, when background reads were granted.
+      if (HEALTH_CONNECT_SUPPORTED && next.settings.healthConnectEnabled && next.body.sync.background) {
+        try {
+          const { actions } = await performBodySync(next, ctx);
+          next = applyAll(next, actions, reducer);
+        } catch (err) {
+          console.warn('Background Health Connect sync failed', err);
+        }
       }
-    }
-    if (next !== state) {
+      if (next === state) return { next, ctx, changed: false };
       await store.persist(state, next);
-      await afterHeadlessWrite(next, ctx);
-    }
+      return { next, ctx, changed: true };
+    });
+    if (written?.changed) await afterHeadlessWrite(written.next, written.ctx);
+    // Even without a change, a stale snapshot gets refreshed here: widget-only use never foregrounds the app.
+    else if (written) await maybeSnapshot(written.next, written.ctx.nowMs).catch((err) => console.warn('Snapshot in background re-plan failed', err));
     return BackgroundTask.BackgroundTaskResult.Success;
   } catch (err) {
     console.error('Background re-plan failed', err);

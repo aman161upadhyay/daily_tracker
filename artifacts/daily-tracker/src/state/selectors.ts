@@ -229,7 +229,7 @@ export function todaySummary(state: TrackerState, today: string, nowMs: number, 
   const s = state.settings;
   const nowMin = minutesOfDay(nowMs, zone);
   const loggedMl = state.water.reduce((acc, w) => (w.day === today ? acc + w.ml : acc), 0);
-  const water = waterStatus(loggedMl, s.waterGoalMl, nowMin, s.activeStartMin, s.activeEndMin);
+  const water = waterStatus(loggedMl, s.waterGoalMl, nowMin, s.activeStartMin, s.activeEndMin, s.tapSizeMl);
 
   const movementHabits = activeHabits(state).filter((h) => h.snackType && !isSugarShield(h));
   let snacksTarget = 0;

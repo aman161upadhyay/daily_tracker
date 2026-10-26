@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { createStore } from '@/src/data/createStore';
-import { headlessRevision } from '@/src/services/replan';
+import { headlessRevision, onHeadlessWrite } from '@/src/services/replan';
 import type { TrackerStore } from '@/src/data/store';
 import type { Cadence, Category, CycleDayLog, CycleReminder, Habit, HabitIcon, HabitRule, HabitType, MindKind, NudgePolicy, Settings, SnackTrigger, SnackType } from '@/src/domain/models';
 import { SNACK_LABELS } from '@/src/domain/models';
@@ -51,6 +51,8 @@ export interface OnboardingChoices {
   activeEndMin: number;
   presetIds: string[];
   cycleEnabled: boolean;
+  /** Android Auto Backup opt-in (shown in onboarding on Android; defaults to on). */
+  cloudBackup?: boolean;
 }
 
 export interface TrackerActions {
@@ -136,7 +138,8 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   const committedRef = useRef<TrackerState | null>(null);
   /** The newest state that should end up in the database. */
   const targetRef = useRef<TrackerState | null>(null);
-  const flushRef = useRef<Promise<void>>(Promise.resolve());
+  const flushRef = useRef<Promise<boolean>>(Promise.resolve(false));
+  const reloadingRef = useRef(false);
   const flushingRef = useRef(false);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const failuresRef = useRef(0);
@@ -149,12 +152,12 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
    * write is retried from the same base by the next pass instead of leaving a
    * hole between what the screen shows and what the database holds.
    */
-  const flush = useCallback((): Promise<void> => {
+  const flush = useCallback((): Promise<boolean> => {
     if (flushingRef.current) return flushRef.current;
     const store = storeRef.current;
-    if (!store) return Promise.resolve();
+    if (!store) return Promise.resolve(false);
     flushingRef.current = true;
-    const run = (async () => {
+    const run = (async (): Promise<boolean> => {
       try {
         while (committedRef.current && targetRef.current && targetRef.current !== committedRef.current) {
           const base = committedRef.current;
@@ -177,6 +180,8 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
             break;
           }
         }
+        // True only when everything the screen shows is in the database.
+        return committedRef.current === targetRef.current;
       } finally {
         flushingRef.current = false;
       }
@@ -185,19 +190,53 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
     return run;
   }, []);
 
+  /**
+   * Pick up rows a headless writer (notification button, widget, background re-plan) added.
+   * Never hydrates over unsaved changes: a failed flush keeps its retry loop and the revision
+   * stays "unseen", so the next check tries again once the save went through.
+   */
+  const reloadIfHeadlessChanged = useCallback(async () => {
+    const store = storeRef.current;
+    if (!store || seenRevisionRef.current === null || reloadingRef.current) return;
+    const revision = await headlessRevision();
+    if (revision === seenRevisionRef.current) return;
+    reloadingRef.current = true;
+    try {
+      // Our own pending writes first, then read; repeat if the user changed something meanwhile,
+      // so the reloaded state never hides a change that is already in the database.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (!(await flush())) return;
+        const before = targetRef.current;
+        const fresh = await store.load();
+        if (!fresh) return;
+        if (targetRef.current !== before) continue;
+        seenRevisionRef.current = revision;
+        committedRef.current = fresh;
+        targetRef.current = fresh;
+        dispatch({ type: 'HYDRATE', state: fresh });
+        return;
+      }
+    } finally {
+      reloadingRef.current = false;
+    }
+  }, [flush]);
+
   // Open the store and hydrate. A fresh install starts empty (onboarding takes over).
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const store = await createStore();
+        // Revision before the load: a headless write that lands between the two bumps it, and
+        // the next check reloads. Reading it afterwards could mark such a write as already seen.
+        const revisionBefore = await headlessRevision();
         let next = await store.load();
         if (cancelled) return;
         if (!next) {
           next = buildEmptyState(trackingDayOf(now(), currentZone()));
           await store.replace(next);
         }
-        seenRevisionRef.current = await headlessRevision();
+        seenRevisionRef.current = revisionBefore;
         if (cancelled) return;
         storeRef.current = store;
         committedRef.current = next;
@@ -224,43 +263,36 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   }, [state, flush]);
 
   // Clock: refresh every 30 s and whenever the app returns to the foreground.
-  // On foreground, also pick up rows a headless writer (notification button, widget) added while we slept.
+  // Headless writers (notification button, widget, background re-plan) are picked up on
+  // foreground, on every tick while active, right away when they run on this runtime, and once
+  // more a few seconds after foregrounding (a write that was still finishing when we woke).
   useEffect(() => {
     const tick = () => {
       setNowMs(now());
       const z = currentZone();
       setZone((old) => (old === z ? old : z));
     };
-    const interval = setInterval(tick, 30_000);
+    const reload = () => reloadIfHeadlessChanged().catch((err) => console.warn('Reload after background change failed', err));
+    const interval = setInterval(() => {
+      tick();
+      if (AppState.currentState === 'active') void reload();
+    }, 30_000);
+    let late: ReturnType<typeof setTimeout> | null = null;
     const sub = AppState.addEventListener('change', (s) => {
       if (s !== 'active') return;
       tick();
-      void (async () => {
-        const store = storeRef.current;
-        if (!store || seenRevisionRef.current === null) return;
-        const revision = await headlessRevision();
-        if (revision === seenRevisionRef.current) return;
-        // Our own pending writes first, then read; repeat if the user changed something meanwhile,
-        // so the reloaded state never hides a change that is already in the database.
-        for (let attempt = 0; attempt < 3; attempt++) {
-          await flush();
-          const before = targetRef.current;
-          const fresh = await store.load();
-          if (!fresh) return;
-          if (targetRef.current !== before) continue;
-          seenRevisionRef.current = revision;
-          committedRef.current = fresh;
-          targetRef.current = fresh;
-          dispatch({ type: 'HYDRATE', state: fresh });
-          return;
-        }
-      })().catch((err) => console.warn('Reload after background change failed', err));
+      void reload();
+      if (late !== null) clearTimeout(late);
+      late = setTimeout(() => void reload(), 4_000);
     });
+    const unsubscribe = onHeadlessWrite(() => void reload());
     return () => {
       clearInterval(interval);
+      if (late !== null) clearTimeout(late);
       sub.remove();
+      unsubscribe();
     };
-  }, [flush]);
+  }, [reloadIfHeadlessChanged]);
 
   const boundary = state.settings.dayBoundaryHour;
   const today = useMemo(() => trackingDayOf(nowMs, zone, boundary), [nowMs, zone, boundary]);
@@ -458,6 +490,17 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
       },
       updateSettings(patch) {
         dispatch({ type: 'UPDATE_SETTINGS', patch });
+        // The water goal lives twice: as a setting (Today's hydration card, the planner) and as the
+        // Water habit's versioned target (completion, streaks, the widget). Keep them one number.
+        if (patch.waterGoalMl !== undefined) {
+          const { day } = stamp();
+          const water = stateRef().habits.find((h) => h.presetId === 'water');
+          if (water) {
+            const base = currentRule(water, day);
+            const target = Math.max(1, Math.round(patch.waterGoalMl));
+            if (base.target !== target) dispatch({ type: 'SET_RULE', rule: { ...base, effectiveFrom: day, target } });
+          }
+        }
       },
       completeOnboarding(choices) {
         const { day } = stamp();
@@ -471,6 +514,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
             activeStartMin: choices.activeStartMin,
             activeEndMin: choices.activeEndMin,
             cycleEnabled: choices.cycleEnabled,
+            ...(choices.cloudBackup !== undefined ? { cloudBackup: choices.cloudBackup } : {}),
             onboardingDone: true,
           },
         });

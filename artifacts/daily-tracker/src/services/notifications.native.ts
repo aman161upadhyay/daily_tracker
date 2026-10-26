@@ -165,6 +165,9 @@ function categoryFor(n: ScheduledNudge): string | undefined {
   return 'nudge';
 }
 
+/** How long an overdue, still-pending alarm is left alone before it is treated as lost. */
+const OVERDUE_GRACE_MS = 30 * 60_000;
+
 async function readLedger(): Promise<LedgerEntry[]> {
   try {
     const raw = await AsyncStorage.getItem(LEDGER_KEY);
@@ -181,16 +184,26 @@ async function readLedger(): Promise<LedgerEntry[]> {
  */
 export async function syncPlan(plan: ScheduledNudge[], nowMs: number): Promise<FiredRecord[]> {
   const ledger = await readLedger();
-  const fired = ledger.filter((e) => e.at <= nowMs);
+  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  const pending = new Set(scheduled.map((r) => r.identifier));
+  // Without exact-alarm access (the Android 14+ default) an alarm may still be pending minutes
+  // after its time. Such an entry has not fired: leave it scheduled for a while rather than
+  // cancelling it and counting it against the daily cap as if the user had seen it.
+  const overdueKept = ledger.filter((e) => e.at <= nowMs && pending.has(e.id) && e.at > nowMs - OVERDUE_GRACE_MS);
+  const keep = new Set(overdueKept.map((e) => e.id));
+  const fired = ledger.filter((e) => e.at <= nowMs && !pending.has(e.id));
 
   const wanted = new Map(plan.map((n) => [n.id, n]));
-  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   const ours = new Set<string>();
   const ledgerSig = new Map(ledger.map((e) => [e.id, e.sig]));
 
   for (const req of scheduled) {
     const id = req.identifier;
     if (id === MIND_END_ID) continue;
+    if (keep.has(id)) {
+      ours.add(id);
+      continue;
+    }
     const want = wanted.get(id);
     if (!want || ledgerSig.get(id) !== signature(want)) {
       await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
@@ -227,7 +240,10 @@ export async function syncPlan(plan: ScheduledNudge[], nowMs: number): Promise<F
     }
   }
 
-  const nextLedger: LedgerEntry[] = plan.filter((n) => n.at > nowMs).map((n) => ({ id: n.id, habitIds: n.habitIds, day: n.day, at: n.at, sig: signature(n) }));
+  const nextLedger: LedgerEntry[] = [
+    ...overdueKept,
+    ...plan.filter((n) => n.at > nowMs && !keep.has(n.id)).map((n) => ({ id: n.id, habitIds: n.habitIds, day: n.day, at: n.at, sig: signature(n) })),
+  ];
   await AsyncStorage.setItem(LEDGER_KEY, JSON.stringify(nextLedger));
   return fired;
 }
@@ -286,25 +302,35 @@ function withHandledLedger<T>(job: (keys: string[]) => Promise<T> | T): Promise<
   return run;
 }
 
+const inFlight = new Set<string>();
+
 /**
- * Claim a response before applying it; returns false when it was already
- * claimed (the same press can reach the headless task and the foreground
- * listener). A claim whose handling then fails must be released with
- * `unmarkHandled`, otherwise the press is lost for good.
+ * Start handling a response. False when the same press is being handled right
+ * now in this runtime (headless task plus foreground listener) or was handled
+ * by an earlier process. The durable mark is written only after the state
+ * write committed (`endHandling`), so a crash in between replays the press
+ * instead of losing it; the ledger of nudge events, written in the same
+ * transaction as the log, makes that replay a no-op.
  */
-export async function markHandled(key: string): Promise<boolean> {
-  return withHandledLedger((keys) => {
-    if (keys.includes(key)) return false;
-    keys.push(key);
-    return true;
-  });
+export async function beginHandling(key: string): Promise<boolean> {
+  if (inFlight.has(key)) return false;
+  inFlight.add(key);
+  const seen = await withHandledLedger((keys) => keys.includes(key));
+  if (seen) inFlight.delete(key);
+  return !seen;
 }
 
-export async function unmarkHandled(key: string): Promise<void> {
-  await withHandledLedger((keys) => {
-    const i = keys.indexOf(key);
-    if (i >= 0) keys.splice(i, 1);
-  });
+/** Finish handling: a committed write marks the key for good; a failure just releases it. */
+export async function endHandling(key: string, committed: boolean): Promise<void> {
+  try {
+    if (committed) {
+      await withHandledLedger((keys) => {
+        if (!keys.includes(key)) keys.push(key);
+      });
+    }
+  } finally {
+    inFlight.delete(key);
+  }
 }
 
 export async function scheduleMindEnd(endAtMs: number, minutes: number, kind: MindKind): Promise<void> {

@@ -41,6 +41,7 @@ export async function replanHeadless(state: TrackerState, ctx: CommandContext): 
  * the clear.
  */
 let revisionQueue: Promise<unknown> = Promise.resolve();
+const listeners = new Set<() => void>();
 
 export async function markHeadlessWrite(): Promise<void> {
   const bump = async () => {
@@ -50,6 +51,23 @@ export async function markHeadlessWrite(): Promise<void> {
   const run = revisionQueue.then(bump, bump);
   revisionQueue = run.catch(() => undefined);
   await run;
+  // Same runtime (the app is alive while a headless task runs): tell the provider right away
+  // instead of waiting for the next foreground or 30-second tick.
+  for (const l of listeners) {
+    try {
+      l();
+    } catch (err) {
+      console.warn('Headless write listener failed', err);
+    }
+  }
+}
+
+/** Called after every headless write that happens on this runtime. Returns the unsubscribe. */
+export function onHeadlessWrite(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 /** Current revision (0 when nothing was ever written headlessly). */

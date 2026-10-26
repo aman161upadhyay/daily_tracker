@@ -109,6 +109,16 @@ export const DEFAULT_HORIZON_MS = 36 * 60 * 60_000;
 export const MERGE_WINDOW_MS = 5 * 60_000;
 export const SNOOZE_MINUTES = 15;
 const MIN_LEAD_MS = 45_000;
+/**
+ * Hard ceiling on slots per series per day. Intervals are validated on import,
+ * but the planner must never depend on that: a one-minute interval over a
+ * 24-hour window is 1 440 slots, anything beyond that is a bug, not a plan.
+ */
+const MAX_SLOTS_PER_DAY = 1_500;
+/** Interval in ms, never below one minute (a tiny or negative step would loop forever). */
+function slotStep(intervalMin: number): number {
+  return Math.max(1, Number.isFinite(intervalMin) ? Math.floor(intervalMin) : 1) * 60_000;
+}
 
 /** Latest event per nudge id — the only thing the planner needs from the history. */
 export function latestEvents(events: readonly NudgeEvent[]): Map<string, NudgeEvent> {
@@ -199,7 +209,9 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
       // so the first pending slot always matches what the card shows. Past slots do not move it.
       const base = isToday ? input.rotationCompletedToday + input.swapOffset : 0;
       let ordinal = 0;
-      for (let at = anchor + settings.nudgeIntervalMin * 60_000; at < activeEnd && eligible.length > 0; at += settings.nudgeIntervalMin * 60_000) {
+      const rotStep = slotStep(settings.nudgeIntervalMin);
+      let rotSlots = 0;
+      for (let at = anchor + rotStep; at < activeEnd && eligible.length > 0 && rotSlots++ < MAX_SLOTS_PER_DAY; at += rotStep) {
         const minute = minutesOfDay(at, zone);
         const id = `rot:${day}:${minute}`;
         const when = effectiveAt(id, Math.max(at, snoozedUntil));
@@ -250,14 +262,16 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
 
     // ── Other interval habits (non-movement, e.g. a custom "sip tea" every 2 h) ──
     for (const h of input.habits) {
-      if (h.movement || !h.policy.enabled || h.policy.kind !== 'INTERVAL' || !h.policy.intervalMin) continue;
+      if (h.movement || !h.policy.enabled || h.policy.kind !== 'INTERVAL' || !(h.policy.intervalMin! >= 1)) continue;
       if (isToday && (h.doneToday || h.donePeriod)) continue;
       const start = h.policy.activeStartMin !== undefined ? instantOf(day, h.policy.activeStartMin, zone) : activeStart;
       const end = h.policy.activeEndMin !== undefined ? instantOf(day, h.policy.activeEndMin, zone) : activeEnd;
       if (end <= start) continue;
       const anchor = Math.max(isToday ? (h.lastLogMs ?? 0) : 0, start);
       let n = 0;
-      for (let at = anchor + h.policy.intervalMin * 60_000; at < end && n < h.policy.maxPerDay; at += h.policy.intervalMin * 60_000) {
+      let slots = 0;
+      const step = slotStep(h.policy.intervalMin!);
+      for (let at = anchor + step; at < end && n < h.policy.maxPerDay && slots++ < MAX_SLOTS_PER_DAY; at += step) {
         if (h.policy.onlyWhenBehind && isToday) {
           const elapsed = (at - start) / (end - start);
           if (h.todayRatio >= elapsed) continue;
@@ -314,11 +328,13 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
 
     // ── Water: pace-aware checks, one interval after the last tap ────────
     const water = input.water;
-    if (water && activeOk && water.intervalMin > 0) {
+    if (water && activeOk && water.intervalMin >= 1) {
       const logged = isToday ? water.loggedMl : 0;
       if (logged < settings.waterGoalMl) {
         const anchor = Math.max(isToday ? (water.lastTapMs ?? 0) : 0, activeStart);
-        for (let at = anchor + water.intervalMin * 60_000; at < activeEnd; at += water.intervalMin * 60_000) {
+        const waterStep = slotStep(water.intervalMin);
+        let waterSlots = 0;
+        for (let at = anchor + waterStep; at < activeEnd && waterSlots++ < MAX_SLOTS_PER_DAY; at += waterStep) {
           const minute = minutesOfDay(at, zone);
           const expected = expectedIntakeMl(minute, settings.activeStartMin, settings.activeEndMin, settings.waterGoalMl);
           if (isOnPace(logged, expected, settings.tapSizeMl)) continue;

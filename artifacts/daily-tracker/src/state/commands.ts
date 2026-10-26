@@ -3,7 +3,7 @@
  * notification handler. Each returns reducer actions; nothing here touches
  * React, the OS or the store.
  */
-import type { EntrySource, Habit, MindKind, NudgeEvent, NudgeEventKind, SnackTrigger } from '@/src/domain/models';
+import type { EntrySource, Habit, MindKind, NudgeEvent, NudgeEventKind, SnackTrigger, SnackType } from '@/src/domain/models';
 import { SNACK_LABELS } from '@/src/domain/models';
 import type { NudgeActionKind } from '@/src/domain/nudges/planner';
 import { SNOOZE_MINUTES } from '@/src/domain/nudges/planner';
@@ -118,18 +118,29 @@ export function nudgeResponseActions(state: TrackerState, payload: NudgePayload,
     return out;
   }
   const habits = payload.habitIds.map((id) => state.habits.find((h) => h.id === id)).filter((h): h is Habit => !!h && !h.archived);
+  // The same press can reach us twice (headless task and the foreground listener, or a replay
+  // after a crash between the write and the "handled" marker). The ledger is written in the same
+  // transaction as the log, so it is the one dedupe that survives a process death.
+  const alreadyRecorded = (kind: NudgeEventKind) => state.nudgeEvents.some((e) => e.nudgeId === payload.nudgeId && e.kind === kind);
   switch (action) {
     case 'DONE': {
-      for (const h of habits) out.push(...completeFromNudge(state, h, ctx));
-      if (payload.kind === 'EVENT' && habits.every((h) => !h.snackType)) {
-        // Sugar Shield follow-up: the walk counts as a walk snack even without a walk habit.
-        out.push({ type: 'LOG_SNACK', snack: { id: ctx.newId(), at: ctx.nowMs, zone: ctx.zone, day: ctx.today, type: 'WALK', seconds: 120, trigger: 'NUDGE' } });
+      if (alreadyRecorded('DONE')) return out;
+      if (payload.kind === 'EVENT') {
+        // A one-off follow-up (the Sugar Shield walk): "Did it" means the walk itself, never another
+        // round of the habit that scheduled it. The payload names the snack; a walk by default.
+        // Payloads come from the OS; the snack type is checked against the known set first.
+        const type: SnackType = payload.snackType !== undefined && payload.snackType in SNACK_LABELS ? (payload.snackType as SnackType) : 'WALK';
+        const meta = SNACK_LABELS[type];
+        out.push({ type: 'LOG_SNACK', snack: { id: ctx.newId(), at: ctx.nowMs, zone: ctx.zone, day: ctx.today, type, reps: meta.defaultReps, seconds: type === 'WALK' ? 120 : meta.defaultSeconds, trigger: 'NUDGE' } });
+        out.push({ type: 'REMOVE_EVENT', id: payload.nudgeId.replace(/^event:/, '') });
+      } else {
+        for (const h of habits) out.push(...completeFromNudge(state, h, ctx));
       }
-      if (payload.kind === 'EVENT') out.push({ type: 'REMOVE_EVENT', id: payload.nudgeId.replace(/^event:/, '') });
       out.push(nudgeEventAction(payload, 'DONE', ctx));
       break;
     }
     case 'WATER': {
+      if (alreadyRecorded('DONE')) return out;
       const ml = payload.waterMl ?? state.settings.tapSizeMl;
       out.push({ type: 'ADD_WATER', entry: { id: ctx.newId(), at: ctx.nowMs, zone: ctx.zone, day: ctx.today, ml, source: 'MANUAL' } });
       // Only the water half is done; the movement half (if merged) stays open via a short snooze.
@@ -141,6 +152,7 @@ export function nudgeResponseActions(state: TrackerState, payload: NudgePayload,
       out.push(nudgeEventAction(payload, 'SNOOZED', ctx, ctx.nowMs + SNOOZE_MINUTES * 60_000));
       break;
     case 'SWAP':
+      if (alreadyRecorded('SWAPPED')) return out;
       out.push({ type: 'SWAP', day: ctx.today });
       out.push(nudgeEventAction(payload, 'SWAPPED', ctx));
       break;

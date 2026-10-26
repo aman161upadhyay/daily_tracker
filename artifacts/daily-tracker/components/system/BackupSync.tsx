@@ -1,16 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { AppState, Platform } from 'react-native';
-import { serializeExport } from '@/src/data/transfer';
-import { deleteSnapshot, snapshotWrittenAt, writeSnapshot } from '@/src/services/backup';
+import { deleteSnapshot } from '@/src/services/backup';
+import { afterSnapshots, maybeSnapshot } from '@/src/services/snapshotSync';
 import { purgeTransferCache } from '@/src/services/transferCache';
 import { useTracker } from '@/src/state/TrackerProvider';
-import { hasUserData, shouldSnapshot } from '@/src/data/backupPolicy';
+import { hasUserData } from '@/src/data/backupPolicy';
 import type { TrackerState } from '@/src/state/types';
 
 export { hasUserData, shouldSnapshot } from '@/src/data/backupPolicy';
-
-/** A snapshot at most this often; Auto Backup itself runs about once a day. */
-const MIN_AGE_MS = 60 * 60 * 1000;
 
 /**
  * Keeps `files/backup/snapshot.json` fresh for Android Auto Backup: written on
@@ -31,22 +28,22 @@ export function BackupSync() {
   const latest = useRef(state);
   latest.current = state;
   const lastWritten = useRef<TrackerState | null>(null);
-  const queue = useRef<Promise<void>>(Promise.resolve());
   const enqueue = (job: () => Promise<void>) => {
-    queue.current = queue.current.then(job).catch((err) => console.warn('[backup]', err));
+    afterSnapshots(job).catch((err) => console.warn('[backup]', err));
   };
 
   useEffect(() => {
     if (!ready || Platform.OS === 'web') return;
-    const attempt = async () => {
+    // maybeSnapshot queues itself; never wrap it in `enqueue` (that would wait on its own queue).
+    const run = () => {
       const s = latest.current;
-      if (!shouldSnapshot(s) || lastWritten.current === s) return;
-      const writtenAt = await snapshotWrittenAt();
-      if (writtenAt !== null && Date.now() - writtenAt < MIN_AGE_MS) return;
-      await writeSnapshot(serializeExport(s));
-      lastWritten.current = s;
+      if (lastWritten.current === s) return;
+      maybeSnapshot(s)
+        .then((written) => {
+          if (written) lastWritten.current = s;
+        })
+        .catch((err) => console.warn('[backup]', err));
     };
-    const run = () => enqueue(attempt);
     run();
     enqueue(() => purgeTransferCache());
     const sub = AppState.addEventListener('change', (next) => {

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Alert, Platform, StyleSheet, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { BreathCircle, phaseAt } from '@/components/tracker/BreathCircle';
 import { Card } from '@/components/ui/Card';
 import { UI } from '@/components/ui/icons';
@@ -34,6 +34,45 @@ export default function MindScreen() {
 
   const totalMs = (kind === 'BREATHING' ? BREATHING_MINUTES : minutes) * 60_000;
   const remainingMs = Math.max(0, totalMs - elapsedMs);
+
+  // Leaving mid-session (system Back, the header arrow, a swipe) asks first instead of silently
+  // dropping the minutes and the bell. Finish / Done / Discard set `leaving` and pass through.
+  const navigation = useNavigation();
+  const latest = useRef({ elapsedMs, done, kind, leaving: false });
+  latest.current = { ...latest.current, elapsedMs, done, kind };
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    return navigation.addListener('beforeRemove', (e) => {
+      const cur = latest.current;
+      if (cur.leaving || cur.done || cur.elapsedMs === 0) return;
+      e.preventDefault();
+      const mins = Math.max(1, Math.round(cur.elapsedMs / 60_000));
+      const leave = () => {
+        latest.current.leaving = true;
+        setRunning(false);
+        navigation.dispatch(e.data.action);
+      };
+      Alert.alert(
+        'Leave the timer?',
+        cur.elapsedMs >= 60_000 ? `Finishing logs ${mins} min; discarding keeps today as it was.` : 'Under a minute so far, so nothing would be logged.',
+        [
+          { text: 'Keep timing', style: 'cancel' },
+          ...(cur.elapsedMs >= 60_000
+            ? [
+                {
+                  text: `Finish · log ${mins} min`,
+                  onPress: () => {
+                    actions.logMind(cur.kind, mins);
+                    leave();
+                  },
+                },
+              ]
+            : []),
+          { text: 'Discard', style: 'destructive' as const, onPress: leave },
+        ],
+      );
+    });
+  }, [navigation, actions]);
 
   // The end bell is a scheduled notification, so it rings even if the screen locks mid-session.
   useEffect(() => {
@@ -70,17 +109,34 @@ export default function MindScreen() {
   }, [done, actions, kind, totalMs]);
 
   const reset = (nextKind?: MindKind) => {
-    setRunning(false);
-    setElapsedMs(0);
-    setDone(false);
-    if (nextKind) setKind(nextKind);
+    const apply = () => {
+      setRunning(false);
+      setElapsedMs(0);
+      setDone(false);
+      if (nextKind) setKind(nextKind);
+    };
+    // A minute or more on the clock is worth a question before it is thrown away.
+    if (!done && elapsedMs >= 60_000 && Platform.OS !== 'web') {
+      const mins = Math.max(1, Math.round(elapsedMs / 60_000));
+      Alert.alert(nextKind ? 'Switch and discard?' : 'Reset the timer?', `${mins} min so far would not be logged.`, [
+        { text: 'Keep timing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: apply },
+      ]);
+      return;
+    }
+    apply();
+  };
+
+  const leave = () => {
+    latest.current.leaving = true;
+    router.back();
   };
 
   const finishEarly = () => {
     const mins = Math.max(1, Math.round(elapsedMs / 60_000));
     setRunning(false);
     if (elapsedMs >= 60_000) actions.logMind(kind, mins);
-    router.back();
+    leave();
   };
 
   const title = kind === 'BREATHING' ? 'Cyclic sighing' : 'Meditation';
@@ -135,19 +191,28 @@ export default function MindScreen() {
           {done ? (
             <>
               <PillButton label="Again" kind="ghost" onPress={() => reset()} style={{ flex: 1 }} />
-              <PillButton label="Done" Leading={UI.Check} color={c.cat.mind} onPress={() => router.back()} style={{ flex: 1 }} />
+              <PillButton label="Done" Leading={UI.Check} color={c.cat.mind} onPress={leave} style={{ flex: 1 }} />
             </>
           ) : (
             <>
               <PillButton label={running ? 'Pause' : elapsedMs > 0 ? 'Resume' : 'Start'} Leading={running ? UI.Pause : UI.Play} color={c.cat.mind} onPress={() => setRunning((r) => !r)} style={{ flex: 1 }} />
-              {elapsedMs > 0 ? <PillButton label={elapsedMs >= 60_000 ? `Finish · log ${Math.max(1, Math.round(elapsedMs / 60_000))} min` : 'Finish'} kind="ghost" onPress={finishEarly} /> : null}
+              {elapsedMs > 0 ? (
+                <PillButton
+                  label="Finish"
+                  accessibilityLabel={elapsedMs >= 60_000 ? `Finish and log ${Math.max(1, Math.round(elapsedMs / 60_000))} minutes` : 'Finish without logging'}
+                  kind="ghost"
+                  onPress={finishEarly}
+                />
+              ) : null}
               {elapsedMs > 0 ? <IconButton Glyph={UI.Undo} label="Reset timer" onPress={() => reset()} size={48} color={c.text} /> : null}
             </>
           )}
         </Row>
-        {!done && elapsedMs > 0 && elapsedMs < 60_000 ? (
+        {!done && elapsedMs > 0 ? (
           <Txt role="caption" tone="tertiary" align="center" style={{ marginTop: 10 }}>
-            Sessions under a minute are not logged — finishing now keeps today as it was.
+            {elapsedMs >= 60_000
+              ? `Finishing now logs ${Math.max(1, Math.round(elapsedMs / 60_000))} min.`
+              : 'Sessions under a minute are not logged — finishing now keeps today as it was.'}
           </Txt>
         ) : null}
       </Card>

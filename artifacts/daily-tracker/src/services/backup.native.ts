@@ -15,6 +15,8 @@ import type { Snapshot } from './backup';
 export type { Snapshot } from './backup';
 
 const DIR_NAME = 'backup';
+/** Scratch directory for the half-written copy: NOT in the backup rules, so a crash mid-write never leaves a plaintext orphan eligible for backup. */
+const TMP_DIR_NAME = 'backup-tmp';
 const FILE_NAME = 'snapshot.json';
 
 function snapshotFile(): File {
@@ -32,17 +34,33 @@ export async function snapshotWrittenAt(): Promise<number | null> {
   return file.exists ? (file.modificationTime ?? 0) : null;
 }
 
-/** Writes to a temp file first, then swaps, so a crash mid-write never leaves a torn snapshot. */
+/**
+ * Writes to a temp file first (in a sibling directory the backup rules do not
+ * include), then moves it into place, so a crash mid-write never leaves a torn
+ * snapshot — nor a stray copy that Android would back up after an erase.
+ */
 export async function writeSnapshot(text: string): Promise<void> {
   const dir = new Directory(Paths.document, DIR_NAME);
   if (!dir.exists) dir.create({ intermediates: true });
-  const tmp = new File(dir, `${FILE_NAME}.tmp`);
+  const tmpDir = new Directory(Paths.document, TMP_DIR_NAME);
+  if (!tmpDir.exists) tmpDir.create({ intermediates: true });
+  const tmp = new File(tmpDir, `${FILE_NAME}.tmp`);
   tmp.create({ overwrite: true });
   tmp.write(text);
   await tmp.move(snapshotFile(), { overwrite: true });
 }
 
+/** Removes the snapshot and anything else in the backup directories ("deleted" must mean deleted). */
 export async function deleteSnapshot(): Promise<void> {
-  const file = snapshotFile();
-  if (file.exists) file.delete();
+  for (const name of [DIR_NAME, TMP_DIR_NAME]) {
+    const dir = new Directory(Paths.document, name);
+    if (!dir.exists) continue;
+    for (const item of dir.list()) {
+      try {
+        item.delete();
+      } catch (err) {
+        console.warn('[backup] could not delete', item.name, err);
+      }
+    }
+  }
 }

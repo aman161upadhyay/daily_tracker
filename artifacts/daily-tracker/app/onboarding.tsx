@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Switch, TextInput, View } from 'react-native';
+import { Platform, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { EvidencePill } from '@/components/tracker/EvidenceBlock';
 import { Card } from '@/components/ui/Card';
@@ -37,6 +37,7 @@ export default function OnboardingScreen() {
   const [activeEndMin, setEnd] = useState(DEFAULT_SETTINGS.activeEndMin);
   const [selected, setSelected] = useState<Set<string>>(() => new Set(STARTER_SET));
   const [cycleEnabled, setCycleEnabled] = useState(false);
+  const [cloudBackup, setCloudBackup] = useState(true);
   const [perm, setPerm] = useState<PermissionState>('undetermined');
   const [restore, setRestore] = useState<{ state: TrackerState; writtenAt: number | null } | null>(null);
 
@@ -74,7 +75,7 @@ export default function OnboardingScreen() {
     });
 
   const start = () => {
-    actions.completeOnboarding({ name, units, waterGoalMl, activeStartMin, activeEndMin, presetIds: PRESETS.filter((p) => selected.has(p.id)).map((p) => p.id), cycleEnabled });
+    actions.completeOnboarding({ name, units, waterGoalMl, activeStartMin, activeEndMin, presetIds: PRESETS.filter((p) => selected.has(p.id)).map((p) => p.id), cycleEnabled, cloudBackup });
     router.replace('/');
   };
 
@@ -214,8 +215,21 @@ export default function OnboardingScreen() {
         </Row>
       </Step>
 
+      {Platform.OS === 'android' ? (
+        <Step
+          n={5}
+          title="Phone backup"
+          hint="If your phone's own backup is on, Android keeps a copy of your logs with your Google account so a new phone can restore them. It travels only encrypted with your screen lock (Android 9 or newer) and never goes to us — there is no server. Off means the data lives on this phone alone unless you export a file."
+        >
+          <Row style={{ justifyContent: 'space-between' }}>
+            <Txt role="body">Include in Android phone backup</Txt>
+            <Switch value={cloudBackup} onValueChange={setCloudBackup} trackColor={{ false: c.hairline, true: c.green }} thumbColor={c.text} accessibilityLabel="Include in Android phone backup" />
+          </Row>
+        </Step>
+      ) : null}
+
       {NOTIFICATIONS_SUPPORTED ? (
-        <Step n={5} title="Reminders" hint="Nudges arrive as notifications with Done, Snooze and Swap buttons, only inside your active hours and never more than a few a day. Optional — the app works without them.">
+        <Step n={Platform.OS === 'android' ? 6 : 5} title="Reminders" hint="Nudges arrive as notifications with Done, Snooze and Swap buttons, only inside your active hours and never more than a few a day. Optional — the app works without them.">
           {perm === 'granted' ? (
             <Row gap={8}>
               <UI.Check size={18} color={c.greenBright} weight="bold" />

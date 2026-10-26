@@ -100,6 +100,38 @@ cycle (phases, calendar, day sheet, insights) was verified in the web preview an
 | L9 | Large text + reduce motion | Phone Display → Font size largest, Accessibility → Remove animations | Today's rings and numbers stay inside their cards (titles cap their growth; body copy grows); press-scale, ring fill and bar animations are instant; the breathing circle still breathes |
 | L10 | Release signature | `apksigner verify --print-certs app-release.apk` after the M6 recipe | Certificate is the one from `keytool`, not `CN=Android Debug`; `adb install -r` over a previous release build succeeds |
 
+## R — Council round 1 follow-ups (2026-10-26)
+
+| # | Scenario | Steps | Expect |
+|---|---|---|---|
+| R1 | Notification step in onboarding | Fresh install → onboarding step 5 "Reminders" → Allow notifications | System prompt appears; the step shows "Notifications allowed"; denying shows the "off for this app" copy and Settings → Reminders offers Open settings |
+| R2 | Lock state: no screen lock while enabled | Enable App lock, then remove the phone's screen lock, reopen the app | The gate steps aside (no trap); Settings shows the lock as unavailable |
+| R3 | Lock state: biometric error | Enable App lock; cover the sensor / fail the fingerprint five times | Gate stays locked with "Try again"; a later success unlocks; no loop of prompts after Cancel |
+| R4 | Screenshots while locked | Lock the app, try a screenshot and open Recents | Screenshot blocked / recents thumbnail blank while locked; allowed again after unlocking |
+| R5 | Release-key warning | Build release without `DT_RELEASE_*` set | Gradle prints the `WARNING: DT_RELEASE_STORE_FILE is not set` line; with the properties set, no warning and L10 passes |
+| R6 | Auto Backup per Android version | Android 9–11 device: `adb shell bmgr backupnow`; Android 8.x device: Settings → Your data | 9–11: backup runs only with a device lock (client-side encryption); 8.x: card says cloud backup needs Android 9 and offers Export |
+| R7 | Steps ownership | Grant Health Connect steps; tap the Steps habit in the widget / press Done on a Steps nudge (none should exist) | Steps never appear as a widget tile action and no nudge offers Done for steps; the Steps value equals Health Connect's total |
+| R8 | Weekly habit Done from a notification | Strength session (2× / week) already met this week; press Done on its nudge | Today gets one entry; pressing Done again adds nothing |
+| R9 | Timer bell after midnight | Start a 13-min meditation at 23:55, lock the phone, tap the bell the next morning | Session shows on the day it ended (before 4 am counts as the previous tracking day) |
+| R10 | Headless write while the app is open | Keep Today open; press Done on a nudge from the shade | Today updates within a second without reopening; nothing is logged twice |
+| R11 | Persist failure banner | `adb shell run-as … chmod 000 databases` (debug build) then log water | Red banner appears; after restoring permissions it clears on the next write |
+| R12 | Sugar Shield entry points | Without the Sugar Shield habit: Today Movement card footer, the Log sheet's "Before something sweet", then add the habit and open its page | All three open /shield; the habit page has "Start Sugar Shield" |
+
+## S — Council round 2 follow-ups (2026-10-26)
+
+| # | Scenario | Steps | Expect |
+|---|---|---|---|
+| S1 | Widget tap and notification button together | With the app closed: press Done on a nudge in the shade and tap a widget tile within the same second | Both logs land exactly once; widget and Today agree after opening the app |
+| S2 | Button press while the app is open behind the shade | App open on Today, pull the shade, press Done | Today shows the log within a second (no foreground change needed) |
+| S3 | Late alarm (inexact) | Android 14+, exact alarms *not* allowed; wait for a nudge that arrives a few minutes late, then open the app right after its planned time but before it arrived | The pending notification still arrives; the daily cap is not charged twice; a nudge over 30 min late is dropped quietly |
+| S4 | Leaving the meditation timer | Start a 5-minute meditation, after 90 s press the system Back | Dialog: Keep timing / Finish · log 2 min / Discard; Back under one minute offers Keep / Discard only; the header arrow and the Finish button behave the same |
+| S5 | Onboarding backup step | Fresh install (Android) | Step 5 "Phone backup" with the switch on; turning it off and finishing leaves Settings → Android phone backup off and no `files/backup/snapshot.json` is written |
+| S6 | Health Connect: tracking-day steps | Day boundary 4 am, walk 500 steps at 1 am | Body tab counts them on the calendar day; the Steps habit counts them on the previous tracking day |
+| S7 | Health Connect: upstream deletion | Delete a strength session and a drink in the source app, then Sync now | The automatic Strength tick and the imported drink disappear; manual logs stay; a drink edited upstream shows the new amount |
+| S8 | Widget-only day | Log only from the widget for a day with phone backup on | `files/backup/snapshot.json` is at most an hour older than the last widget tap (check with `adb shell run-as … ls -l files/backup`) |
+| S9 | Export file name | Settings → Your data → Export backup, cancel the share sheet, repeat | Two files `daily-tracker-YYYY-MM-DD-xxxx.json` with different tags in the cache dir; gone after an hour / next start |
+| S10 | Heatmap with TalkBack | Habit page, 26-week heatmap | One spoken summary ("… of … days complete, longest run …"); complete days show a dot, not only a colour |
+
 ## Recording results
 
 Add a dated line under the milestone in `docs/IMPLEMENTATION_PLAN.md` ("Device run YYYY-MM-DD, Pixel 7 / Android 15: N1–N17 pass except …") and open follow-ups for anything that failed.

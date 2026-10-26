@@ -38,8 +38,36 @@ export function Heatmap26w({ values, today, createdDay }: Heatmap26wProps) {
   const firstDay = weeks[0]![0]!;
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
 
+  // A spoken summary instead of 182 unlabeled squares: how many days were full, partial, empty,
+  // and the best stretch — the same facts the colours show.
+  const summary = useMemo(() => {
+    let full = 0;
+    let partial = 0;
+    let counted = 0;
+    let run = 0;
+    let best = 0;
+    for (const days of weeks) {
+      for (const day of days) {
+        if (day > today || day < createdDay) continue;
+        counted += 1;
+        const v = values[day] ?? 0;
+        if (v >= 1) {
+          full += 1;
+          run += 1;
+          best = Math.max(best, run);
+        } else {
+          run = 0;
+          if (v > 0) partial += 1;
+        }
+      }
+    }
+    if (counted === 0) return 'Last 26 weeks: no days tracked yet.';
+    const pct = Math.round((full / counted) * 100);
+    return `Last 26 weeks: ${full} of ${counted} days complete (${pct}%), ${partial} partial, ${counted - full - partial} empty. Longest run of complete days: ${best}.`;
+  }, [weeks, values, today, createdDay]);
+
   return (
-    <View onLayout={onLayout} accessibilityLabel="26-week adherence heatmap">
+    <View onLayout={onLayout} accessibilityRole="image" accessibilityLabel={summary}>
       <View style={{ flexDirection: 'row', gap: GAP }}>
         <View style={{ width: labelWidth, gap: GAP }}>
           {DAY_LABELS.map((l, i) => (
@@ -61,6 +89,7 @@ export function Heatmap26w({ values, today, createdDay }: Heatmap26wProps) {
               else if (beforeStart) bg = withAlpha(c.surfaceRaised, 0.5);
               else if (v !== undefined && v > 0) bg = withAlpha(adherenceColor(v), 0.7);
               const isToday = day === today;
+              const complete = !future && !beforeStart && v !== undefined && v >= 1;
               return (
                 <View
                   key={day}
@@ -71,8 +100,13 @@ export function Heatmap26w({ values, today, createdDay }: Heatmap26wProps) {
                     backgroundColor: bg,
                     borderWidth: isToday ? 1 : 0,
                     borderColor: c.goldBright,
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}
-                />
+                >
+                  {/* Complete days carry a dot as well as the colour, so partial vs full never relies on hue alone. */}
+                  {complete && cell >= 8 ? <View style={{ width: Math.max(2, Math.round(cell * 0.3)), height: Math.max(2, Math.round(cell * 0.3)), borderRadius: 99, backgroundColor: withAlpha(c.text, 0.55) }} /> : null}
+                </View>
               );
             })}
           </View>
@@ -95,6 +129,12 @@ export function Heatmap26w({ values, today, createdDay }: Heatmap26wProps) {
         ))}
         <Txt role="caption" tone="tertiary">
           Flow
+        </Txt>
+        <View style={{ width: 12, height: 12, borderRadius: 3, backgroundColor: withAlpha(adherenceColor(1), 0.7), alignItems: 'center', justifyContent: 'center', marginLeft: 6 }}>
+          <View style={{ width: 4, height: 4, borderRadius: 99, backgroundColor: withAlpha(c.text, 0.55) }} />
+        </View>
+        <Txt role="caption" tone="tertiary">
+          Complete
         </Txt>
       </View>
     </View>

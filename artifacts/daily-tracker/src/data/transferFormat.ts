@@ -24,8 +24,19 @@ export interface ExportFile extends TrackerState {
   exportedAt: string;
 }
 
-export function exportFileName(now = new Date()): string {
-  return `daily-tracker-${now.toISOString().slice(0, 10)}.json`;
+/**
+ * `daily-tracker-2026-10-25.json`, or with `suffix` `daily-tracker-2026-10-25-k3f9.json`. The
+ * native exporter adds a random suffix so the scratch path in the cache directory is not
+ * guessable by another app that was once handed a share URI for it.
+ */
+export function exportFileName(now = new Date(), suffix?: string): string {
+  const tail = suffix ? `-${suffix.replace(/[^a-z0-9]/gi, '').slice(0, 8)}` : '';
+  return `daily-tracker-${now.toISOString().slice(0, 10)}${tail}.json`;
+}
+
+/** Short random tag for file names (base-36 of secure random bytes). */
+export function randomFileTag(bytes: Uint8Array): string {
+  return Array.from(bytes, (b) => (b % 36).toString(36)).join('');
 }
 
 /** The file text: plain JSON, or — with a password — the encrypted envelope around that JSON. */

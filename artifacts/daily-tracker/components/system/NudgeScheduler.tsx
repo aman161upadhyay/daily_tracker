@@ -9,7 +9,8 @@ import {
   cancelAll,
   consumeLaunchResponse,
   getPermission,
-  markHandled,
+  beginHandling,
+  endHandling,
   registerBackgroundReplan,
   type NudgeResponse,
 } from '@/src/services/notifications';
@@ -32,13 +33,20 @@ export function NudgeScheduler() {
   const ctx = (): CommandContext => ({ nowMs: Date.now(), zone: latest.current.zone, today: latest.current.today, newId });
 
   const handle = async (r: NudgeResponse) => {
-    if (!(await markHandled(r.key))) return;
+    if (!(await beginHandling(r.key))) return;
     const c = ctx();
+    // Dispatching is synchronous and the provider persists in order; the press is as committed as
+    // any tap in the app once it is in the reducer (the ledger dedupes a replay either way).
     for (const a of nudgeResponseActions(latest.current.state, r.payload, r.action as NudgeActionKind | 'TAP', c)) dispatch(a);
+    await endHandling(r.key, true);
     if (r.action === 'TAP') {
-      const id = r.payload.habitIds[0];
-      if (r.payload.kind === 'SUMMARY') router.push('/');
-      else if (id) router.push({ pathname: '/habit/[id]', params: { id } });
+      // Land where the notification is about: the cycle tab for cycle reminders, the habit page
+      // when the habit still exists, Today otherwise (a Sugar Shield walk without the habit added
+      // carries a placeholder id; pushing it would show "This habit no longer exists").
+      const id = r.payload.habitIds.find((h) => latest.current.state.habits.some((x) => x.id === h && !x.archived));
+      if (r.payload.kind === 'CYCLE') router.push(latest.current.state.settings.cycleEnabled ? '/cycle' : '/');
+      else if (r.payload.kind === 'SUMMARY' || r.payload.kind === 'EVENT' || !id) router.push('/');
+      else router.push({ pathname: '/habit/[id]', params: { id } });
     }
   };
 

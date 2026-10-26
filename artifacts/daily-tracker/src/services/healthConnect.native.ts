@@ -143,20 +143,30 @@ export async function readBatch(window: ReadWindow, granted: BodyRecordType[]): 
     }
   };
 
-  await attempt('Steps', async () => {
+  // Health Connect's day buckets start at the filter's start time, so one aggregate gives calendar
+  // days (what the Body tab shows, comparable with the source app) and a second, started at the
+  // day-boundary hour, gives tracking days (what the Steps habit counts).
+  const stepTotals = async (startTime: string, endTime: string): Promise<StepDay[]> => {
     const groups = await api.aggregateGroupByPeriod({
       recordType: 'Steps',
-      timeRangeFilter: { operator: 'between', startTime: dayStart, endTime: dayEnd },
+      timeRangeFilter: { operator: 'between', startTime, endTime },
       timeRangeSlicer: { period: 'DAYS', length: 1 },
     });
     const steps: StepDay[] = [];
     for (const g of groups) {
+      // Bucket starts are local date-times ("2026-10-26T04:00"); the date part is the day label.
       const day = g.startTime.slice(0, 10);
       if (day < fromDay || day > toDay) continue;
       const origin = g.result.dataOrigins?.[0];
       steps.push({ day, steps: Math.round(g.result.COUNT_TOTAL ?? 0), ...(origin ? { origin } : {}) });
     }
+    return steps;
+  };
+  await attempt('Steps', async () => {
+    const steps = await stepTotals(dayStart, dayEnd);
+    const habitSteps = boundaryHour === 0 ? steps : await stepTotals(trackStart, trackEnd);
     batch.steps = steps;
+    batch.habitSteps = habitSteps;
   });
 
   await attempt('HeartRate', async () => {

@@ -249,6 +249,7 @@ export function Segmented<T extends string>({ options, value, onChange }: { opti
             accessibilityRole="button"
             accessibilityState={{ selected }}
             accessibilityLabel={o.label}
+            hitSlop={{ top: 8, bottom: 8 }}
             style={[styles.segmentItem, selected ? { backgroundColor: c.surfaceRaised, borderColor: c.hairline } : null]}
           >
             <Txt role="callout" tone={selected ? 'primary' : 'secondary'}>
@@ -326,7 +327,7 @@ const styles = StyleSheet.create({
   },
   segmentItem: {
     flex: 1,
-    minHeight: 36,
+    minHeight: 40, // + 8 dp hitSlop above and below = 56 dp, segments sit side by side so no horizontal slop
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 999,

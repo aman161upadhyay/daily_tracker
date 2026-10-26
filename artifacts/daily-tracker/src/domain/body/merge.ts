@@ -51,14 +51,26 @@ function compact<T extends object>(obj: T): T {
   return out as T;
 }
 
+/**
+ * Drop rows whose day lies inside the read window but which the read did not return: the
+ * record was deleted (or moved) in Health Connect. Only runs for lists the read covered.
+ */
+function prune<T extends { day: string }>(prev: T[], incoming: T[] | undefined, k: Keyed<T>, window: BodyBatch['window']): T[] {
+  if (!incoming || !window) return prev;
+  const seen = new Set(incoming.map(k.key));
+  const kept = prev.filter((x) => x.day < window.fromDay || x.day > window.toDay || seen.has(k.key(x)));
+  return kept.length === prev.length ? prev : kept;
+}
+
 export function mergeBody(body: BodyState, batch: BodyBatch): BodyState {
-  const steps = upsert(body.steps, batch.steps?.map(compact), STEP);
-  const sleep = upsert(body.sleep, batch.sleep?.map(compact), SLEEP);
+  const w = batch.window;
+  const steps = prune(upsert(body.steps, batch.steps?.map(compact), STEP), batch.steps, STEP, w);
+  const sleep = prune(upsert(body.sleep, batch.sleep?.map(compact), SLEEP), batch.sleep, SLEEP, w);
   // Heart days come from two reads (samples aggregate, resting records); keep whichever fields each one has.
-  const heart = upsert(body.heart, batch.heart?.map(compact), HEART, (old, next) => compact({ ...old, ...next }));
-  const weight = upsert(body.weight, batch.weight?.map(compact), WEIGHT);
+  const heart = prune(upsert(body.heart, batch.heart?.map(compact), HEART, (old, next) => compact({ ...old, ...next })), batch.heart, HEART, w);
+  const weight = prune(upsert(body.weight, batch.weight?.map(compact), WEIGHT), batch.weight, WEIGHT, w);
   // A hidden workout stays hidden when it is read again.
-  const workouts = upsert(body.workouts, batch.workouts?.map(compact), WORKOUT, (old, next) => ({ ...next, hidden: old.hidden }));
+  const workouts = prune(upsert(body.workouts, batch.workouts?.map(compact), WORKOUT, (old, next) => ({ ...next, hidden: old.hidden })), batch.workouts, WORKOUT, w);
   if (steps === body.steps && sleep === body.sleep && heart === body.heart && weight === body.weight && workouts === body.workouts) return body;
   return { ...body, steps, sleep, heart, weight, workouts };
 }

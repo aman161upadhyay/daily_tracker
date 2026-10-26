@@ -77,11 +77,22 @@ export interface HydrationImport {
 /** One read from Health Connect; every list is optional so partial reads merge cleanly. */
 export interface BodyBatch {
   steps?: StepDay[];
+  /**
+   * Steps per *tracking* day (the day boundary the habits use), for the Steps habit. Equals
+   * `steps` when the boundary is midnight; absent when the read failed.
+   */
+  habitSteps?: StepDay[];
   sleep?: SleepNight[];
   heart?: HeartDay[];
   weight?: WeightEntry[];
   workouts?: Workout[];
   hydration?: HydrationImport[];
+  /**
+   * The days this read covered, set only when every requested type was read in full. With it,
+   * a row inside the window that the read did not return was deleted upstream and is dropped
+   * here too (mirrors, strength ticks, imported drinks). Without it nothing is removed.
+   */
+  window?: { fromDay: string; toDay: string };
 }
 
 export interface BodySync {

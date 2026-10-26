@@ -53,13 +53,15 @@ export function waterStatus(
   nowMin: number,
   activeStartMin: number,
   activeEndMin: number,
+  tapMl?: number,
 ): WaterStatus {
   const expected = expectedIntakeMl(nowMin, activeStartMin, activeEndMin, goalMl);
   return {
     loggedMl,
     goalMl,
     expectedMl: expected,
-    onPace: isOnPace(loggedMl, expected),
+    // Same tolerance as the planner's behind-pace check, so the card and the nudge never disagree.
+    onPace: isOnPace(loggedMl, expected, tapMl),
     catchUpMl: catchUpMl(loggedMl, expected),
     remainingMl: remainingMl(loggedMl, goalMl),
     reachedGoal: loggedMl >= goalMl,

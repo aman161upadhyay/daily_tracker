@@ -61,7 +61,7 @@ export function Avatar({ name, onPress }: { name: string; onPress: () => void })
   const c = useColors();
   const initial = (name.trim()[0] ?? 'A').toUpperCase();
   return (
-    <PressableScale onPress={onPress} haptic={false} accessibilityRole="button" accessibilityLabel="Settings" style={[styles.avatar, { borderColor: c.gold, backgroundColor: c.surfaceRaised }]}>
+    <PressableScale onPress={onPress} haptic={false} accessibilityRole="button" accessibilityLabel="Settings" hitSlop={6} style={[styles.avatar, { borderColor: c.gold, backgroundColor: c.surfaceRaised }]}>
       <Txt role="title2" tone="gold">
         {initial}
       </Txt>

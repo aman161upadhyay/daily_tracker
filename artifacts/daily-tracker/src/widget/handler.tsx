@@ -7,7 +7,9 @@
 import React from 'react';
 import { requestWidgetUpdate, type WidgetTaskHandlerProps } from 'react-native-android-widget';
 import { createStore } from '@/src/data/createStore';
+import { withHeadlessLock } from '@/src/services/headlessLock';
 import { contextFor, markHeadlessWrite, replanHeadless } from '@/src/services/replan';
+import { maybeSnapshot } from '@/src/services/snapshotSync';
 import { applyAll, widgetTapActions } from '@/src/state/commands';
 import { reducer } from '@/src/state/reducer';
 import type { TrackerState } from '@/src/state/types';
@@ -35,26 +37,32 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
 
   let state: TrackerState | null = null;
   try {
-    const store = await createStore();
-    state = await store.load();
+    // One load → apply → persist at a time: a notification button pressed at the same moment runs
+    // on this runtime too, and must see this tap before computing its own.
+    state = await withHeadlessLock(async () => {
+      const store = await createStore();
+      let current = await store.load();
 
-    if (state && props.widgetAction === 'WIDGET_CLICK' && props.clickAction === CLICK_LOG) {
-      const habitId = typeof props.clickActionData?.habitId === 'string' ? props.clickActionData.habitId : '';
-      const ctx = contextFor(state);
-      const actions = widgetTapActions(state, habitId, ctx);
-      if (actions.length > 0) {
-        const applied = applyAll(state, actions, reducer);
-        let next = applied;
-        try {
-          next = await replanHeadless(applied, ctx);
-        } catch (err) {
-          console.warn('Widget re-plan failed; the log is still saved', err);
+      if (current && props.widgetAction === 'WIDGET_CLICK' && props.clickAction === CLICK_LOG) {
+        const habitId = typeof props.clickActionData?.habitId === 'string' ? props.clickActionData.habitId : '';
+        const ctx = contextFor(current);
+        const actions = widgetTapActions(current, habitId, ctx);
+        if (actions.length > 0) {
+          const applied = applyAll(current, actions, reducer);
+          let next = applied;
+          try {
+            next = await replanHeadless(applied, ctx);
+          } catch (err) {
+            console.warn('Widget re-plan failed; the log is still saved', err);
+          }
+          await store.persist(current, next);
+          await markHeadlessWrite();
+          maybeSnapshot(next, ctx.nowMs).catch((err) => console.warn('Snapshot after widget tap failed', err));
+          current = next;
         }
-        await store.persist(state, next);
-        await markHeadlessWrite();
-        state = next;
       }
-    }
+      return current;
+    });
   } catch (err) {
     console.error('Widget task failed', err);
   }

@@ -238,6 +238,6 @@ const styles = StyleSheet.create({
   iconChoice: {
     borderRadius: 14,
     borderWidth: 2,
-    padding: 1,
+    padding: 2, // 40 dp tile + 2 + 2 border = 48 dp target
   },
 });

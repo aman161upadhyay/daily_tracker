@@ -11,6 +11,7 @@ import { useColors } from '@/hooks/useColors';
 import { newId, now } from '@/src/domain/time/clock';
 import { formatMinSec } from '@/src/domain/time/format';
 import { PRESET_BY_ID } from '@/src/library/presets';
+import { getPermission, NOTIFICATIONS_SUPPORTED } from '@/src/services/notifications';
 import { useTracker } from '@/src/state/TrackerProvider';
 
 const SQUAT_SECONDS = 60;
@@ -32,6 +33,26 @@ export default function ShieldScreen() {
   const startedAt = useRef<number | null>(null);
   const totalMs = SQUAT_SECONDS * 1000;
   const remainingMs = Math.max(0, totalMs - elapsedMs);
+
+  // Only promise the walk reminder when one can actually arrive: notifications supported and
+  // allowed, reminders switched on and not paused. Otherwise the screen says so instead.
+  const [permission, setPermission] = useState<'granted' | 'other' | 'unknown'>('unknown');
+  useEffect(() => {
+    let alive = true;
+    if (!NOTIFICATIONS_SUPPORTED) {
+      setPermission('other');
+      return;
+    }
+    getPermission()
+      .then((p) => alive && setPermission(p === 'granted' ? 'granted' : 'other'))
+      .catch(() => alive && setPermission('other'));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const paused = state.settings.offUntil !== undefined && state.settings.offUntil > now();
+  const canRemind = permission === 'granted' && state.settings.remindersEnabled && !paused;
+  const noReminderReason = !NOTIFICATIONS_SUPPORTED || permission !== 'granted' ? 'Notifications are off for this app' : paused ? 'Reminders are paused' : 'Reminders are switched off';
 
   useEffect(() => {
     if (!running) return;
@@ -55,13 +76,15 @@ export default function ShieldScreen() {
   const finish = () => {
     const habit = state.habits.find((h) => h.presetId === 'sugar-shield');
     actions.logSnack('SQUATS', { habitId: habit?.id, trigger: 'SUGAR_SHIELD' });
-    actions.scheduleEvent({
-      id: `shield-${newId()}`,
-      habitId: habit?.id ?? 'sugar-shield',
-      inMinutes: FOLLOW_UP_MINUTES,
-      title: 'Post-meal walk',
-      body: 'Two minutes on your feet — the second half of the Sugar Shield.',
-    });
+    if (canRemind) {
+      actions.scheduleEvent({
+        id: `shield-${newId()}`,
+        habitId: habit?.id ?? 'sugar-shield',
+        inMinutes: FOLLOW_UP_MINUTES,
+        title: 'Post-meal walk',
+        body: 'Two minutes on your feet — the second half of the Sugar Shield.',
+      });
+    }
     if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     router.back();
   };
@@ -86,13 +109,19 @@ export default function ShieldScreen() {
             {done ? 'Done' : formatMinSec(remainingMs / 1000)}
           </Txt>
           <Txt role="footnote" tone="secondary" align="center">
-            {done ? `A ${FOLLOW_UP_MINUTES}-minute walk reminder will follow.` : running ? 'Air squats, steady pace — keep breathing' : `${SQUAT_SECONDS} seconds of squats`}
+            {done
+              ? canRemind
+                ? `A walk reminder will follow in ${FOLLOW_UP_MINUTES} minutes.`
+                : `${noReminderReason}, so no walk reminder will follow — walk for two minutes in about ${FOLLOW_UP_MINUTES} minutes.`
+              : running
+                ? 'Air squats, steady pace — keep breathing'
+                : `${SQUAT_SECONDS} seconds of squats`}
           </Txt>
         </View>
 
         <Row gap={10} style={{ marginTop: 20, alignSelf: 'stretch' }}>
           {done ? (
-            <PillButton label="Log & set the walk reminder" Leading={UI.Check} color={c.gold} onPress={finish} style={{ flex: 1 }} />
+            <PillButton label={canRemind ? 'Log & set the walk reminder' : 'Log the squats'} Leading={UI.Check} color={c.gold} onPress={finish} style={{ flex: 1 }} />
           ) : (
             <>
               <PillButton label={running ? 'Pause' : elapsedMs > 0 ? 'Resume' : 'Start'} Leading={running ? UI.Pause : UI.Play} color={c.green} onPress={() => setRunning((r) => !r)} style={{ flex: 1 }} />

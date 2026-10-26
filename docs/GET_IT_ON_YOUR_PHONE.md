@@ -192,8 +192,11 @@ Then try the list in `docs/DEVICE_CHECKLIST.md` if you want to check every featu
 
 ## Part 4 — Sharing the app with friends
 
-1. Find the file `artifacts/daily-tracker/android/app/build/outputs/apk/release/app-release.apk`
-   on your computer (Mac: Finder → Go → Go to Folder and paste the path; Windows: File Explorer).
+1. Find the file on your computer. The full path is
+   `~/daily_tracker/artifacts/daily-tracker/android/app/build/outputs/apk/release/app-release.apk`
+   on a Mac (Finder → Go → Go to Folder…, paste exactly that, including the `~`) and
+   `C:\dev\daily_tracker\artifacts\daily-tracker\android\app\build\outputs\apk\release\app-release.apk`
+   on Windows (paste it into the File Explorer address bar).
    Rename a copy to something like `DailyTracker-0.6.apk` if you like.
 2. Send it any way you want: Google Drive link, WhatsApp, email, AirDrop-style apps.
 3. On their phone they tap the file. Android asks to allow installing from that app (Files,
@@ -248,10 +251,12 @@ replaced computer. Do this once, before the first APK you hand out.
    `C:\Users\<you>\.gradle\gradle.properties`) with four lines:
    ```
    DT_RELEASE_STORE_FILE=/Users/<you>/keystores/daily-tracker-release.jks
-   DT_RELEASE_STORE_PASSWORD=the store password you chose
+   DT_RELEASE_STORE_PASSWORD=the password you chose
    DT_RELEASE_KEY_ALIAS=daily-tracker
-   DT_RELEASE_KEY_PASSWORD=the key password you chose
+   DT_RELEASE_KEY_PASSWORD=the same password again
    ```
+   (This kind of key file keeps one password for the file and the key inside it — if `keytool`
+   asked for a second one, press Enter to reuse the first. Write the same password on both lines.)
    On Windows write the path with forward slashes: `C:/Users/<you>/keystores/daily-tracker-release.jks`.
    This file is outside the project, so it is never uploaded to GitHub.
 4. Build again (Part 5). The app on **your** phone must be uninstalled once before the newly signed
@@ -287,7 +292,8 @@ replaced computer. Do this once, before the first APK you hand out.
 
 ```bash
 cd ~/daily_tracker/artifacts/daily-tracker        # Windows: C:\dev\daily_tracker\artifacts\daily-tracker
-git pull && pnpm install
+git pull
+pnpm install
 pnpm exec expo prebuild --platform android --clean
 pnpm exec expo run:android --variant release
 ```

@@ -48,6 +48,17 @@ const num: Check = (v, p) => {
 const bool: Check = (v, p) => {
   if (typeof v !== 'boolean') fail(p, 'expected true or false');
 };
+/** A finite number inside [min, max]; `integer` also rejects fractions (subnormal intervals once hung the planner). */
+const numRange =
+  (min: number, max: number, integer = false): Check =>
+  (v, p) => {
+    num(v, p);
+    const n = v as number;
+    if (n < min || n > max) fail(p, `expected a number between ${min} and ${max}`);
+    if (integer && !Number.isInteger(n)) fail(p, 'expected a whole number');
+  };
+const nonNeg = numRange(0, 1e9);
+const minuteOfDay = numRange(0, 24 * 60, true);
 const day: Check = (v, p) => {
   if (typeof v !== 'string' || !DAY.test(v)) fail(p, 'expected a day like 2026-01-31');
 };
@@ -100,30 +111,54 @@ const habit = record({
   archived: bool,
   pinned: bool,
 });
-const rule = record({ habitId: id, effectiveFrom: day, cadence: oneOf(CADENCES), timesPerPeriod: num, target: num, freezesPerMonth: num });
+const rule = record({
+  habitId: id,
+  effectiveFrom: day,
+  cadence: oneOf(CADENCES),
+  timesPerPeriod: numRange(1, 31, true),
+  target: numRange(0, 1e6),
+  freezesPerMonth: numRange(0, 31, true),
+});
 const policy = record({
   habitId: id,
   kind: oneOf(NUDGE_KINDS),
-  intervalMin: optional(num),
+  intervalMin: optional(numRange(1, 24 * 60, true)),
   times: optional(listOf(str, 100)),
-  activeStartMin: optional(num),
-  activeEndMin: optional(num),
+  activeStartMin: optional(minuteOfDay),
+  activeEndMin: optional(minuteOfDay),
   onlyWhenBehind: bool,
-  maxPerDay: num,
+  maxPerDay: numRange(0, 100, true),
   enabled: bool,
 });
-const entry = record({ id, habitId: id, day, at: num, zone: str, value: num, source: oneOf(SOURCES) });
-const water = record({ id, at: num, zone: str, day, ml: num, source: oneOf(SOURCES), externalId: optional(str) });
-const snack = record({ id, at: num, zone: str, day, type: oneOf(SNACK_TYPES), reps: optional(num), seconds: optional(num), trigger: oneOf(SNACK_TRIGGERS) });
-const mind = record({ id, startAt: num, endAt: num, zone: str, day, kind: oneOf(MIND_KINDS), minutes: num });
+const entry = record({ id, habitId: id, day, at: num, zone: str, value: nonNeg, source: oneOf(SOURCES) });
+const water = record({ id, at: num, zone: str, day, ml: nonNeg, source: oneOf(SOURCES), externalId: optional(str) });
+const snack = record({ id, at: num, zone: str, day, type: oneOf(SNACK_TYPES), reps: optional(nonNeg), seconds: optional(nonNeg), trigger: oneOf(SNACK_TRIGGERS) });
+const mind = record({ id, startAt: num, endAt: num, zone: str, day, kind: oneOf(MIND_KINDS), minutes: nonNeg });
 const nudgeEvent = record({ id, nudgeId: str, habitIds: listOf(str, 100), at: num, zone: str, day: str, kind: oneOf(NUDGE_EVENT_KINDS), untilMs: optional(num) });
 const scheduledEvent = record({ id, habitId: str, at: num, zone: str, day: str, title: str, body: str });
-const stepDay = record({ day, steps: num, origin: optional(str) });
-const sleepNight = record({ id, startAt: num, endAt: num, day, minutes: num, deepMin: optional(num), remMin: optional(num), lightMin: optional(num), awakeMin: optional(num), origin: optional(str) });
-const heartDay = record({ day, restingBpm: optional(num), minBpm: optional(num), avgBpm: optional(num), maxBpm: optional(num) });
-const weight = record({ id, at: num, day, kg: num, origin: optional(str) });
-const workout = record({ id, startAt: num, endAt: num, day, type: num, title: optional(str), minutes: num, origin: optional(str), hidden: optional(bool) });
+const stepDay = record({ day, steps: nonNeg, origin: optional(str) });
+const sleepNight = record({ id, startAt: num, endAt: num, day, minutes: nonNeg, deepMin: optional(nonNeg), remMin: optional(nonNeg), lightMin: optional(nonNeg), awakeMin: optional(nonNeg), origin: optional(str) });
+const heartDay = record({ day, restingBpm: optional(nonNeg), minBpm: optional(nonNeg), avgBpm: optional(nonNeg), maxBpm: optional(nonNeg) });
+const weight = record({ id, at: num, day, kg: nonNeg, origin: optional(str) });
+const workout = record({ id, startAt: num, endAt: num, day, type: num, title: optional(str), minutes: nonNeg, origin: optional(str), hidden: optional(bool) });
 const cycleLog = record({ day, flow: optional(num), mood: optional(num), symptoms: optional(record({})), note: optional(str) });
+
+/**
+ * Every persisted list has a primary key; SQLite upserts on it, so two rows
+ * with the same key would silently collapse into one after the first save.
+ * Refuse the file instead.
+ */
+function uniqueBy(list: unknown, keyOf: (row: Record<string, unknown>) => string, path: string): void {
+  if (!Array.isArray(list)) return;
+  const seen = new Set<string>();
+  for (let i = 0; i < list.length; i++) {
+    const key = keyOf(list[i] as Record<string, unknown>);
+    if (seen.has(key)) fail(`${path}[${i}]`, `duplicate key ${key}`);
+    seen.add(key);
+  }
+}
+const byId = (row: Record<string, unknown>) => String(row.id);
+const byDay = (row: Record<string, unknown>) => String(row.day);
 
 /**
  * Check every list of an already-normalized state (lists present, settings and
@@ -161,6 +196,50 @@ export function validateRecords(s: {
   listOf(cycleLog)(s.cycleLogs, 'cycleLogs');
   optional(num)(s.nudgeSnoozedUntil, 'nudgeSnoozedUntil');
   optional(record({ day: str, offset: num }))(s.nudgeSwap, 'nudgeSwap');
+
+  uniqueBy(s.habits, byId, 'habits');
+  uniqueBy(s.rules, (r) => `${String(r.habitId)}|${String(r.effectiveFrom)}`, 'rules');
+  uniqueBy(s.policies, (r) => String(r.habitId), 'policies');
+  uniqueBy(s.entries, byId, 'entries');
+  uniqueBy(s.water, byId, 'water');
+  uniqueBy(s.snacks, byId, 'snacks');
+  uniqueBy(s.mind, byId, 'mind');
+  uniqueBy(s.nudgeEvents, byId, 'nudgeEvents');
+  uniqueBy(s.events, byId, 'events');
+  uniqueBy(s.body.steps, byDay, 'body.steps');
+  uniqueBy(s.body.sleep, byId, 'body.sleep');
+  uniqueBy(s.body.heart, byDay, 'body.heart');
+  uniqueBy(s.body.weight, byId, 'body.weight');
+  uniqueBy(s.body.workouts, byId, 'body.workouts');
+  uniqueBy(s.cycleLogs, byDay, 'cycleLogs');
+}
+
+/**
+ * Bounds for the numeric settings. A value outside its range (a hand edit, a
+ * newer version with different units) falls back to the default rather than
+ * reaching the planner, which loops over intervals and active hours.
+ */
+const SETTINGS_RANGES: Record<string, readonly [number, number, boolean]> = {
+  waterGoalMl: [100, 20_000, false],
+  activeStartMin: [0, 24 * 60, true],
+  activeEndMin: [0, 24 * 60, true],
+  dayBoundaryHour: [0, 23, true],
+  nudgeIntervalMin: [5, 12 * 60, true],
+  dailyNudgeCap: [0, 100, true],
+  tapSizeMl: [10, 2000, false],
+  'weeklySummary.weekday': [0, 6, true],
+  'weeklySummary.minute': [0, 24 * 60 - 1, true],
+  'appLock.afterMin': [0, 24 * 60, true],
+  'cycle.avgCycleDays': [15, 60, true],
+  'cycle.periodDays': [1, 14, true],
+  'cycle.lutealDays': [7, 20, true],
+};
+
+function inRange(key: string, v: number): boolean {
+  const r = SETTINGS_RANGES[key];
+  if (!r) return true;
+  const [min, max, integer] = r;
+  return v >= min && v <= max && (!integer || Number.isInteger(v));
 }
 
 /**
@@ -179,9 +258,9 @@ export function sanitizeSettings(raw: unknown): Partial<Settings> {
     if (Array.isArray(def)) {
       if (Array.isArray(v)) out[key] = v.filter((x) => typeof x === 'string');
     } else if (typeof def === 'object') {
-      if (v && typeof v === 'object' && !Array.isArray(v)) out[key] = sanitizeObject(v as Record<string, unknown>, def as Record<string, unknown>);
+      if (v && typeof v === 'object' && !Array.isArray(v)) out[key] = sanitizeObject(v as Record<string, unknown>, def as Record<string, unknown>, key);
     } else if (typeof v === typeof def) {
-      if (typeof v !== 'number' || Number.isFinite(v)) out[key] = v;
+      if (typeof v !== 'number' || (Number.isFinite(v) && inRange(key, v))) out[key] = v;
     }
   }
   // Optional fields without a default.
@@ -195,7 +274,10 @@ export function sanitizePeriodHistory(raw: unknown): PeriodSpan[] {
   const out: PeriodSpan[] = [];
   for (const item of raw as Partial<PeriodSpan>[]) {
     if (!item || typeof item !== 'object' || typeof item.start !== 'string' || !DAY.test(item.start)) continue;
-    out.push(typeof item.end === 'string' && DAY.test(item.end) ? { start: item.start, end: item.end } : { start: item.start });
+    const span: PeriodSpan = { start: item.start };
+    if (typeof item.end === 'string' && DAY.test(item.end)) span.end = item.end;
+    if (item.excluded === true) span.excluded = true; // a cycle the user took out of the averages stays out
+    out.push(span);
   }
   return out;
 }
@@ -207,8 +289,8 @@ export function sanitizeCycleReminders(raw: unknown): CycleReminder[] | null {
     if (!item || typeof item !== 'object') continue;
     if (typeof item.id !== 'string' || typeof item.label !== 'string') continue;
     if (item.anchor !== 'BEFORE_PERIOD' && item.anchor !== 'PHASE_START') continue;
-    if (typeof item.offsetDays !== 'number' || !Number.isFinite(item.offsetDays)) continue;
-    if (typeof item.minute !== 'number' || !Number.isFinite(item.minute)) continue;
+    if (typeof item.offsetDays !== 'number' || !Number.isInteger(item.offsetDays) || Math.abs(item.offsetDays) > 60) continue;
+    if (typeof item.minute !== 'number' || !Number.isInteger(item.minute) || item.minute < 0 || item.minute >= 24 * 60) continue;
     const reminder: CycleReminder = { id: item.id, label: item.label, anchor: item.anchor, offsetDays: item.offsetDays, minute: item.minute, enabled: item.enabled === true };
     if (item.phase === 'period' || item.phase === 'fertile' || item.phase === 'luteal') reminder.phase = item.phase;
     out.push(reminder);
@@ -216,17 +298,18 @@ export function sanitizeCycleReminders(raw: unknown): CycleReminder[] | null {
   return out;
 }
 
-function sanitizeObject(v: Record<string, unknown>, def: Record<string, unknown>): Record<string, unknown> {
+function sanitizeObject(v: Record<string, unknown>, def: Record<string, unknown>, prefix: string): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, d] of Object.entries(def)) {
     const x = v[key];
     if (x === undefined || x === null) continue;
+    const path = `${prefix}.${key}`;
     if (Array.isArray(d)) {
       if (Array.isArray(x)) out[key] = x.filter((item) => item && typeof item === 'object');
     } else if (typeof d === 'object') {
-      if (x && typeof x === 'object' && !Array.isArray(x)) out[key] = sanitizeObject(x as Record<string, unknown>, d as Record<string, unknown>);
+      if (x && typeof x === 'object' && !Array.isArray(x)) out[key] = sanitizeObject(x as Record<string, unknown>, d as Record<string, unknown>, path);
     } else if (typeof x === typeof d) {
-      if (typeof x !== 'number' || Number.isFinite(x)) out[key] = x;
+      if (typeof x !== 'number' || (Number.isFinite(x) && inRange(path, x))) out[key] = x;
     }
   }
   return out;

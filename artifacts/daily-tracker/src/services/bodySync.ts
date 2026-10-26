@@ -49,6 +49,8 @@ export async function performBodySync(source: TrackerState | (() => TrackerState
   const before = typeof source === 'function' ? source() : source;
   const window = syncWindow(before, ctx);
   const { batch, errors } = await readBatch({ ...window, zone: ctx.zone, boundaryHour: before.settings.dayBoundaryHour }, access.granted);
+  // A complete read may also remove what Health Connect no longer has (see BodyBatch.window).
+  if (errors.length === 0) batch.window = window;
   // The read takes a while; decide the auto-ticks against the state as it is now, not as it was.
   const state = typeof source === 'function' ? source() : source;
   const imported = (batch.steps?.length ?? 0) + (batch.sleep?.length ?? 0) + (batch.heart?.length ?? 0) + (batch.weight?.length ?? 0) + (batch.workouts?.length ?? 0) + (batch.hydration?.length ?? 0);

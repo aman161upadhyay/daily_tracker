@@ -71,7 +71,10 @@ export function AmountSheet({ visible, onClose, habit, mode = 'add', day, curren
     onClose();
   };
 
-  const parsed = toStored(Number(text.replace(',', '.')));
+  // An untouched prefill keeps the exact stored value: 250 ml shows as 8.5 oz, and 8.5 oz would
+  // otherwise come back as 251 ml just from opening the sheet and pressing Set.
+  const prefilled = mode === 'set' && current > 0 && text === String(toDisplay(current));
+  const parsed = prefilled ? current : toStored(Number(text.replace(',', '.')));
   const typedValid = text.trim().length > 0 && Number.isFinite(parsed) && parsed >= 0;
   const title = mode === 'set' ? `Set ${habit.name}` : `Log ${habit.name}`;
   const subtitle = backfill ? formatDayLong(theDay) : 'Today';

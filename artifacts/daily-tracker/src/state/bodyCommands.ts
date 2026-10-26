@@ -2,12 +2,18 @@
  * What a Health Connect read does to the habits ("auto-ticks"), as reducer
  * actions. Rules, in the order the user would state them:
  *
- *  - Steps fill the Steps habit for the same day. A total you typed yourself
- *    stays; the automatic entry is replaced, never added to.
+ *  - Steps fill the Steps habit for the same tracking day. A total you typed
+ *    yourself stays; the automatic entry is replaced, never added to.
  *  - A strength-type workout of 15+ minutes ticks Strength session for its
- *    day, once, and only if nothing was logged for that day yet.
+ *    day, once, and only if nothing was logged for that day yet. A tick the
+ *    sync made goes away again when its workout was deleted (or hidden here).
  *  - A drink logged in another app becomes a water entry once (by record id),
- *    unless you logged the same drink here within five minutes.
+ *    unless you logged the same drink here within five minutes. Edited
+ *    upstream → updated here; deleted upstream → removed here. Drinks you
+ *    logged yourself are never touched.
+ *
+ * Removals happen only for a complete read (`batch.window` set), so a partly
+ * failed read can never make records "disappear".
  */
 import { isStrengthExercise } from '@/src/domain/body/exerciseTypes';
 import type { BodyBatch } from '@/src/domain/body/types';
@@ -31,8 +37,9 @@ export function autoTickActions(state: TrackerState, batch: BodyBatch, ctx: Comm
   const habits = activeHabits(state);
 
   const stepsHabit = habits.find((h) => h.presetId === 'steps');
-  if (stepsHabit && batch.steps) {
-    for (const day of batch.steps) {
+  const stepDays = batch.habitSteps ?? batch.steps;
+  if (stepsHabit && stepDays) {
+    for (const day of stepDays) {
       const existing = state.entries.filter((e) => e.habitId === stepsHabit.id && e.day === day.day);
       if (existing.some((e) => e.source === 'MANUAL')) continue;
       const autoRows = existing.filter((e) => e.source !== 'MANUAL');
@@ -49,19 +56,53 @@ export function autoTickActions(state: TrackerState, batch: BodyBatch, ctx: Comm
     }
   }
 
+  const window = batch.window;
+  const inWindow = (day: string) => window !== undefined && day >= window.fromDay && day <= window.toDay;
+
   const strength = habits.find((h) => h.presetId === 'strength-session');
   if (strength && batch.workouts) {
-    const ticked = new Set(state.entries.filter((e) => e.habitId === strength.id).map((e) => e.day));
+    // Hidden workouts are the user's "that was not a session": they neither tick nor keep a tick.
+    const hidden = new Set(state.body.workouts.filter((w) => w.hidden).map((w) => w.id));
+    const qualifying = new Set(batch.workouts.filter((w) => !w.hidden && !hidden.has(w.id) && ticksStrength(w.type, w.minutes)).map((w) => w.day));
+    const ticked = new Set<string>();
+    for (const e of state.entries) {
+      if (e.habitId !== strength.id) continue;
+      if (e.source === 'AUTO_HC' && inWindow(e.day) && !qualifying.has(e.day)) {
+        actions.push({ type: 'REMOVE_LOG', log: 'entry', id: e.id });
+        continue;
+      }
+      ticked.add(e.day);
+    }
     for (const w of [...batch.workouts].sort((a, b) => a.startAt - b.startAt)) {
-      if (w.hidden || !ticksStrength(w.type, w.minutes) || ticked.has(w.day)) continue;
+      if (!qualifying.has(w.day) || !ticksStrength(w.type, w.minutes) || w.hidden || hidden.has(w.id) || ticked.has(w.day)) continue;
       ticked.add(w.day);
       actions.push({ type: 'ADD_ENTRY', entry: { id: ctx.newId(), habitId: strength.id, day: w.day, at: w.endAt, zone: ctx.zone, value: 1, source: 'AUTO_HC' } });
     }
   }
 
   if (batch.hydration) {
-    const seen = new Set(state.water.map((w) => w.externalId).filter((x): x is string => !!x));
+    const boundary = state.settings.dayBoundaryHour;
+    const byExternal = new Map(batch.hydration.map((h) => [h.id, h]));
+    const seen = new Set<string>();
     const manual = state.water.filter((w) => w.source === 'MANUAL' || w.source === 'AUTO_WIDGET');
+    for (const w of state.water) {
+      if (!w.externalId) continue;
+      const upstream = byExternal.get(w.externalId);
+      if (upstream) {
+        seen.add(w.externalId);
+        // Edited in the other app: same record, new amount or time.
+        if (w.source === 'AUTO_HC' && (Math.round(upstream.ml) !== w.ml || upstream.at !== w.at)) {
+          actions.push({ type: 'REMOVE_LOG', log: 'water', id: w.id });
+          actions.push({
+            type: 'ADD_WATER',
+            entry: { ...w, at: upstream.at, day: trackingDayOf(upstream.at, ctx.zone, boundary), ml: Math.round(upstream.ml) },
+          });
+        }
+      } else if (w.source === 'AUTO_HC' && inWindow(w.day)) {
+        // Deleted in the other app.
+        actions.push({ type: 'REMOVE_LOG', log: 'water', id: w.id });
+      }
+    }
     for (const h of batch.hydration) {
       if (h.ml <= 0 || seen.has(h.id)) continue;
       seen.add(h.id);
@@ -71,7 +112,7 @@ export function autoTickActions(state: TrackerState, batch: BodyBatch, ctx: Comm
         id: ctx.newId(),
         at: h.at,
         zone: ctx.zone,
-        day: trackingDayOf(h.at, ctx.zone, state.settings.dayBoundaryHour),
+        day: trackingDayOf(h.at, ctx.zone, boundary),
         ml: Math.round(h.ml),
         source: 'AUTO_HC',
         externalId: h.id,

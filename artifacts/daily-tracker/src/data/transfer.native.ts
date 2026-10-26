@@ -10,7 +10,8 @@ import * as Sharing from 'expo-sharing';
 import { purgeTransferCache } from '@/src/services/transferCache';
 import type { TrackerState } from '@/src/state/types';
 import { StorageError } from './store';
-import { EXPORT_SCRATCH_DIR, exportFileName, MAX_IMPORT_CHARS, serializeExport } from './transferFormat';
+import { secureRandomBytes } from './secureRandom';
+import { EXPORT_SCRATCH_DIR, exportFileName, MAX_IMPORT_CHARS, randomFileTag, serializeExport } from './transferFormat';
 
 export { describeImport, exportFileName, inspectExport, parseExport, serializeExport, unlockExport, type ExportFile, type InspectedExport } from './transferFormat';
 
@@ -22,14 +23,22 @@ export async function exportState(state: TrackerState, password?: string): Promi
   await purgeTransferCache();
   const dir = new Directory(Paths.cache, EXPORT_SCRATCH_DIR);
   if (!dir.exists) dir.create({ intermediates: true });
-  const file = new File(dir, exportFileName());
+  const file = new File(dir, exportFileName(new Date(), randomFileTag(secureRandomBytes(6))));
   if (file.exists) file.delete();
-  file.create();
-  file.write(serializeExport(state, new Date(), password));
+  try {
+    file.create();
+    file.write(serializeExport(state, new Date(), password));
+  } catch (err) {
+    removeScratchFile(file.uri);
+    throw err;
+  }
   if (!(await Sharing.isAvailableAsync())) {
-    throw new StorageError(`Sharing is not available on this device. The backup was saved to ${file.uri}.`);
+    removeScratchFile(file.uri);
+    throw new StorageError('Sharing is not available on this device, so the backup could not be handed to another app.');
   }
   await Sharing.shareAsync(file.uri, { mimeType: 'application/json', dialogTitle: 'Save your Daily Tracker backup', UTI: 'public.json' });
+  // Not deleted here: Drive, Gmail and friends read the URI after the sheet has closed, often from
+  // a background upload. `purgeTransferCache` removes exports once they are an hour old.
 }
 
 /**
@@ -44,9 +53,18 @@ export async function pickImport(): Promise<string | null> {
   if (!asset) return null;
   try {
     const file = new File(asset.uri);
-    const size = asset.size ?? file.size ?? 0;
+    // The cached copy's real size first; the picker's own figure is a hint some providers get wrong.
+    let size = 0;
+    try {
+      size = file.size ?? 0;
+    } catch {
+      size = 0;
+    }
+    if (!size) size = asset.size ?? 0;
     if (size > MAX_IMPORT_CHARS) throw new StorageError('That file is too large to be a Daily Tracker backup.');
-    return await file.text();
+    const text = await file.text();
+    if (text.length > MAX_IMPORT_CHARS) throw new StorageError('That file is too large to be a Daily Tracker backup.');
+    return text;
   } finally {
     removeScratchFile(asset.uri);
   }

@@ -105,6 +105,15 @@ contradicts one, write down why.
     `docs/DEVICE_CHECKLIST.md` with steps and the expected result.
 12. **Reversibility over cleverness.** Prefer the change that can be undone (a flag, an additive field, a
     documented fallback) to a migration or a rename.
+13. **Mark done only after the commit.** Any "already handled" marker (notification press keys, sync
+    watermarks, snapshot timestamps) is written after the state write succeeded, never before; a crash in
+    between must replay, and the replay must be a no-op because the dedupe lives in the same transaction as
+    the data (the nudge-event ledger). Corollary: every headless writer goes through one in-process lock.
+14. **Removal needs a complete picture.** Imported data (Health Connect) is only removed when the read that
+    says "it is gone" covered the whole window without errors; a partial read may add and update but never
+    delete. Manual data is never removed by a sync.
+15. **Imports are hostile input.** Every number has a range, every list a unique key, every size a cap —
+    before anything reaches the planner, the database or a key-derivation loop.
 
 ### How council findings are judged
 - Accept when: evidence is concrete (file:line, reproducible), it violates a paradigm or a user constraint,
@@ -135,6 +144,10 @@ Dates are America/New_York. Commits are on `main`.
 | 2026-10-26 night | **Round-1 fixes, batch B (UX/e2e):** Sugar Shield reachable from Today, the quick-log sheet and its habit page even when the shield habit is not added; stale "arrives in the next milestone" nudge copy replaced; backfill copy explains days before the habit existed; pinned habits first on Today; Archived section with Restore in the Library; cycle day sheet keeps the draft when a period button is tapped and confirms "Remove this period"; sample-data chip on every tab; 48 dp touch targets via hitSlop; meditation Finish says what it will log (and that < 1 min is not logged); onboarding step 5 asks for notification permission with an honest explanation; chart range labels 7D/2W/1M/6M/1Y; charts expose a spoken summary | this commit |
 | 2026-10-26 night | **Workspace:** removed the 20 darwin/win32 `'-'` overrides from `pnpm-workspace.yaml` so `pnpm install` on a Mac/Windows laptop gets esbuild/lightningcss/rollup binaries (the user builds there); lockfile regenerated, all packages now share `@types/react` 19.2.18; root `preinstall` is a Node script (works on Windows). pnpm left a stale hoist after the version change — fix recorded in `.agents/memory/expo-workspace-quirks.md` | this commit |
 | 2026-10-26 night | Verification for the two batches: tsc clean, 185 tests, Android Metro bundle 200, Hermes compile, `expo export` (release bundle 5.8 MB hbc), `expo prebuild` → `res/xml-v28/backup_rules.xml` with `clientSideEncryption`, Gradle `logger.warn`, no camera/location permissions in the manifest | this commit |
+
+| 2026-10-26 night | **Council round 2** — six reviewers over the round-1 result (Android runtime, data integrity, UX, security/privacy, release/docs, and the browser end-to-end tester). 34 findings; triage in §6. The e2e tester's run caught one transient error that was my own mid-edit planner race (not a product bug) | — |
+| 2026-10-26 night | **Round-2 fixes:** headless writers serialised behind one in-process lock (widget tap + notification button at the same moment); notification "handled" mark split into an in-memory claim and a durable mark written only after the state commit; the running app re-checks for headless writes on every 30 s tick, 4 s after foregrounding, and immediately when the write happens on its own runtime, and never hydrates over unsaved changes; the Auto Backup snapshot is refreshed by headless writes and the 3-hourly task (widget-only phones were never backed up); overdue-but-pending alarms get a 30-minute grace instead of being cancelled and charged to the cap; import validation gained numeric bounds and duplicate-key rejection; settings ranges; `excluded` periods survive a round trip; streak engine judges each day by that day's target; Health Connect reconciles upstream deletions/edits (mirrors, strength ticks, imported drinks) for complete reads and reads a second step aggregate on tracking-day boundaries; water goal edits update the Water rule; the quick-amount sheet keeps an untouched prefill exact across ml/oz; water card uses the planner's half-tap tolerance; Sugar Shield only promises a reminder when it can deliver one; notification taps route cycle/summary/event nudges sensibly; meditation timer asks before Back discards a session (and the Finish label no longer overflows at large font sizes); more 48 dp targets; heatmap speaks a summary and marks complete days with a dot; export scratch files get a random tag and the import size check reads the real file; onboarding gained a "Phone backup" step; the laptop guides fixed on five points (NDK/CMake, the public debug key, one keystore password, full APK path, split `git pull` / `pnpm install`) | this commit |
+| 2026-10-26 night | Verification: tsc clean in all three packages, 200 tests (15 new in `tests/round2.test.ts`), Android Metro bundle 200 (12.5 MB dev), `expo export --platform android` → 5.8 MB Hermes bytecode, web preview renders. Prebuild not repeated (no plugin or manifest change this round) | this commit |
 
 (Entries for each council round follow below as they happen.)
 
@@ -201,6 +214,53 @@ Format per round: lens → findings (severity · title · disposition · commit)
 - e2e-4 · Erase leaves the Water habit · **fixed (copy)**.
 - Passed: onboarding both paths, water/snack/mind logging, habit add/edit/archive, backfill, export/import round trip, cycle logging and reminders, settings theme/lock copy, body tab stubs.
 
+### Round 2 (2026-10-26 night)
+
+Reviewers re-read the round-1 result. Ids are theirs where they gave one.
+
+**Android runtime lens**
+- AND-01 high · the "handled" key for a notification press was written before the state commit; with the headless task and the foreground listener both seeing a press, one copy could be dropped or applied twice · **fixed** — in-memory claim first, durable mark only after the commit (`beginHandling` / `endHandling`), and the nudge-event ledger (written in the same transaction as the log) makes any replay a no-op.
+- AND-02 high · widget task and notification task run on the same headless runtime and could interleave load → apply → persist · **fixed** — one in-process lock (`headlessLock.ts`) around every headless read-modify-write.
+- AND-03 med · the provider could hydrate a reloaded state over changes that had not been saved yet · **fixed** — `flush()` reports success; a reload only proceeds when everything on screen is in the database, otherwise it retries on the next check.
+- AND-04 med · headless changes were only noticed on foreground, and the revision was read after the initial load (a write in between looked "seen") · **fixed** — revision read before the load; checks on every 30 s tick while active, 4 s after foregrounding, and immediately via an in-runtime event when the headless task shares the process.
+- AND-05 med · without exact-alarm access a late alarm was still pending when the app re-planned; it was cancelled and counted as fired (charged to the daily cap, never shown) · **fixed** — overdue entries still pending in the OS are left alone for 30 minutes and are not counted as fired; beyond that they are dropped without charge.
+- AND-06 low · a timezone change is not picked up until the next re-plan · **deferred** — no native receiver; the 3-hourly task and the foreground tick correct it. Accepted limitation, noted in the checklist.
+- AND-07 med · the Auto Backup snapshot was only refreshed by the foreground app; a phone used mostly from the widget was never backed up · **fixed** — shared `maybeSnapshot` (policy + one-hour throttle) after headless writes and in the 3-hourly task.
+- low · a failed re-plan inside the headless button path threw the whole write away · **fixed** — the log is persisted; the re-plan error is logged and corrected by the next plan.
+
+**Data-integrity lens**
+- high · imported numbers had no bounds (negative targets, zero intervals, absurd caps could reach the planner loops) · **fixed** — per-field ranges in `validate.ts`, integer checks, settings ranges with defaults as fallback; planner also caps slots per day defensively.
+- high · duplicate keys in imported lists (two rules for the same habit and day, two step rows for one day) were accepted and later written with undefined precedence · **fixed** — `uniqueBy` on every list.
+- DI2-03 med · the streak engine judged every day of a week by the week's final rule while the Today card used per-day rules; "3 of 4 this week" could disagree with the streak · **fixed** — per-day target in the engine; test covers a mid-week target change.
+- DI2-04 med · a strength tick created from a workout survived the workout's deletion (or hiding it in the app) · **fixed** — complete reads (`batch.window`) remove automatic ticks without a qualifying workout; manual ticks are never touched.
+- DI2-05 med · drinks imported from another app ignored upstream edits and deletions · **fixed** — edited → updated in place (same external id), deleted → removed; user-logged drinks untouched; partial reads never remove.
+- DI2-06 med · steps were aggregated per calendar day but the Steps habit lives on tracking days (4 am boundary) · **fixed** — a second Health Connect aggregate starting at the boundary hour feeds the habit; the Body tab keeps calendar days so numbers match the source app.
+- DI2-07 low · changing the daily water goal in Settings did not update the Water habit's rule · **fixed**.
+- low · `excluded` on a period was lost on import · **fixed**.
+- DI2-09 low · opening the "Set amount" sheet in oz and pressing Set re-rounded 250 ml to 251 ml · **fixed** — an untouched prefill keeps the stored value.
+- DI2-10 low · the water card's on-pace check ignored the tap size the planner uses · **fixed** — same half-tap tolerance.
+- also: mirrors (steps, sleep, heart, weight, workouts) inside a complete read's window are pruned when the read no longer returns them.
+
+**UX lens**
+- high · Sugar Shield promised "a reminder in 20 minutes" even with notifications denied or reminders off · **fixed** — schedules and promises only when it can deliver; otherwise offers to log the squats.
+- UX2-02 med · Back during a meditation silently discarded the session and the bell · **fixed** — Keep / Finish · log N min / Discard dialog on Back, header arrow and swipe; reset and kind switch confirm when a minute or more is on the clock.
+- med · tapping a cycle, summary or event notification opened a habit page that did not fit · **fixed** — routed to Cycle, Today, or the habit.
+- UX2-05 low · remaining sub-48 dp targets (segmented control, avatar, calendar cells, icon picker) · **fixed**.
+- UX2-06 low · "Finish · log 12 min" overflowed at the largest font sizes · **fixed** — "Finish" plus a footnote saying what it logs; the full sentence stays in the accessibility label.
+- UX2-07 low · heatmap: 182 unlabeled squares, partial vs complete by hue only · **fixed** — spoken summary; complete days carry a dot; legend updated.
+
+**Security / privacy lens**
+- med · the backup snapshot's temp file lived inside the backed-up directory · **fixed** — written in `backup-tmp/` outside the backup rules, then moved.
+- SEC2-02 med · the import size check trusted the picker's reported size · **fixed** — the cached file's real size first, then the text length; scratch files removed on every path, including failures.
+- SEC2-03 low · export scratch file name was predictable · **fixed** — random tag from the secure RNG; still purged after an hour.
+- SEC2-04 med · Android Auto Backup was on by default without being said during onboarding · **fixed** — onboarding step "Phone backup" with the switch (default on) and the plain-language consequence either way.
+
+**Release / docs lens**
+- REL2-01..05 · the build notes still said "NDK not needed" (RN 0.81 compiles its core: NDK + CMake download), called the fallback key the machine's debug key (it is the template's public key), gave a `gradle.properties` with two different passwords (PKCS12 wants one), a relative APK path in the Finder step, `git pull && pnpm install` on one line (fails in older PowerShell), and an `apksigner` glob that breaks with two build-tools versions · **all fixed** in `BUILD_ANDROID.md` and `GET_IT_ON_YOUR_PHONE.md`.
+
+**End-to-end tester (web preview)**
+- Checks 1–6 passed (onboarding both paths, logging, habit edit, backfill, export/import, cycle). Checks 7–8 were interrupted by a transient `slotStep is not defined` that came from my own half-saved edit to the planner, not from the product; re-run is owed and listed below.
+
 ## 7. Backlog and open questions
 
 ### For the user (never blocking)
@@ -214,4 +274,5 @@ Format per round: lens → findings (severity · title · disposition · commit)
 - Steps and cycle tiles in the widget; sleep-stages chart; write-back of water/mind sessions to Health Connect (v2).
 
 ### Device verification owed
-- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10 have never been run on hardware. First build on the laptop is the next real milestone.
+- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10 have never been run on hardware. First build on the laptop is the next real milestone.
+- Web e2e checks 7–8 (settings/theme/lock copy, body tab stubs) to be re-run by the tester against the round-2 build.

@@ -42,8 +42,9 @@ What to expect:
   Android project. `android/` is generated and git-ignored; never edit it by hand (changes would be
   lost on the next `--clean`). It may also touch `package.json` to list `expo`/`react`/`react-native`
   under `dependencies` — they already are, so the tree should stay clean.
-- The first Gradle run downloads ~1 GB (Gradle, AGP, the NDK is **not** needed). Later runs are
-  incremental.
+- The first Gradle run downloads 1–2 GB: Gradle, the Android Gradle plugin, and — because React
+  Native 0.81 builds its native core from source — the **NDK and CMake** (the SDK manager fetches
+  the versions the project asks for; accept the licences when prompted). Later runs are incremental.
 - `run:android` leaves Metro running; the phone loads JavaScript from the laptop over USB
   (`adb reverse`), so edits reload live. Quit with Ctrl-C; the installed app keeps the last bundle
   it loaded and will try to reconnect to Metro on the next launch — for a build that works without
@@ -58,10 +59,12 @@ cd artifacts/daily-tracker/android
 adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
-Without a release key configured (next section) the Expo template signs *release* builds with
-your machine's **debug keystore** (`~/.android/debug.keystore`). That is fine for a phone you own,
-with one rule: Android only updates an app signed with the same key, so **keep building on the
-same machine** (or copy that keystore over).
+Without a release key configured (next section) the Expo template signs *release* builds with the
+**debug keystore that ships inside the generated project** (`android/app/debug.keystore` — the same
+public key every Expo project has, not one your machine created). That is fine for a phone you
+own; it is not fine for an APK you hand out, because anyone who builds this project holds the same
+key and could ship an "update" to it. Android only updates an app signed with the same key, so
+switching to your own key later means uninstalling once (export first).
 
 ## Release signing (M6) — do this once
 
@@ -82,14 +85,16 @@ the block survives every `--clean` prebuild.
    DT_RELEASE_KEY_ALIAS=daily-tracker
    DT_RELEASE_KEY_PASSWORD=…
    ```
-   When the properties are absent the release build type falls back to the debug keystore, so the
-   command below always works; only the signature differs.
+   With a PKCS12 keystore (the `-storetype PKCS12` above) use the **same password** for the store and
+   the key — `keytool` warns that different ones are not supported. When the properties are absent
+   the release build type falls back to the template's public debug keystore, so the command below
+   always works; only the signature differs (and Gradle prints a warning).
 3. Build, verify the signature, install:
    ```bash
    cd artifacts/daily-tracker
    pnpm exec expo prebuild --platform android --clean
    cd android && ./gradlew assembleRelease
-   "$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
+   "$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"/apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
    adb install -r app/build/outputs/apk/release/app-release.apk
    ```
    `apksigner` must print the certificate you created (CN from the `keytool` prompts), not

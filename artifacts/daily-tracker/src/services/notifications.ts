@@ -61,11 +61,11 @@ export async function scheduleMindEnd(_endAtMs: number, _minutes: number, _kind:
 
 export async function cancelMindEnd(): Promise<void> {}
 
-export async function markHandled(_key: string): Promise<boolean> {
+export async function beginHandling(_key: string): Promise<boolean> {
   return true;
 }
 
-export async function unmarkHandled(_key: string): Promise<void> {}
+export async function endHandling(_key: string, _committed: boolean): Promise<void> {}
 
 export async function registerBackgroundReplan(): Promise<'registered' | 'unavailable'> {
   return 'unavailable';
