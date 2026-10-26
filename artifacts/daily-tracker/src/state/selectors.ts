@@ -770,7 +770,9 @@ let insightsMemo: { deps: unknown[]; result: CycleInsights } | null = null;
 
 export function cycleInsights(state: TrackerState): CycleInsights {
   if (state.cycleLogs.length === 0) return NO_INSIGHTS;
-  const deps = [state.cycleLogs, state.settings.cycle.history, state.habits, state.rules, state.entries, state.snacks, state.mind];
+  // The week start is read too: the per-cycle adherence behind the correlations counts weekly
+  // periods from it, so a Sunday-first week can change which days a weekly habit was behind on.
+  const deps = [state.cycleLogs, state.settings.cycle.history, state.habits, state.rules, state.entries, state.snacks, state.mind, weekStartIndex(state.settings.weekStart)];
   if (insightsMemo && insightsMemo.deps.every((d, i) => d === deps[i])) return insightsMemo.result;
   const cycles = completedCycles(state);
   const patterns = symptomPatterns(state.cycleLogs, cycles);

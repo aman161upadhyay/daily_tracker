@@ -5,14 +5,14 @@ import { MAX_WATER_LOG_ML, WATER_GOAL_MAX_ML, WATER_GOAL_MIN_ML } from '@/src/da
 import { withHeadlessLock } from '@/src/services/headlessLock';
 import { headlessRevision, onHeadlessWrite } from '@/src/services/replan';
 import type { TrackerStore } from '@/src/data/store';
-import type { Cadence, Category, CycleDayLog, CycleReminder, Habit, HabitIcon, HabitRule, HabitType, MindKind, MovementSnack, NudgePolicy, Settings, SnackTrigger, SnackType } from '@/src/domain/models';
+import type { CycleDayLog, CycleReminder, Habit, MindKind, MovementSnack, NudgePolicy, Settings, SnackTrigger, SnackType } from '@/src/domain/models';
 import { SNACK_LABELS } from '@/src/domain/models';
 import { applyPeriodStart } from '@/src/domain/cycle/timeline';
 import { currentZone, newId, now } from '@/src/domain/time/clock';
 import { calendarDayOf, instantOf, minutesOfDay, trackingDayOf } from '@/src/domain/time/trackingDay';
 import { presetById } from '@/src/library/presets';
 import { dayRecords, findRecord, MAX_RESTORE_RECORDS, type LogName, type LogRecord } from '@/src/domain/habits/records';
-import { mindSessionExists, ruleChangeActions, ruleInForce, targetChangeActions, type RuleDraft } from './commands';
+import { mindSessionExists, newHabitAction, ruleChangeActions, ruleInForce, targetChangeActions, type HabitDraft, type RuleDraft } from './commands';
 import { reducer, type Action } from './reducer';
 import { buildEmptyState, buildSampleState, habitFromPreset } from './seed';
 import { bumpBodyEpoch } from './epochs';
@@ -72,18 +72,7 @@ export interface TrackerContextValue {
   committed(): TrackerState;
 }
 
-export interface HabitDraft {
-  name: string;
-  category: Category;
-  type: HabitType;
-  unit: string;
-  icon: HabitIcon;
-  cadence: Cadence;
-  timesPerPeriod: number;
-  target: number;
-  freezesPerMonth: number;
-  pinned: boolean;
-}
+export type { HabitDraft } from './commands';
 
 export interface OnboardingChoices {
   name: string;
@@ -573,28 +562,9 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
       },
       createHabit(draft) {
         const { day } = stamp();
-        const habit: Habit = {
-          id: newId(),
-          name: draft.name.trim() || 'New habit',
-          category: draft.category,
-          type: draft.type,
-          unit: draft.type === 'YES_NO' ? '' : draft.unit.trim(),
-          icon: draft.icon,
-          createdDay: day,
-          archived: false,
-          pinned: draft.pinned,
-        };
-        const rule: HabitRule = {
-          habitId: habit.id,
-          effectiveFrom: day,
-          cadence: draft.cadence,
-          timesPerPeriod: draft.cadence === 'DAILY' ? 1 : Math.max(1, Math.round(draft.timesPerPeriod)),
-          target: draft.type === 'YES_NO' ? 1 : Math.max(1, Math.round(draft.target)),
-          freezesPerMonth: Math.max(0, Math.round(draft.freezesPerMonth)),
-        };
-        const policy: NudgePolicy = { habitId: habit.id, kind: 'NONE', onlyWhenBehind: false, maxPerDay: 0, enabled: false };
-        dispatch({ type: 'ADD_HABIT', habit, rule, policy });
-        return habit;
+        const action = newHabitAction(draft, newId(), day);
+        dispatch(action);
+        return action.habit;
       },
       saveHabit(habit, draft) {
         const { day } = stamp();

@@ -5,9 +5,11 @@ import { useColors } from '@/hooks/useColors';
 import { WATER_GOAL_MAX_ML, WATER_GOAL_MIN_ML } from '@/src/data/validate';
 import { defaultFreezes } from '@/src/domain/habits/streaks';
 import type { Cadence, Category, Habit, HabitIcon, HabitRule, HabitType } from '@/src/domain/models';
+import type { PolicyContext } from '@/src/domain/nudges/describePolicy';
 import { formatNumber, formatVolume, parseVolumeInput } from '@/src/domain/time/format';
 import { CATEGORY_LABELS } from '@/src/library/presets';
 import { type HabitDraft, useTracker } from '@/src/state/TrackerProvider';
+import { ReminderPolicyForm, policyDraftFrom, policyFromPolicyDraft, type PolicyDraft } from './ReminderPolicyForm';
 import { UI } from '../ui/icons';
 import { Chip, Divider, IconTile, PillButton, Row, Segmented, Stepper } from '../ui/primitives';
 import { PressableScale } from '../ui/PressableScale';
@@ -75,12 +77,20 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
   const [freezesTouched, setFreezesTouched] = useState(!!habit);
   const editing = !!habit;
   const preset = !!habit?.presetId;
+  // The reminder is part of creating a habit (the page's Reminders sheet edits it afterwards). A
+  // custom habit is neither the Water preset nor a movement snack, so its choices are set times,
+  // an interval, or none.
+  const policyContext: PolicyContext = { movement: false, water: false, rotationIntervalMin: state.settings.nudgeIntervalMin };
+  const [reminder, setReminder] = useState<PolicyDraft>(() => policyDraftFrom(undefined, policyContext));
+  const reminderPreview = policyFromPolicyDraft({ habitId: habit?.id ?? 'new' }, reminder, policyContext);
 
   useEffect(() => {
     if (visible) {
       setD(draftFrom(habit, rule));
       setFreezesTouched(!!habit);
+      setReminder(policyDraftFrom(undefined, policyContext));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, habit, rule]);
 
   const set = (patch: Partial<HabitDraft>) => setD((prev) => ({ ...prev, ...patch }));
@@ -100,7 +110,7 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
     if (habit) {
       actions.saveHabit(habit, d);
     } else {
-      const created = actions.createHabit(d);
+      const created = actions.createHabit({ ...d, reminder: reminderPreview });
       onCreated?.(created);
     }
     onClose();
@@ -245,6 +255,15 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
             ))}
           </View>
         </Field>
+
+        {!editing ? (
+          <>
+            <Divider />
+            <Field label="Reminders">
+              <ReminderPolicyForm draft={reminder} onChange={setReminder} context={policyContext} preview={reminderPreview} />
+            </Field>
+          </>
+        ) : null}
 
         <Divider />
         <Row style={{ justifyContent: 'space-between' }}>

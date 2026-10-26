@@ -286,6 +286,16 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   rejected — taps have no dedupe key, a replayed drink double-counts. Expo web HMR can leave a stale
   module ("ReferenceError: <new import> is not defined") after adding imports — restart the workflow
   before a browser e2e. Dispositions in §6 Round 16.
+- Round 17 (2026-10-26 night) rules, paradigms 77–80: once a headless tap is persisted nothing after
+  it may show "could not be saved" (`tapSaved` flag; catch draws the applied state). Memo deps are
+  listed from the callee's reads — a new setting must be added to every memo that can see it (the
+  week start reached `habitRatios` under `cycleInsights`). One reminder editor (`ReminderPolicyForm`)
+  embedded in the New habit sheet and wrapped by the page's sheet; a chained sheet and a duplicated
+  mini-form were rejected. The round-12 simulator is now a gating test (`tests/nudgeSim.test.ts`,
+  75 sequences; `NUDGE_SIM_SEQUENCES=200` for the full run). Native-importing modules (the widget
+  handler, `backup.native.ts`) are tested by transpiling the source with the TypeScript API into a
+  vm with scripted requires, or via `node:module` `registerHooks` — never by importing react-native.
+  Dispositions in §6 Round 17.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app

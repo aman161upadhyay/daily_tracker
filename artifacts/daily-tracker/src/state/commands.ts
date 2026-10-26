@@ -3,7 +3,7 @@
  * notification handler. Each returns reducer actions; nothing here touches
  * React, the OS or the store.
  */
-import type { Cadence, EntrySource, Habit, HabitRule, MindKind, NudgeEvent, NudgeEventKind, SnackTrigger, SnackType } from '@/src/domain/models';
+import type { Cadence, Category, EntrySource, Habit, HabitIcon, HabitRule, HabitType, MindKind, NudgeEvent, NudgeEventKind, NudgePolicy, SnackTrigger, SnackType } from '@/src/domain/models';
 import { SNACK_LABELS } from '@/src/domain/models';
 import { MAX_WATER_LOG_ML } from '@/src/data/validate';
 import type { NudgeActionKind } from '@/src/domain/nudges/planner';
@@ -104,6 +104,51 @@ export function nextPeriodStart(cadence: Cadence, day: string, weekStart = 0): s
 }
 
 export type RuleDraft = Pick<HabitRule, 'cadence' | 'timesPerPeriod' | 'target' | 'freezesPerMonth'>;
+
+/** What the habit editor collects; `newHabitAction` turns it into a habit, its first rule and its reminder policy. */
+export interface HabitDraft {
+  name: string;
+  category: Category;
+  type: HabitType;
+  unit: string;
+  icon: HabitIcon;
+  cadence: Cadence;
+  timesPerPeriod: number;
+  target: number;
+  freezesPerMonth: number;
+  pinned: boolean;
+  /** The reminder chosen while creating the habit (its `habitId` is replaced by the new habit's); absent or NONE = no reminder. */
+  reminder?: NudgePolicy;
+}
+
+/** The actions that create a custom habit on `day`: one `ADD_HABIT` carrying the habit, its rule and its reminder policy. */
+export function newHabitAction(draft: HabitDraft, id: string, day: string): Extract<Action, { type: 'ADD_HABIT' }> {
+  const habit: Habit = {
+    id,
+    name: draft.name.trim() || 'New habit',
+    category: draft.category,
+    type: draft.type,
+    unit: draft.type === 'YES_NO' ? '' : draft.unit.trim(),
+    icon: draft.icon,
+    createdDay: day,
+    archived: false,
+    pinned: draft.pinned,
+  };
+  const rule: HabitRule = {
+    habitId: id,
+    effectiveFrom: day,
+    cadence: draft.cadence,
+    timesPerPeriod: draft.cadence === 'DAILY' ? 1 : Math.max(1, Math.round(draft.timesPerPeriod)),
+    target: draft.type === 'YES_NO' ? 1 : Math.max(1, Math.round(draft.target)),
+    freezesPerMonth: Math.max(0, Math.round(draft.freezesPerMonth)),
+  };
+  // A reminder set in the editor is stored exactly as the habit page would have saved it; a custom
+  // habit never joins the movement rotation (that needs a snack type), so ROTATION reads as NONE.
+  const chosen = draft.reminder;
+  const policy: NudgePolicy =
+    chosen && (chosen.kind === 'FIXED' || chosen.kind === 'INTERVAL') ? { ...chosen, habitId: id, enabled: true } : { habitId: id, kind: 'NONE', onlyWhenBehind: false, maxPerDay: 0, enabled: false };
+  return { type: 'ADD_HABIT', habit, rule, policy };
+}
 
 const sameRule = (a: RuleDraft, b: RuleDraft) => a.cadence === b.cadence && a.timesPerPeriod === b.timesPerPeriod && a.target === b.target && a.freezesPerMonth === b.freezesPerMonth;
 

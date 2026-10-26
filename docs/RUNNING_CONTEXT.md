@@ -5,7 +5,7 @@ first thing to read after `replit.md`. It answers: what exists, why it is the wa
 verified, what happened step by step, and what is still open. Append to the journal; never rewrite
 history.
 
-Last updated: 2026-10-26, autonomous session (council rounds 1–14 fixed; see journal and §6).
+Last updated: 2026-10-26, autonomous session (council rounds 1–17 fixed; see journal and §6).
 
 ---
 
@@ -15,10 +15,10 @@ Last updated: 2026-10-26, autonomous session (council rounds 1–14 fixed; see j
 |---|---|
 | App | Daily Tracker — private Android tracker: habits · water · movement snacks · meditation · opt-in cycle · home-screen widget · configurable nudges · Health Connect import · app lock · encrypted backups |
 | Code | `artifacts/daily-tracker/` — Expo SDK 57, React Native 0.86, TypeScript, Expo Router, expo-sqlite |
-| Version | `app.json` `version 0.20.0`, `versionCode 20`, tag `v0.20` (M6 complete + council rounds 1–16) |
+| Version | `app.json` `version 0.21.0`, `versionCode 21`, tag `v0.21` (M6 complete + council rounds 1–17) |
 | Repo | https://github.com/aman161upadhyay/daily_tracker.git, branch `main`, commits authored as Aman |
 | Milestones | M0 skeleton ✅ · M1 storage/streaks/onboarding ✅ · M2 nudges/notifications ✅ · M3 widget ✅ · M4 Health Connect/Body ✅ · M5 cycle ✅ · M6 theme/lock/backup/signing ✅ (`docs/IMPLEMENTATION_PLAN.md`) |
-| Verified here | type-check (three packages), 424 unit tests, Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks (incl. the Health Connect rationale activity), web walkthroughs by a browser-driving tester |
+| Verified here | type-check (three packages), 438 unit tests (incl. a 75-sequence randomised nudge simulation), Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks (incl. the Health Connect rationale activity), web walkthroughs by a browser-driving tester |
 | Never run yet | a real Android device. Everything native (widget taps, notification buttons with the app closed, Health Connect, app lock, Auto Backup, signed APK) is coded and reviewed but untested on hardware — `docs/DEVICE_CHECKLIST.md` lists the exact rows |
 | User's next step | `docs/GET_IT_ON_YOUR_PHONE.md` (plain-language build guide) |
 
@@ -477,6 +477,30 @@ contradicts one, write down why.
     grants 30 seconds and reports a timeout as success; a tap has no identity to replay by (a second
     drink is a real second drink), so it is saved early rather than journaled like a press. **Why:**
     the tap used to wait for the lock, the load and the whole re-plan before it reached disk.
+77. **Once the person's intent is on disk, nothing after it may unsay it.** A headless step that
+    fails after the tap was persisted (the revision, the re-plan, the fold's second persist) logs
+    and moves on; the widget draws the saved number and never shows "could not be saved" for a tap
+    that was. The notice is for the one failure that matters to the person — the first persist.
+    **Why:** a failed second persist redrew the old number with the notice, and the person logged
+    the drink again (ADV16-01).
+78. **A memo's dependency list is written from the callee's reads, not the caller's intuition.**
+    When a selector memoises on "the slices it reads", every setting the code under it consults is
+    a dependency too — the week start reached `habitRatios` through `periodBounds` while the cycle
+    insights' memo listed only the logs. The test for a new setting includes "does every memo that
+    can see it recompute?" **Why:** the correlations stayed on Monday weeks after the switch
+    (ADV16-02).
+79. **One editor per concept, embedded where the concept first comes up.** The reminder schedule
+    has one form (`ReminderPolicyForm`) and one builder (`policyFromDraft`); the creation sheet
+    embeds the form, the habit page's sheet wraps it. A reminder set while creating a habit is
+    therefore exactly the one the page would have saved, and a later change to either shows up in
+    both. **Why:** a chained second sheet and a duplicated mini-form were both considered and
+    rejected — the first interrupts, the second drifts.
+80. **A simulator that found a real bug is promoted into the suite.** The round-12 randomised
+    phone (saves that fail, processes that die, replies, a clock rolled back) lived in `/tmp` and
+    only printed a summary; it now runs under `node --test` with a smaller sequence count and
+    fails the suite on any invariant breach, reporting the seed and the last steps (`tests/
+    nudgeSim.test.ts`; `NUDGE_SIM_SEQUENCES=200` for the full run). **Why:** the test-audit lens
+    found that mutants the simulator would have caught passed the suite.
 
 ### How council findings are judged
 - Accept when: evidence is concrete (file:line, reproducible), it violates a paradigm or a user constraint,
@@ -558,6 +582,9 @@ Dates are America/New_York. Commits are on `main`.
 | 2026-10-26 night | **Council round 16** — a diff review with probes over the round-15 result (three findings: Undo double-counting a synced day, a toast outliving a retired provider, the snapshot shortcut's identity), a Hermes / release-build lens (one finding: the widget tap's durability; Intl, regex, 16 KB flags and the fixed reminders across DST judged correct) and a DST simulation (three findings: the countdown across the fold, the budget spent on dropped slots, nights re-dated by a trip) — plus the week-start setting from the backlog | this commit |
 | 2026-10-26 night | **Round-16 fixes and the week-start setting:** `Settings.weekStart` (Monday default) threaded as a trailing `weekStart` index through the periods (`streaks.ts`), the selectors, the stats, the month grid (`monthCells`, `weekdayLetters`) and every calendar / heatmap / week strip; the weekly summary's day follows it; `RESTORE_LOGS` evicts the import a restored manual record outranks (ADV15-01, paradigm 71); `ToastHost` clears its toast on unmount (ADV15-02); the snapshot shortcut keyed on write time + size (`snapshotStamp`, ADV15-03, paradigm 72); the Today card's anchors by real minutes (DST16-01, paradigm 73); the planner's `push` reports what it kept and budgets / the rotation move only then (DST16-02, paradigm 74); nights carry `startOffsetMin` / `endOffsetMin` from Health Connect's zone offsets or the phone's, read by the Body screens and the bedtime spread, kept across a reread (`keepNightPlacing`), schema v7 (DST16-03, paradigm 75); the widget's headless tap persisted before the re-plan (HERM16-01, paradigm 76); version 0.20.0 / versionCode 20 | this commit |
 | 2026-10-26 night | Verification: tsc clean, 424 tests (12 new in `tests/round16.test.ts`: Sunday weeks in bounds / quota / grids / the view / the streak / the setting's default, Undo's eviction, the 25-hour night's interval budget and rotation turns, the countdown across the fold, the sleep offsets through merge and the spread; 1 in the store tests: schema v7 and the night round trip), browser e2e of the week-start setting through Settings, the heatmap and the day picker | this commit, tag `v0.20` |
+| 2026-10-26 night | **Council round 17** — a diff review with probes over the round-16 result (two findings: the widget tap's second persist, the insights memo and the week start), a data / upgrade lens (clean: migrations 0–7 probed, the sleep-offset bridge shape, `expo install --check`) and a test-audit lens (mutation testing of the suite: six gaps, no implementation bugs; the throwaway simulator flagged as non-gating) — plus reminder set-up inside habit creation from the backlog | this commit |
+| 2026-10-26 night | **Round-17 fixes and reminders at creation:** the widget's headless path marks the tap saved after its first persist and draws it as saved whatever fails after (ADV16-01, paradigm 77); `cycleInsights` keys its memo on the week start too (ADV16-02, paradigm 78); the reminder form extracted from the habit page's sheet into `ReminderPolicyForm` and embedded in the New habit sheet, saved in the same `ADD_HABIT` as the habit (`HabitDraft.reminder`, `newHabitAction` in `commands.ts`, paradigm 79); the "At most, a day" stepper shows the value that will be saved; version 0.21.0 / versionCode 21 | this commit |
+| 2026-10-26 night | Verification: tsc clean, 438 tests (13 new in `tests/round17.test.ts`: the creation action with set times / an interval / Off / the rotation, the insights memo across a week-start switch, the widget tap under five failure injections through a transpile-and-inject harness, and the audit's six gaps — a failed replace / persist rolls back whole, the default PBKDF2 rounds, the snapshot stamp's size half, Sunday-first partial quotas, a start-only night edit, weekday names; 1 in `tests/nudgeSim.test.ts`: 75 randomised ten-day sequences, 0 breaches, paradigm 80), browser e2e of a habit created with a 7 PM Mon / Wed / Fri reminder and one with none | this commit, tag `v0.21` |
 
 (Entries for each council round follow below as they happen.)
 
@@ -565,6 +592,32 @@ Dates are America/New_York. Commits are on `main`.
 
 Format per round: lens → findings (severity · title · disposition · commit). Dispositions: **fixed**,
 **rejected** (reason), **deferred** (needs user/phone).
+
+### Round 17 (2026-10-26 night)
+
+Three lenses over the round-16 result — a diff review with pure probes, a data / upgrade lens (migrations, the Health Connect bridge, dependency drift) and a test-audit lens (mutation testing: does the suite fail when the code is wrong?) — plus reminder set-up inside habit creation from the backlog.
+
+**Diff review**
+- ADV16-01 med · in the widget's headless path a failure after the first persist (the revision write, the fold's persist) fell to the outer catch, which redrew the pre-tap state with "That tap could not be saved" though the tap was on disk — a person who believed it logged twice · **fixed** — `loaded` becomes the applied state and `tapSaved` is set right after the first persist; the catch draws it without the notice; paradigm 77; five failure injections tested through a harness that transpiles the real handler and scripts its store and services.
+- ADV16-02 med · `cycleInsights` memoised on the logs, habits, rules and entries but not on the week start, which `habitRatios` reads through `periodBounds`, so the correlations kept Monday weeks after the switch until an entry changed · **fixed** — the week-start index is a memo dependency; paradigm 78; test.
+- Judged correct: the week-start call sites (complete), the planner's budgets after DST16-02, `RESTORE_LOGS`' eviction, the sleep offsets through the bridge (`{id, totalSeconds}` maps, divided to minutes by the adapter), `ToastHost`.
+
+**Data / upgrade**
+- No findings. Migrations 0 → 7 probed on real rows; the sleep-offset columns round-trip; `expo install --check` reports every dependency at the SDK's version; `expo-doctor` is not installed here (the first laptop build runs it).
+
+**Test audit** (mutation testing — all regression gaps, no implementation bugs)
+- TEST17-01 med · dropping the transaction around `SqliteStore.replace` passed the suite · **fixed** — a failed replace / persist (injected disk-full mid-write) leaves the state and the service records intact, then a retry lands whole.
+- TEST17-02 med · the backup cipher's default round count was only asserted as a constant; an envelope made without an override was never checked · **fixed** — test.
+- TEST17-03 med · the snapshot stamp's size half (ADV15-03) had no test · **fixed** — a same-second rewrite of another size changes the stamp (the file-system module is stubbed through Node's module hooks).
+- TEST17-04 med · Sunday-first partial-week quotas (`periodRequired` with a week start) untested · **fixed** — test.
+- TEST17-05 med · `keepNightPlacing` only tested for an end-time edit · **fixed** — a start-only edit is a new placing.
+- TEST17-06 low · `weekdayName` untested · **fixed** — table test.
+- The lens also found the round-12 simulator non-gating (a summary print in `/tmp`) · **fixed** — promoted into the suite (`tests/nudgeSim.test.ts`, 75 sequences, asserts zero breaches; a breach of the test's own invariant check verified to fail the suite with seed and trace); paradigm 80.
+- Judged correct: the requested risky-target mutants (seven) were all killed; frozen clocks across DST, month starts, Mondays and the pre-3 am hours pass under other zones; no assertion-free tests, no swallowed assertions.
+
+**Reminders at creation** (backlog)
+- `ReminderPolicyForm` (the fields of the Reminders sheet, now a controlled component with `policyDraftFrom` / `policyFromPolicyDraft`), the page's `ReminderPolicySheet` a thin wrapper around it; the New habit sheet shows a "Reminders" section (Set times / Every so often / Off, Off by default) above Pin to Today; `HabitDraft.reminder` and the pure `newHabitAction(draft, id, day)` in `commands.ts` build one `ADD_HABIT` with the habit, its rule and its policy (a ROTATION choice, impossible for a custom habit, stores as none). Edit mode is unchanged (the page's sheet edits an existing reminder). Paradigm 79; tests; checklist AH1–AH2.
+- Browser e2e (390×844, sample data): New habit → "Floss …", Weekly, 3 days → Reminders: Set times → 7:00 PM, Tue / Thu / Sat / Sun off → summary "At 7:00 PM on Mon, Wed and Fri" → Create → the habit page shows the schedule and "Next: today at 7:00 PM"; Change opens on Set times, 7:00 PM, M W F; a second habit with Reminders left Off shows "No reminder set". No console errors. One observation: the form's "At most, a day" showed 3 while the saved policy (clamped to one time) read 1 · **fixed** — the stepper shows the value that will be saved.
 
 ### Round 16 (2026-10-26 night)
 
@@ -1200,13 +1253,13 @@ Five lenses over the round-6 result, each a fresh read-only session with its own
 
 ### Deferred features (from the plan)
 - Steps and cycle tiles in the widget; sleep-stages chart; write-back of water/mind sessions to Health Connect (v2).
-- Per-habit notification sounds (deferred in the plan at M2, M3 and M6; still not built). The week-start setting shipped in round 16.
-- Reminder set-up inside habit creation (the editor is one tap away on the habit page; the strength / stairs presets still start on every day until their weekly quota is in — the days are chosen under Reminders → Change → On).
+- Per-habit notification sounds (deferred in the plan at M2, M3 and M6; still not built). The week-start setting shipped in round 16; reminder set-up inside habit creation in round 17.
+- Preset habits added from the Library start with their preset's reminder (the strength / stairs presets ring on every day until their weekly quota is in — the days are chosen under Reminders → Change → On); a "choose days" step for presets is still open.
 - An automatic luteal symptom check-in (a cycle reminder anchored "into the luteal phase" stands in).
 - PIPE10-03 — reconstruction of merged reminders scheduled by v0.12 (they are replaced on the first sync after the update).
 
 ### Device verification owed
-- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10, T1–T11, U1–U11, V1–V11, X1–X11, Y1–Y14, Z1–Z13, AA1–AA16, AB1–AB11, AC1–AC8, AD1–AD7, AE1–AE6, AF1–AF5, AG1–AG6 have never been run on hardware. First build on the laptop is the next real milestone.
+- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10, T1–T11, U1–U11, V1–V11, X1–X11, Y1–Y14, Z1–Z13, AA1–AA16, AB1–AB11, AC1–AC8, AD1–AD7, AE1–AE6, AF1–AF5, AG1–AG6, AH1–AH2 have never been run on hardware. First build on the laptop is the next real milestone.
 - Residual risk carried knowingly: two JavaScript runtimes writing SQLite at once (UPG6-03, row V11). If the device run shows a lost write there, the fix is a database revision compared inside the write transaction.
 - Rows added in round 7: X1–X5 (exact alarms and the offline re-plan — the two library defaults the platform lens read in the sources), X6 (sheets in a short window), X7–X9 (Today without the trio, cycle off / hidden), X10–X11 (long titles, the drink ceiling).
 - Rows added in round 8: Y1–Y3 (snapshot replacement, kept copies, journaled deletes), Y4–Y6 (speculative and birth-control reminders, estimated wording), Y7–Y10 (widget sizes, font scale, notice), Y11–Y14 (drink reconcile, one night across sources, late records and backfill, permission names).
@@ -1217,6 +1270,7 @@ Five lenses over the round-6 result, each a fresh read-only session with its own
 - Rows added in round 14: AE1 (a crash during a failing save, then an erase — nothing comes back), AE2 (a press under a failed save: widget and backup honest, the press replays), AE3 (a database that cannot open shows Try again and cancels nothing), AE4 (Cards on Today), AE5 (a month picker months back, AA inks), AE6 (Clear day confirmed, the calendars under TalkBack).
 - Rows added in round 15: AF1 (a fresh Android 13 install shows "Allow notifications"; denied twice reads as blocked; switched off in the app's settings reads as blocked), AF2 (backup turned off under a failed save: no snapshot comes back within the hour), AF3 (Undo after Remove and after Clear day, the exact times back; a toast hidden by an erase), AF4 (the Steps card from a hand-logged Steps habit, then from Health Connect once it delivers), AF5 (a reminder edit on one habit does not stall Today; a Health Connect read does not re-plan).
 - Rows added in round 16: AG1 (Sunday-first weeks: counts, grids, the summary's day), AG2 (Undo under a sync), AG3 (the 25-hour night's slots and the rotation's turns), AG4 (the countdown across the fold), AG5 (nights across zones), AG6 (a widget tap under a slow background).
+- Rows added in round 17: AH1 (a habit created with a set-times reminder rings at that time on those days, with the app killed), AH2 (a widget tap whose re-plan fails — airplane mode plus a full disk is hard to stage; at least: the tap survives a kill right after it and never shows "could not be saved" once the tile moved).
 - PLAT12-03 (deferred): after a reboot Android drops expired one-shot alarms before Expo's boot receiver runs; the next sync reads them as rung and the daily cap is spent a slot early. A fix needs a Kotlin boot receiver that records the boot instant for the JavaScript side; AC5 measures how often it bites.
 - Rows added in round 10: AA1–AA8 (occurrences, the journal under a lost save, a clock set back, yesterday's tap, exempt rings, missed mornings, night-owl hours, the background re-plan), AA9–AA16 (rest of today, the reminder editor on custom / preset / movement habits, ounces everywhere, Body extrema, freezes by cadence, confirmations).
 - Deferred from round 8: Health Connect change tokens (`getChanges`) as an optimisation over the rolling window; "sharpens after three" copy.

@@ -74,8 +74,10 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
   const kind = tileKindOf(props.clickActionData?.kind);
 
   let state: TrackerState | null = null;
-  // What was read before anything failed: a tap that could not be saved still redraws real numbers.
+  // What is known to be on disk: a tap that could not be saved still redraws real numbers, and a
+  // tap that was saved before a later step failed is drawn as saved.
   let loaded: TrackerState | null = null;
+  let tapSaved = false;
   let notice: string | undefined;
   try {
     const live = liveStore();
@@ -105,6 +107,10 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
         // no identity to replay by (a second drink is a real second drink), so it is made durable
         // early instead; the schedule is the slow part and is rebuilt from the saved rows below.
         await store.persist(current, applied);
+        // From here on the tap is on disk: whatever fails below (the revision, the re-plan, the
+        // fold's persist) must not redraw the old number or tell the person to log it again.
+        loaded = applied;
+        tapSaved = true;
         await markHeadlessWrite();
         let next = applied;
         let delivered: FiredRecord[] = [];
@@ -139,8 +145,9 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
   } catch (err) {
     console.error('Widget task failed', err);
     // Not "choose habits": the person did nothing wrong, and a tap they made may not be saved.
+    // A tap already on disk draws as saved: the schedule is rebuilt by the next re-plan anyway.
     state = loaded;
-    notice = tap ? TAP_FAILED : LOAD_FAILED;
+    notice = tap ? (tapSaved ? undefined : TAP_FAILED) : LOAD_FAILED;
   }
 
   const model = modelOf(state, notice);
