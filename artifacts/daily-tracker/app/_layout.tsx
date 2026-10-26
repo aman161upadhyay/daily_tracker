@@ -21,6 +21,7 @@ import { NudgeScheduler } from "@/components/system/NudgeScheduler";
 import { WidgetSync } from "@/components/system/WidgetSync";
 import { AppLockGate } from "@/components/system/AppLockGate";
 import { BackupSync } from "@/components/system/BackupSync";
+import { ToastHost } from "@/components/ui/Toast";
 import { UI } from "@/components/ui/icons";
 import { PillButton } from "@/components/ui/primitives";
 import { Txt } from "@/components/ui/Txt";
@@ -89,7 +90,7 @@ function LoadFailedScreen({ message, onRetry }: { message: string; onRetry: () =
 }
 
 function RootLayoutNav() {
-  const { ready, storageError, loadError, retryLoad } = useTracker();
+  const { ready, storageError, loadError, retryLoad, replaceEpoch } = useTracker();
   const c = useColors();
 
   useEffect(() => {
@@ -148,6 +149,7 @@ function RootLayoutNav() {
       <WidgetSync />
       <BodySync />
       <BackupSync />
+      <ToastHost replaceEpoch={replaceEpoch} />
       <AppLockGate />
     </View>
   );

@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { AppState, Platform } from 'react-native';
 import { cleanupPending, deleteKeptSnapshots, deleteSnapshot, markCleanupPending } from '@/src/services/backup';
-import { afterSnapshots, maybeSnapshot } from '@/src/services/snapshotSync';
+import { afterSnapshots, committedSource, maybeSnapshot } from '@/src/services/snapshotSync';
+import { liveStore } from '@/src/state/liveStore';
 import { purgeTransferCache } from '@/src/services/transferCache';
 import { useTracker } from '@/src/state/TrackerProvider';
 import { hasUserData } from '@/src/data/backupPolicy';
@@ -26,7 +27,7 @@ export { hasUserData, shouldSnapshot } from '@/src/data/backupPolicy';
  *   finishes it on the next start instead of leaving the copy behind
  */
 export function BackupSync() {
-  const { state, ready, commitPending, committed } = useTracker();
+  const { state, ready, commitPending } = useTracker();
   const lastWritten = useRef<TrackerState | null>(null);
   const enqueue = (job: () => Promise<void>) => {
     afterSnapshots(job).catch((err) => console.warn('[backup]', err));
@@ -42,9 +43,14 @@ export function BackupSync() {
     const run = () => {
       commitPending()
         .then(() => {
-          if (lastWritten.current === committed()) return;
+          // The newest intent is read when the job runs (committedSource): an opt-out or erase
+          // whose save is pending or failed vetoes a snapshot of the committed state, which may
+          // still say "backup on" — the copy the opt-out deleted must not come back from it.
+          const live = liveStore();
+          if (!live || lastWritten.current === live.committed()) return;
+          const source = committedSource(live);
           let used: TrackerState | null = null;
-          return maybeSnapshot(() => (used = committed())).then((written) => {
+          return maybeSnapshot(() => (used = source())).then((written) => {
             if (written) lastWritten.current = used;
           });
         })

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SleepSummaryCard, StepsSummaryCard, sleepCardView, stepsCardView } from '@/components/body/BodySummaryCards';
+import { SleepSummaryCard, StepsSummaryCard, sleepCardView, stepsCardView, stepsCardViewFromHabit } from '@/components/body/BodySummaryCards';
 import { METRIC_META, metricColor } from '@/components/body/metrics';
 import { AmountSheet } from '@/components/tracker/AmountSheet';
 import { HabitRow } from '@/components/tracker/HabitRow';
@@ -25,7 +25,7 @@ import { minutesOfDay } from '@/src/domain/time/trackingDay';
 import { presetById } from '@/src/library/presets';
 import { useHabitViews, useHighlights, useLiveNudge, useTodaySummary } from '@/src/state/hooks';
 import { PINNED_CARD_META, type PinnedCardId } from '@/src/domain/today/pinned';
-import { cycleTimeline, mindSeries, rotationItems, ruleFor, snackSeries, snackSuggestion, waterSeries } from '@/src/state/selectors';
+import { cycleTimeline, habitDayValue, mindSeries, rotationItems, ruleFor, snackSeries, snackSuggestion, waterSeries } from '@/src/state/selectors';
 import { displayPhase, PHASE_LABELS, phaseQualifier } from '@/src/domain/cycle/timeline';
 import { formatDayShort } from '@/src/domain/time/format';
 import { dayDiff } from '@/src/domain/time/trackingDay';
@@ -52,10 +52,12 @@ export default function TodayScreen() {
   const goal = formatVolume(water.goalMl, units);
   const remaining = formatVolume(water.remainingMl, units);
 
-  const lastWater = state.water.filter((w) => w.day === today).sort((a, b) => b.at - a.at)[0];
+  // Newest record of the day per log, found once per change of that log (not on every render:
+  // a sheet opening or the clock tick would otherwise rescan two years of drinks).
+  const lastWater = useMemo(() => newestOn(state.water, today, (w) => w.at), [state.water, today]);
   const shield = state.habits.find((h) => h.presetId === 'sugar-shield' && !h.archived);
-  const lastSnack = state.snacks.filter((x) => x.day === today).sort((a, b) => b.at - a.at)[0];
-  const lastMind = state.mind.filter((x) => x.day === today).sort((a, b) => b.endAt - a.endAt)[0];
+  const lastSnack = useMemo(() => newestOn(state.snacks, today, (x) => x.at), [state.snacks, today]);
+  const lastMind = useMemo(() => newestOn(state.mind, today, (x) => x.endAt), [state.mind, today]);
   // A pinned card only for a habit the person actually has (or logged today): someone tracking
   // vitamins and steps is not shown "0 of 0 snacks" and an empty Mind card.
   const active = state.habits.filter((h) => !h.archived);
@@ -80,7 +82,14 @@ export default function TodayScreen() {
   const stepsHabit = active.find((h) => h.presetId === 'steps');
   const wantSteps = s.pinned.includes('steps');
   const wantSleep = s.pinned.includes('sleep');
-  const stepsView = useMemo(() => (wantSteps ? stepsCardView(state.body, calendarToday) : null), [wantSteps, state.body, calendarToday]);
+  // Health Connect's steps when it has any (calendar days, as the Body tab shows them); otherwise
+  // the Steps habit's own log (tracking days) — the picker promises either source.
+  const stepsView = useMemo(() => {
+    if (!wantSteps) return null;
+    const fromBody = stepsCardView(state.body, calendarToday);
+    if (fromBody.present || !stepsHabit) return fromBody;
+    return stepsCardViewFromHabit((d) => habitDayValue(state, stepsHabit, d), today);
+  }, [wantSteps, state, stepsHabit, calendarToday, today]);
   const sleepView = useMemo(() => (wantSleep ? sleepCardView(state.body, calendarToday, zone) : null), [wantSleep, state.body, calendarToday, zone]);
   const stepsGoal = stepsHabit ? ruleFor(state, stepsHabit.id, today)?.target : undefined;
   const available: Record<PinnedCardId, boolean> = {
@@ -92,8 +101,9 @@ export default function TodayScreen() {
     sleep: wantSleep,
   };
   const shown = s.pinned.filter((id) => available[id]);
-  const cards: Record<PinnedCardId, React.ReactNode> = {
-    water: (
+  // Built on demand: a card that is not shown costs nothing (its chart selector is not run).
+  const cards: Record<PinnedCardId, () => React.ReactNode> = {
+    water: () => (
       <SummaryCard
         title="Water"
         color={c.cat.hydration}
@@ -120,7 +130,7 @@ export default function TodayScreen() {
         }
       />
     ),
-    snacks: (
+    snacks: () => (
       <SummaryCard
         title="Movement snacks"
         color={c.cat.movement}
@@ -134,7 +144,7 @@ export default function TodayScreen() {
         footer={<PillButton label={shield ? 'Sugar Shield — squats before something sweet' : 'Something sweet coming? Start the Sugar Shield'} Leading={UI.Cookie} color={c.gold} kind="ghost" onPress={() => router.push('/shield')} />}
       />
     ),
-    mind: (
+    mind: () => (
       <SummaryCard
         title="Mind"
         color={c.cat.mind}
@@ -147,14 +157,14 @@ export default function TodayScreen() {
         onPress={() => router.push('/mind')}
       />
     ),
-    cycle: <CycleSummary />,
-    steps:
+    cycle: () => <CycleSummary />,
+    steps: () =>
       stepsView && stepsView.present ? (
         <StepsSummaryCard view={stepsView} goal={stepsGoal} hasHabit={!!stepsHabit} onPress={() => router.push({ pathname: '/body/[metric]', params: { metric: 'steps' } })} onAddHabit={() => router.push('/habits')} />
       ) : (
         <PinnedEmptyCard id="steps" onPress={() => router.push('/body')} />
       ),
-    sleep:
+    sleep: () =>
       sleepView && sleepView.present && sleepView.night ? (
         <SleepSummaryCard view={{ ...sleepView, night: sleepView.night }} zone={zone} onPress={() => router.push({ pathname: '/body/[metric]', params: { metric: 'sleep' } })} />
       ) : (
@@ -219,7 +229,7 @@ export default function TodayScreen() {
       ) : null}
 
       {shown.map((id) => (
-        <React.Fragment key={id}>{cards[id]}</React.Fragment>
+        <React.Fragment key={id}>{cards[id]()}</React.Fragment>
       ))}
 
       {highlights.length > 0 ? (
@@ -299,6 +309,13 @@ function Legend({ color, label, value }: { color: string; label: string; value: 
       </View>
     </Row>
   );
+}
+
+/** The newest record of `day` in a log (by the instant `at` gives), or undefined. */
+function newestOn<T extends { day: string }>(log: readonly T[], day: string, at: (x: T) => number): T | undefined {
+  let best: T | undefined;
+  for (const x of log) if (x.day === day && (best === undefined || at(x) > at(best))) best = x;
+  return best;
 }
 
 const styles = StyleSheet.create({

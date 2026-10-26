@@ -262,7 +262,18 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   membership (sanitised; cycle always in the list, shown by `cycle.showOnToday`), rendered filtered by
   availability; Steps/Sleep opt-in show a door to Body without data. The month picker computes its own
   month (`ratiosFor`), never the heatmap strip. Solid fills with text use `inkFor` + `readableFill`
-  (test over every category colour, both themes). Backlog: Undo toast after Remove. Dispositions in §6 Round 14.
+  (test over every category colour, both themes). Dispositions in §6 Round 14.
+- Round 15 (2026-10-26 night) rules, paradigms 66–69: every running-app snapshot reads
+  `committedSource(liveStore)` — committed state vetoed by the newest state's backup policy and by a
+  pending replace (never `current()`, never bare `committed()`). Notification permission goes through
+  `classifyPermission` (Expo status + canAskAgain + POST_NOTIFICATIONS runtime check): on Android 13+
+  Expo's "denied" on a fresh install means "not asked yet". Undo = exact `LogRecord` restore
+  (`dayRecords` is the one removal rule; `RESTORE_LOGS` skips present ids / orphan entries, cap 1000);
+  toast is a module store + `ToastHost` in the root layout under the lock gate, hidden on replaceEpoch.
+  Memo boundaries: `habitView` compares the habit's own rules/policy; `nudgePlan` keeps a last-plan memo
+  over the slices the planner reads (body is not one); Today builds cards on demand; `maybeSnapshot`
+  remembers the write time of a file it wrote/verified and skips `keepUnreadable` for it. Perf figures
+  left as known: cold cycleInsights ~44 ms phone, plan per tick ~15 ms. Dispositions in §6 Round 15.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app

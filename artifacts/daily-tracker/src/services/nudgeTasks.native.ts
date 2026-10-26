@@ -20,7 +20,7 @@ import { withHeadlessLock } from './headlessLock';
 import { parseResponse } from './notificationPayload';
 import { BACKGROUND_REPLAN_TASK, NUDGE_RESPONSE_TASK, beginHandling, endHandling, pendingResponses, type FiredRecord, type NudgeResponse } from './notifications';
 import { acknowledgeDeliveries, contextFor, markHeadlessWrite, replanHeadless, replanLive } from './replan';
-import { maybeSnapshot } from './snapshotSync';
+import { committedSource, maybeSnapshot } from './snapshotSync';
 import { refreshWidgets } from './widget';
 
 /**
@@ -54,7 +54,7 @@ async function afterLiveWrite(live: LiveStore, ctx: CommandContext, persisted: b
     console.warn('Re-plan after a live headless write failed', err);
   }
   await refreshWidgets(next, ctx.today, ctx.nowMs, ctx.zone).catch((err) => console.warn('Widget refresh failed', err));
-  await maybeSnapshot(() => live.current(), ctx.nowMs).catch((err) => console.warn('Snapshot after live headless write failed', err));
+  await maybeSnapshot(committedSource(live), ctx.nowMs).catch((err) => console.warn('Snapshot after live headless write failed', err));
 }
 
 async function handleHeadlessResponse(raw: unknown): Promise<void> {
@@ -200,7 +200,7 @@ TaskManager.defineTask(BACKGROUND_REPLAN_TASK, async () => {
       }
       const next = live.current();
       await refreshWidgets(next, ctx.today, ctx.nowMs, ctx.zone).catch((err) => console.warn('Widget refresh failed', err));
-      await maybeSnapshot(() => live.current(), ctx.nowMs).catch((err) => console.warn('Snapshot in background re-plan failed', err));
+      await maybeSnapshot(committedSource(live), ctx.nowMs).catch((err) => console.warn('Snapshot in background re-plan failed', err));
       return BackgroundTask.BackgroundTaskResult.Success;
     }
     const written = await withHeadlessLock(async () => {

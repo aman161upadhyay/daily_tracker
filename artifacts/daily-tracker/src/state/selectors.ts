@@ -264,10 +264,11 @@ export interface HabitView {
 // One view per habit and day per state: the Today list, highlights, the planner and the widget
 // model all ask for the same views during one render pass.
 const viewCache = new WeakMap<TrackerState, Map<string, HabitView>>();
-// Across states, per habit object: a view stands as long as the habit's rules, policies, its slice
-// of the log and the day are the ones it was built from. A water tap changes none of these for the
-// other habits, so their streak walks are not repeated on the render thread.
-const viewMemo = new WeakMap<Habit, { rules: TrackerState['rules']; policies: TrackerState['policies']; slice: readonly unknown[]; today: string; view: HabitView }>();
+// Across states, per habit object: a view stands as long as the habit's own rules, its own policy,
+// its slice of the log and the day are the ones it was built from. A water tap, or a reminder edit
+// on another habit, changes none of these for the other habits, so their streak walks are not
+// repeated on the render thread (the whole-table identities would miss on every edit to any habit).
+const viewMemo = new WeakMap<Habit, { rules: readonly HabitRule[]; policy: NudgePolicy | undefined; slice: readonly unknown[]; today: string; view: HabitView }>();
 
 export function habitView(state: TrackerState, habit: Habit, today: string): HabitView {
   let perState = viewCache.get(state);
@@ -280,12 +281,14 @@ export function habitView(state: TrackerState, habit: Habit, today: string): Hab
   // Only a view of this very habit object counts (a draft with the same id must not get the stored one's view).
   if (cached && cached.habit === habit) return cached;
   const slice = logSlice(state, habit);
+  const rules = rulesFor(state, habit.id);
+  const policy = policyFor(state, habit.id);
   const memo = viewMemo.get(habit);
   const view =
-    memo && memo.rules === state.rules && memo.policies === state.policies && memo.today === today && sameList(memo.slice, slice) ? memo.view : buildHabitView(state, habit, today);
+    memo && memo.today === today && memo.policy === policy && sameList(memo.rules, rules) && sameList(memo.slice, slice) ? memo.view : buildHabitView(state, habit, today);
   if (state.habits.includes(habit)) {
     perState.set(key, view);
-    viewMemo.set(habit, { rules: state.rules, policies: state.policies, slice, today, view });
+    viewMemo.set(habit, { rules, policy, slice, today, view });
   }
   return view;
 }
@@ -833,6 +836,14 @@ function calendarTodayOf(nowMs: number, zone: string): string {
 }
 
 const planCache = new WeakMap<TrackerState, { key: string; plan: ScheduledNudge[] }>();
+// The last plan built, with the slices it read: a state that differs only in what the planner never
+// reads (a Health Connect result, a theme change) reuses it instead of re-planning on the render thread.
+let lastPlan: { key: string; deps: readonly unknown[]; plan: ScheduledNudge[] } | null = null;
+
+/** Every part of the state `planInputFor` reads (body, backup and lock settings are not among them). */
+function planDeps(state: TrackerState): readonly unknown[] {
+  return [state.settings, state.habits, state.rules, state.policies, state.entries, state.water, state.snacks, state.mind, state.events, state.nudgeEvents, state.nudgeSwap, state.nudgeSnoozedUntil, state.cycleLogs];
+}
 
 /**
  * Everything that should be scheduled right now; memoized per state, instant, tracking day and zone.
@@ -844,7 +855,13 @@ export function nudgePlan(state: TrackerState, today: string, nowMs: number, zon
   const key = `${nowMs}|${today}|${zone}`;
   const cached = planCache.get(state);
   if (cached && cached.key === key) return cached.plan;
-  const plan = planNudges(planInputFor(state, today, nowMs, zone));
+  const deps = planDeps(state);
+  let plan: ScheduledNudge[];
+  if (lastPlan && lastPlan.key === key && sameList(lastPlan.deps, deps)) plan = lastPlan.plan;
+  else {
+    plan = planNudges(planInputFor(state, today, nowMs, zone));
+    lastPlan = { key, deps, plan };
+  }
   planCache.set(state, { key, plan });
   return plan;
 }

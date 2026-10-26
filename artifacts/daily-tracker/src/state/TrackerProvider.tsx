@@ -11,6 +11,7 @@ import { applyPeriodStart } from '@/src/domain/cycle/timeline';
 import { currentZone, newId, now } from '@/src/domain/time/clock';
 import { calendarDayOf, instantOf, minutesOfDay, trackingDayOf } from '@/src/domain/time/trackingDay';
 import { presetById } from '@/src/library/presets';
+import { dayRecords, findRecord, MAX_RESTORE_RECORDS, type LogName, type LogRecord } from '@/src/domain/habits/records';
 import { mindSessionExists, ruleChangeActions, ruleInForce, targetChangeActions, type RuleDraft } from './commands';
 import { reducer, type Action } from './reducer';
 import { buildEmptyState, buildSampleState, habitFromPreset } from './seed';
@@ -105,9 +106,14 @@ export interface TrackerActions {
   logAmount(habit: Habit, value: number, day?: string): void;
   /** Backfill: make a day's total equal `value`. */
   setDayValue(habit: Habit, value: number, day: string): void;
+  /** Take every record the habit counts that day off; returns them so an Undo can put them back. */
+  clearDay(habit: Habit, day: string): LogRecord[];
   addWater(ml: number, source?: 'MANUAL' | 'AUTO_WIDGET'): void;
   undoWater(): void;
-  removeLog(log: 'entry' | 'water' | 'snack' | 'mind', id: string): void;
+  /** Remove one exact record; returns it (null when it was already gone) so an Undo can put it back. */
+  removeLog(log: LogName, id: string): LogRecord | null;
+  /** Put removed records back exactly as they were (records already present, or whose habit is gone, are skipped). */
+  restoreLogs(records: readonly LogRecord[]): void;
   logSnack(type: SnackType, opts?: { habitId?: string; trigger?: SnackTrigger; reps?: number; seconds?: number }): void;
   /** Log a session; `endAt` is the instant it really ended (a timer that ran out while the phone was locked), now by default. */
   logMind(kind: MindKind, minutes: number, opts?: { endAt?: number }): void;
@@ -500,6 +506,11 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
         dispatch({ type: 'CLEAR_DAY', habit, day });
         if (value > 0) logFor(habit, value, day);
       },
+      clearDay(habit, day) {
+        const gone = dayRecords(stateRef(), habit, day);
+        if (gone.length > 0) dispatch({ type: 'CLEAR_DAY', habit, day });
+        return gone;
+      },
       addWater(ml, source = 'MANUAL') {
         const whole = drinkMl(ml);
         if (whole === null) return;
@@ -510,7 +521,12 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
         dispatch({ type: 'UNDO_WATER', day: stamp().day });
       },
       removeLog(log, id) {
-        dispatch({ type: 'REMOVE_LOG', log, id });
+        const gone = findRecord(stateRef(), log, id);
+        if (gone) dispatch({ type: 'REMOVE_LOG', log, id });
+        return gone;
+      },
+      restoreLogs(records) {
+        if (records.length > 0) dispatch({ type: 'RESTORE_LOGS', records: records.slice(0, MAX_RESTORE_RECORDS) });
       },
       logSnack(type, opts = {}) {
         const { at, zone: z, day } = stamp();

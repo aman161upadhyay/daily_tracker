@@ -17,12 +17,13 @@ import Constants from 'expo-constants';
 import * as IntentLauncher from 'expo-intent-launcher';
 import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
-import { Linking, Platform } from 'react-native';
+import { Linking, PermissionsAndroid, Platform } from 'react-native';
 import type { MindKind, Units } from '@/src/domain/models';
 import { formatVolume } from '@/src/domain/time/format';
 import type { NudgeChannel, ScheduledNudge } from '@/src/domain/nudges/planner';
 import { MIND_END_ID, mindEndPayload, type NudgePayload } from '@/src/state/commands';
 import { canScheduleExactAlarms } from '@/modules/exact-alarms';
+import { classifyPermission, type PermissionState } from './notificationPermission';
 import { createStore } from '@/src/data/createStore';
 import { parseResponse } from './notificationPayload';
 import { deliveries, journalWith, journalWithout, parseBookkeeping, type Bookkeeping, type FiredRecord, type LedgerEntry } from './deliveryJournal';
@@ -31,7 +32,7 @@ import { ClaimGate } from './claimGate';
 
 export type { FiredRecord } from './deliveryJournal';
 
-export type PermissionState = 'granted' | 'denied' | 'undetermined' | 'unsupported';
+export type { PermissionState } from './notificationPermission';
 
 export interface NudgeResponse {
   payload: NudgePayload;
@@ -81,20 +82,27 @@ Notifications.setNotificationHandler({
   }),
 });
 
-function toState(status: Notifications.PermissionStatus): PermissionState {
-  if (status === Notifications.PermissionStatus.GRANTED) return 'granted';
-  if (status === Notifications.PermissionStatus.DENIED) return 'denied';
-  return 'undetermined';
+/** Android 13+: the POST_NOTIFICATIONS runtime permission itself (null where there is none). */
+async function runtimeGranted(): Promise<boolean | null> {
+  if (!ANDROID || Number(Platform.Version) < 33) return null;
+  try {
+    return await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+  } catch {
+    return null;
+  }
+}
+
+async function toState(p: Notifications.NotificationPermissionsStatus): Promise<PermissionState> {
+  const status = p.status === Notifications.PermissionStatus.GRANTED ? 'granted' : p.status === Notifications.PermissionStatus.DENIED ? 'denied' : 'undetermined';
+  return classifyPermission({ status, canAskAgain: p.canAskAgain, runtimeGranted: await runtimeGranted() });
 }
 
 export async function getPermission(): Promise<PermissionState> {
-  const p = await Notifications.getPermissionsAsync();
-  return toState(p.status);
+  return toState(await Notifications.getPermissionsAsync());
 }
 
 export async function requestPermission(): Promise<PermissionState> {
-  const p = await Notifications.requestPermissionsAsync();
-  return toState(p.status);
+  return toState(await Notifications.requestPermissionsAsync());
 }
 
 export async function openNotificationSettings(): Promise<void> {

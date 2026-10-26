@@ -16,7 +16,36 @@ import { readSnapshot, setAsideSnapshot, snapshotWrittenAt, writeSnapshot } from
 /** A snapshot at most this often. */
 export const SNAPSHOT_MIN_AGE_MS = 60 * 60 * 1000;
 
+/** The running app's store, as far as a snapshot needs it (the LiveStore interface satisfies it). */
+export interface SnapshotView {
+  /** The newest state (every change, saved or not). */
+  current(): TrackerState;
+  /** What the database holds. */
+  committed(): TrackerState;
+  /** True while a whole-state replace (erase, restore, sample data) is on screen but not in the database. */
+  replacePending(): boolean;
+}
+
+/**
+ * What a snapshot of the running app may hold: the state the database has — never a change whose
+ * save is pending or gave up — unless the newest intent says there should be none. The person who
+ * turned the backup off or erased everything has withdrawn their consent the moment they tapped,
+ * whether or not that change has reached the database yet: the committed state may still say
+ * "backup on" after the setting's save failed, and the snapshot that the opt-out deleted must not
+ * come back from it. A pending replace stands down too: its committed state is about to be
+ * replaced wholesale and would sit in the snapshot for the throttle's hour.
+ */
+export function committedSource(view: SnapshotView): () => TrackerState | null {
+  return () => {
+    if (view.replacePending()) return null;
+    if (!shouldSnapshot(view.current())) return null;
+    return view.committed();
+  };
+}
+
 let queue: Promise<unknown> = Promise.resolve();
+/** Write time of the snapshot this process last wrote, or checked and found readable. */
+let knownWrittenAt: number | null = null;
 
 /**
  * Write a snapshot when the policy says so and the last one is old enough.
@@ -34,8 +63,11 @@ export function maybeSnapshot(source: () => TrackerState | null, nowMs = Date.no
     if (!state || !shouldSnapshot(state)) return false;
     const writtenAt = await snapshotWrittenAt();
     if (writtenAt !== null && nowMs - writtenAt < SNAPSHOT_MIN_AGE_MS) return false;
-    if (writtenAt !== null) await keepUnreadable();
+    // A file this process wrote or already read fine is not parsed again (two years of records
+    // cost ~125 ms of main-thread parsing on a phone); one with another write time is unknown.
+    if (writtenAt !== null && writtenAt !== knownWrittenAt) await keepUnreadable();
     await writeSnapshot(serializeExport(state));
+    knownWrittenAt = await snapshotWrittenAt();
     return true;
   };
   const run = queue.then(job, job);
@@ -53,8 +85,10 @@ export async function keepUnreadable(): Promise<boolean> {
   if (!existing) return false;
   try {
     inspectExport(existing.text);
+    knownWrittenAt = await snapshotWrittenAt();
     return false;
   } catch {
+    knownWrittenAt = null;
     return setAsideSnapshot();
   }
 }

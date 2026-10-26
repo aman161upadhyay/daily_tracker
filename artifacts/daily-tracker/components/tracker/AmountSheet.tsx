@@ -9,6 +9,7 @@ import { MAX_SNACKS_PER_LOG, useTracker } from '@/src/state/TrackerProvider';
 import { UI } from '../ui/icons';
 import { Chip, PillButton, Row } from '../ui/primitives';
 import { Sheet } from '../ui/Sheet';
+import { showToast } from '../ui/Toast';
 import { Txt } from '../ui/Txt';
 import { confirmDestructive } from '../ui/confirm';
 
@@ -110,7 +111,12 @@ export function AmountSheet({ visible, onClose, habit, mode = 'add', day, curren
             onPress={() =>
               // Clearing takes every record of that day with it (times and origins included), not
               // only the total: named and confirmed, like Remove in the Logged list.
-              confirmDestructive(`Clear ${backfill ? formatDayLong(theDay) : 'today'}?`, `Everything logged for ${habit.name} that day — ${label(current)} — comes off, each entry with its time.`, 'Clear day', () => commit(0))
+              confirmDestructive(`Clear ${backfill ? formatDayLong(theDay) : 'today'}?`, `Everything logged for ${habit.name} that day — ${label(current)} — comes off, each entry with its time.`, 'Clear day', () => {
+                // The cleared records come back exactly on Undo (their times and origins with them).
+                const gone = actions.clearDay(habit, theDay);
+                onClose();
+                if (gone.length > 0) showToast({ message: `Cleared ${label(current)} ${backfill ? `on ${formatDayLong(theDay)}` : 'today'}`, actionLabel: 'Undo', onAction: () => actions.restoreLogs(gone) });
+              })
             }
           />
         ) : null}

@@ -126,12 +126,12 @@ export function RemindersCard() {
           <Row gap={8} style={{ alignItems: 'center' }}>
             <UI.Info size={16} color={c.gold} weight="bold" />
             <Txt role="caption" tone="secondary" style={{ flex: 1 }}>
-              Android is delivering reminders late: minutes, longer while the phone sleeps. Turn on "Alarms & reminders" for this app and they ring at the planned minute.
+              Without "Alarms & reminders" for this app, Android may deliver reminders minutes late, longer while the phone sleeps. Allowing it lets them ring closer to the planned minute; battery settings can still delay them.
             </Txt>
           </Row>
         ) : perm === 'granted' && Platform.OS === 'android' && exact === null ? (
           <Txt role="caption" tone="secondary">
-            Exact timing lets Android ring at the planned minute; without it nudges can arrive minutes late, longer while the phone sleeps.
+            Exact timing lets reminders ring closer to the planned minute; without it they can arrive minutes late, longer while the phone sleeps. Battery settings can still delay them.
           </Txt>
         ) : null}
         {health.failure ? (

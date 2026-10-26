@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { confirmDestructive } from '@/components/ui/confirm';
+import { showToast } from '@/components/ui/Toast';
 import { HabitGlyph, UI } from '@/components/ui/icons';
 import { Divider, IconButton, PillButton, Row } from '@/components/ui/primitives';
 import { Txt } from '@/components/ui/Txt';
@@ -32,7 +33,11 @@ export function ActivityList({ habit }: ActivityListProps) {
 
   const remove = (r: ActivityRecord) => {
     const when = r.day === today ? `at ${formatClock(minutesOfDay(r.at, zone))}` : `on ${formatDayShort(r.day)}`;
-    confirmDestructive('Remove this entry?', `${r.amount} ${when} comes off that day's total.`, 'Remove', () => actions.removeLog(r.log, r.id));
+    confirmDestructive('Remove this entry?', `${r.amount} ${when} comes off that day's total.`, 'Remove', () => {
+      // The exact record comes back on Undo — same id, time and origin — not a new one logged now.
+      const gone = actions.removeLog(r.log, r.id);
+      if (gone) showToast({ message: `Removed ${r.amount} ${when}`, actionLabel: 'Undo', onAction: () => actions.restoreLogs([gone]) });
+    });
   };
 
   // Grouped by day, newest day first (the records already come newest first).

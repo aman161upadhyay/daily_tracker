@@ -10,7 +10,7 @@ import { createStore } from '@/src/data/createStore';
 import { withHeadlessLock } from '@/src/services/headlessLock';
 import type { FiredRecord } from '@/src/services/notifications';
 import { acknowledgeDeliveries, contextFor, markHeadlessWrite, replanHeadless, replanLive } from '@/src/services/replan';
-import { maybeSnapshot } from '@/src/services/snapshotSync';
+import { committedSource, maybeSnapshot } from '@/src/services/snapshotSync';
 import { applyAll, widgetTapActions } from '@/src/state/commands';
 import { liveStore, type LiveStore } from '@/src/state/liveStore';
 import { reducer } from '@/src/state/reducer';
@@ -62,7 +62,7 @@ async function tapThroughApp(live: LiveStore, habitId: string, kind: TileKind, t
   } catch (err) {
     console.warn('Widget re-plan failed; the log is still saved', err);
   }
-  await maybeSnapshot(() => live.current(), ctx.nowMs).catch((err) => console.warn('Snapshot after widget tap failed', err));
+  await maybeSnapshot(committedSource(live), ctx.nowMs).catch((err) => console.warn('Snapshot after widget tap failed', err));
   return { state: live.current(), persisted: true };
 }
 

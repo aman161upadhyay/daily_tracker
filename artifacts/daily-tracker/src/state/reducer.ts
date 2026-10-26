@@ -5,6 +5,7 @@ import { applyPeriodEnd, applyPeriodStart, closeOlderOpenSpans, normalizeHistory
 import type { CycleDayLog, Habit, HabitEntry, HabitRule, MindSession, MovementSnack, NudgeEvent, NudgePolicy, PeriodSpan, ScheduledEvent, Settings, WaterEntry } from '@/src/domain/models';
 import type { TrackerState } from './types';
 import { snackCountsFor } from '@/src/domain/habits/snackMatch';
+import { dayRecords, restorable, type LogRecord } from '@/src/domain/habits/records';
 
 export type Action =
   | { type: 'HYDRATE'; state: TrackerState }
@@ -23,6 +24,8 @@ export type Action =
   | { type: 'REMOVE_LOG'; log: 'entry' | 'water' | 'snack' | 'mind'; id: string }
   /** Clear a habit's logs on one day before writing a backfilled total. */
   | { type: 'CLEAR_DAY'; habit: Habit; day: string }
+  /** Put removed records back exactly (an Undo); records already present, or whose habit is gone, are skipped. */
+  | { type: 'RESTORE_LOGS'; records: LogRecord[] }
   | { type: 'ADD_HABIT'; habit: Habit; rule: HabitRule; policy: NudgePolicy }
   /** Permanent delete: the habit, its rules, policy and logs. */
   | { type: 'DELETE_HABIT'; id: string }
@@ -141,12 +144,30 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
     }
 
     case 'CLEAR_DAY': {
+      // Exactly the records the habit counts that day (one rule, shared with the activity list and Undo).
+      const gone = new Set(dayRecords(state, action.habit, action.day).map((r) => r.record.id));
+      if (gone.size === 0) return state;
       const h = action.habit;
-      const day = action.day;
-      if (h.presetId === 'water') return { ...state, water: state.water.filter((w) => w.day !== day) };
-      if (h.snackType) return { ...state, snacks: state.snacks.filter((s) => !(s.day === day && snackCountsFor(h, s))) };
-      if (h.mindKind) return { ...state, mind: state.mind.filter((m) => !(m.day === day && m.kind === h.mindKind)) };
-      return { ...state, entries: state.entries.filter((e) => !(e.day === day && e.habitId === h.id)) };
+      if (h.presetId === 'water') return { ...state, water: state.water.filter((w) => !gone.has(w.id)) };
+      if (h.snackType) return { ...state, snacks: state.snacks.filter((s) => !gone.has(s.id)) };
+      if (h.mindKind) return { ...state, mind: state.mind.filter((m) => !gone.has(m.id)) };
+      return { ...state, entries: state.entries.filter((e) => !gone.has(e.id)) };
+    }
+
+    case 'RESTORE_LOGS': {
+      const back = restorable(state, action.records);
+      if (back.length === 0) return state;
+      const water = back.flatMap((r) => (r.log === 'water' ? [r.record] : []));
+      const snacks = back.flatMap((r) => (r.log === 'snack' ? [r.record] : []));
+      const mind = back.flatMap((r) => (r.log === 'mind' ? [r.record] : []));
+      const entries = back.flatMap((r) => (r.log === 'entry' ? [r.record] : []));
+      return {
+        ...state,
+        water: water.length ? [...state.water, ...water] : state.water,
+        snacks: snacks.length ? [...state.snacks, ...snacks] : state.snacks,
+        mind: mind.length ? [...state.mind, ...mind] : state.mind,
+        entries: entries.length ? [...state.entries, ...entries] : state.entries,
+      };
     }
 
     case 'ADD_HABIT':

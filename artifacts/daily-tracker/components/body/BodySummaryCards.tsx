@@ -8,24 +8,22 @@ import { averageOf, bedtimeSpreadMin, formatSleep, lastNight, seriesOf } from '@
 import type { BodyState } from '@/src/domain/body/types';
 import { formatClock, formatDayShort, formatNumber } from '@/src/domain/time/format';
 import { lastNDays, minutesOfDay } from '@/src/domain/time/trackingDay';
+import type { StepsCardView } from '@/src/domain/body/stepsCard';
 
 /**
  * The Steps and Sleep summary cards, shared by the Body tab and Today's pinned cards so the
  * two screens read the same figures the same way (paradigm 21).
  */
 
-export interface StepsCardView {
-  present: boolean;
-  today: number;
-  series7: number[];
-  avg7: number | undefined;
-}
+export type { StepsCardView } from '@/src/domain/body/stepsCard';
 
 export function stepsCardView(body: BodyState, calendarToday: string): StepsCardView {
   const steps = metricDayValues(body, 'steps');
   const series7 = seriesOf(steps, lastNDays(calendarToday, 7));
   return { present: steps.size > 0, today: steps.get(calendarToday) ?? 0, series7, avg7: averageOf(series7) };
 }
+
+export { stepsCardViewFromHabit } from '@/src/domain/body/stepsCard';
 
 export interface SleepCardView {
   present: boolean;
