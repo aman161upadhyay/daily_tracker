@@ -81,6 +81,22 @@ export function periodQuota(rule: Pick<HabitRule, 'cadence' | 'timesPerPeriod'>,
   return Math.max(1, Math.min(rule.timesPerPeriod, periodBounds(rule.cadence, day).length));
 }
 
+/**
+ * Days the period containing `day` really requires of this habit: the quota, prorated to the days
+ * the habit has in the period (from `createdDay` on, days off excluded) and never more than those
+ * days. One formula for the streak, the Today card ("2 of 4 this week"), the charts and the
+ * planner, so the week a habit was created on a Thursday is judged the same everywhere.
+ * 0 when the habit has no day in the period.
+ */
+export function periodRequired(rule: Pick<HabitRule, 'cadence' | 'timesPerPeriod'>, day: string, createdDay: string, offDays?: ReadonlySet<string>): number {
+  if (rule.cadence === 'DAILY') return 1;
+  const bounds = periodBounds(rule.cadence, day);
+  let available = 0;
+  for (let d = createdDay > bounds.start ? createdDay : bounds.start; d <= bounds.end; d = addDays(d, 1)) if (!offDays?.has(d)) available++;
+  if (available === 0) return 0;
+  return Math.min(available, Math.max(1, Math.round((periodQuota(rule, bounds.end) * available) / bounds.length)));
+}
+
 export function periodBounds(cadence: Cadence, day: string): { start: string; end: string; length: number } {
   if (cadence === 'DAILY') return { start: day, end: day, length: 1 };
   if (cadence === 'WEEKLY') {
@@ -140,9 +156,9 @@ export function evaluateStreak(input: StreakInput): StreakResult {
       // card and the charts use), so "3 of 4 this week" never disagrees with the streak.
       if (d <= input.today && input.valueOf(d) >= ruleOn(rules, d).target) done++;
     }
-    // Prorated for days off, and never more than the days the period has (a "31 days a month"
-    // rhythm asks for every day of February, not for three days that do not exist).
-    const required = rule.cadence === 'DAILY' ? 1 : Math.min(available, Math.max(1, Math.round((periodQuota(rule, end) * available) / bounds.length)));
+    // Prorated for the habit's start and days off, and never more than the days the period has (a
+    // "31 days a month" rhythm asks for every day of February, not for three days that do not exist).
+    const required = periodRequired(rule, end, input.createdDay, off);
 
     let status: PeriodStatus;
     let freezeMonth: string | undefined;

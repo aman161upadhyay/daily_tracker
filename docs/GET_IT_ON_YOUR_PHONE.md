@@ -203,7 +203,7 @@ Then try the list in `docs/DEVICE_CHECKLIST.md` if you want to check every featu
    on a Mac (Finder → Go → Go to Folder…, paste exactly that, including the `~`) and
    `C:\dev\daily_tracker\artifacts\daily-tracker\android\app\build\outputs\apk\release\app-release.apk`
    on Windows (paste it into the File Explorer address bar).
-   Rename a copy to something like `DailyTracker-0.7.apk` (the version number from `app.json`) if you like.
+   Rename a copy to something like `DailyTracker-0.8.apk` (the version number from `app.json`) if you like.
 2. Send it any way you want: Google Drive link, WhatsApp, email, AirDrop-style apps.
 3. On their phone they tap the file. Android asks to allow installing from that app (Files,
    Chrome, WhatsApp…) → **Allow** → **Install**. If *Play Protect* shows a warning, tap *More

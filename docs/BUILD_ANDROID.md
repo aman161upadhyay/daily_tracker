@@ -17,19 +17,30 @@ first time and 2–3 minutes after that.
    ```
    A JDK 17 or newer is required; Android Studio's bundled one works (`JAVA_HOME` → the
    `jbr` folder inside the Android Studio install) and so does Temurin 17/21.
-2. **Node 22 or 24** and **pnpm 10** (the repo refuses npm/yarn on purpose):
+2. **Node 22 or 24** and **pnpm 10** (the repo refuses npm/yarn on purpose). Two commands, one per
+   line (Windows PowerShell 5 does not understand `&&`):
    ```bash
-   corepack enable && corepack prepare pnpm@10 --activate   # or: npm i -g pnpm@10
+   corepack enable
+   corepack prepare pnpm@10 --activate
    ```
+   or simply `npm i -g pnpm@10`.
 3. **Phone**: Settings → About → tap *Build number* 7× → Developer options → *USB debugging* on.
    Plug in, accept the fingerprint prompt, check `adb devices` lists it as `device`.
    (Wireless debugging works too: pair in Developer options, then `adb pair` / `adb connect`.)
 
 ## Every build
 
+First time only — get the code:
 ```bash
-git clone https://github.com/aman161upadhyay/daily_tracker.git   # first time; later: git pull
+git clone https://github.com/aman161upadhyay/daily_tracker.git
 cd daily_tracker
+```
+Every later time — update it (from inside the `daily_tracker` folder):
+```bash
+git pull
+```
+Then build and install (from inside the `daily_tracker` folder):
+```bash
 pnpm install                       # repo root: installs every workspace and applies patches/*.patch
 cd artifacts/daily-tracker
 pnpm exec expo prebuild --platform android --clean   # regenerates android/ from app.json + plugins
@@ -87,13 +98,16 @@ the block survives every `--clean` prebuild.
    mkdir $HOME\keystores
    keytool -genkeypair -v -storetype PKCS12 -keystore $HOME\keystores\daily-tracker-release.jks -alias daily-tracker -keyalg RSA -keysize 2048 -validity 10000
    ```
-2. Put the credentials in `~/.gradle/gradle.properties` (your home directory, never the repo):
+2. Put the credentials in `~/.gradle/gradle.properties` (your home directory, never the repo —
+   on Windows that is `C:\Users\<you>\.gradle\gradle.properties`; create the file if it is missing):
    ```
    DT_RELEASE_STORE_FILE=/Users/you/keystores/daily-tracker-release.jks
    DT_RELEASE_STORE_PASSWORD=…
    DT_RELEASE_KEY_ALIAS=daily-tracker
    DT_RELEASE_KEY_PASSWORD=…
    ```
+   On Windows write the path with forward slashes, `DT_RELEASE_STORE_FILE=C:/Users/<you>/keystores/daily-tracker-release.jks`
+   (a backslash in a properties file is an escape character, so `C:\Users` would be read as `C:Users`).
    With a PKCS12 keystore (the `-storetype PKCS12` above) use the **same password** for the store and
    the key — `keytool` warns that different ones are not supported. When the properties are absent
    the release build type falls back to the template's public debug keystore, so the command below
@@ -104,7 +118,7 @@ the block survives every `--clean` prebuild.
    pnpm exec expo prebuild --platform android --clean
    cd android
    ./gradlew assembleRelease
-   "$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"/apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
+   "$(ls -d "$ANDROID_HOME"/build-tools/*/ | grep -E '/[0-9.]+/
    adb install -r app/build/outputs/apk/release/app-release.apk
    ```
    Windows PowerShell:
@@ -113,7 +127,241 @@ the block survives every `--clean` prebuild.
    pnpm exec expo prebuild --platform android --clean
    cd android
    .\gradlew.bat assembleRelease
-   $tools = Get-ChildItem "$env:ANDROID_HOME\build-tools" | Sort-Object { [version]$_.Name } | Select-Object -Last 1
+   $tools = Get-ChildItem "$env:ANDROID_HOME\build-tools" | Where-Object { $_.Name -match '^\d+(\.\d+)*
+   & "$($tools.FullName)\apksigner.bat" verify --print-certs app\build\outputs\apk\release\app-release.apk
+   adb install -r app\build\outputs\apk\release\app-release.apk
+   ```
+   `apksigner` must print the certificate you created (CN from the `keytool` prompts), not
+   `CN=Android Debug`. Switching an installed debug-key build to the release key means
+   uninstalling once (Android refuses a different signer): **export a backup first** from
+   Settings → Your data, install, then import it. Friends install the same APK from any shared
+   file; later versions update in place as long as they come from this key.
+
+`versionCode` discipline: Android installs a same-signer build whose `versionCode` is equal **or**
+higher over the existing one and rejects only a lower one (`INSTALL_FAILED_VERSION_DOWNGRADE`).
+This project still raises `expo.android.versionCode` in `app.json` on every release (M3 shipped 3,
+M4 4, M5 5, M6 6, round 3 7) so that "which build is this phone on" has one answer; `version`
+follows the tag (`0.7.0` = `v0.7`).
+
+Google Play is deliberately not part of this recipe; `./gradlew bundleRelease` produces the AAB if
+that day comes, and the remaining items (feature graphic, privacy policy, Health Connect
+declaration, data-safety form) are listed in `docs/IMPLEMENTATION_PLAN.md` M6.
+
+## Backups (M6)
+
+Two independent mechanisms, both leaving the live SQLite database alone:
+
+- **Android Auto Backup.** `plugins/withBackupRules.js` restricts the backup to `files/backup/`
+  (and switches it off on phones that cannot encrypt it with their own lock screen). The app keeps
+  `files/backup/snapshot.json` there — a plain export, refreshed on start and when leaving the app,
+  at most hourly, never for sample data, deleted by "Erase everything". After a factory reset or a
+  new phone, Android restores that file, the database is empty, and onboarding opens with
+  "Welcome back → Restore it / Start fresh". To rehearse without a reset:
+  `adb shell bmgr backupnow com.amanupadhyay.dailytracker`, uninstall, reinstall, and
+  `adb shell bmgr restore <token> com.amanupadhyay.dailytracker` (tokens from `adb shell bmgr list sets`;
+  `adb shell bmgr enable true` and a Google account on the phone are prerequisites).
+- **Export with a password.** Settings → Your data → Export backup → type a password. The file is
+  AES-256-GCM with a PBKDF2-SHA256 key (200,000 iterations, 16-byte salt, 12-byte IV, all written in
+  the file, tag appended to the ciphertext). It opens without this app, for example in Python:
+  ```python
+  import json, base64, hashlib, unicodedata
+  from cryptography.hazmat.primitives.ciphers.aead import AESGCM   # pip install cryptography
+  f = json.load(open('daily-tracker-2026-10-26-k3f9a2.json'))
+  password = unicodedata.normalize('NFKC', 'your password')      # the app normalises the same way
+  key = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), base64.b64decode(f['salt']), f['iterations'], 32)
+  print(AESGCM(key).decrypt(base64.b64decode(f['iv']), base64.b64decode(f['ciphertext']), None).decode())
+  ```
+  Passwords are NFKC-normalised before hashing (so a password typed with a full-width or decomposed
+  character still opens the file); the recipe above does the same. There is no recovery for a
+  forgotten password.
+
+## After installing: the device checklist
+
+Run `docs/DEVICE_CHECKLIST.md`. Widget rows W1–W8 are from M3; Health Connect rows H1–H9 are new
+in M4. N6 ("Done with the app swiped away") and N17 are worth re-running because the headless
+tasks are registered from the entry file (`index.js`), which is what runs when Android starts the
+app without a screen.
+
+Health Connect notes: the phone needs the Health Connect app (built into Android 14+; on Android
+9–13 install it from the Play Store — the Body tab offers the link) and `minSdkVersion` is now 26,
+so Android 8.0 is the floor. The permission sheet only lists the data types declared in the
+manifest (`app.json` → `android.permissions`); if a type is missing there, it is silently absent
+from the sheet rather than denied. A debug build on an Android 14+ phone sometimes needs one
+reboot before Health Connect shows the app in its list.
+
+## When something fails
+
+| Symptom | Cause / fix |
+|---|---|
+| `Use pnpm instead` during install | You ran npm/yarn. Use `pnpm install` at the repo root. |
+| `SDK location not found` | `ANDROID_HOME` not exported, or create `android/local.properties` with `sdk.dir=/path/to/sdk` (git-ignored). |
+| `Unsupported class file major version` / Gradle JVM errors | Wrong JDK on `PATH`. Point `JAVA_HOME` at a JDK 17+. |
+| Widget not in the picker | The build predates the plugin: run prebuild with `--clean`, rebuild, and reinstall. Some launchers need a reboot to list new widgets. |
+| Widget shows "Open Daily Tracker…" | Fresh install with no habits yet: finish onboarding, then the widget redraws. |
+| Red screen `AndroidWidget could not be found` | Only possible in Expo Go. Expo Go has no widget module; use the dev build. |
+| App opens to a white screen after Ctrl-C on Metro | Debug builds need Metro. Start `pnpm exec expo start` again, or install the release variant. |
+| Body tab says "Not installed" on Android 14+ | Health Connect is disabled in system settings: Settings → Apps → Health Connect → enable, or the manifest `<queries>` entry is missing (run prebuild with `--clean`). |
+| Permission sheet is empty or crashes back | The build predates M4's manifest permissions, or the Health Connect app is outdated — update it from the Play Store. |
+ } | Sort-Object { [version]$_.Name } | Select-Object -Last 1
+   & "$($tools.FullName)\apksigner.bat" verify --print-certs app\build\outputs\apk\release\app-release.apk
+   adb install -r app\build\outputs\apk\release\app-release.apk
+   ```
+   `apksigner` must print the certificate you created (CN from the `keytool` prompts), not
+   `CN=Android Debug`. Switching an installed debug-key build to the release key means
+   uninstalling once (Android refuses a different signer): **export a backup first** from
+   Settings → Your data, install, then import it. Friends install the same APK from any shared
+   file; later versions update in place as long as they come from this key.
+
+`versionCode` discipline: Android installs a same-signer build whose `versionCode` is equal **or**
+higher over the existing one and rejects only a lower one (`INSTALL_FAILED_VERSION_DOWNGRADE`).
+This project still raises `expo.android.versionCode` in `app.json` on every release (M3 shipped 3,
+M4 4, M5 5, M6 6, round 3 7) so that "which build is this phone on" has one answer; `version`
+follows the tag (`0.7.0` = `v0.7`).
+
+Google Play is deliberately not part of this recipe; `./gradlew bundleRelease` produces the AAB if
+that day comes, and the remaining items (feature graphic, privacy policy, Health Connect
+declaration, data-safety form) are listed in `docs/IMPLEMENTATION_PLAN.md` M6.
+
+## Backups (M6)
+
+Two independent mechanisms, both leaving the live SQLite database alone:
+
+- **Android Auto Backup.** `plugins/withBackupRules.js` restricts the backup to `files/backup/`
+  (and switches it off on phones that cannot encrypt it with their own lock screen). The app keeps
+  `files/backup/snapshot.json` there — a plain export, refreshed on start and when leaving the app,
+  at most hourly, never for sample data, deleted by "Erase everything". After a factory reset or a
+  new phone, Android restores that file, the database is empty, and onboarding opens with
+  "Welcome back → Restore it / Start fresh". To rehearse without a reset:
+  `adb shell bmgr backupnow com.amanupadhyay.dailytracker`, uninstall, reinstall, and
+  `adb shell bmgr restore <token> com.amanupadhyay.dailytracker` (tokens from `adb shell bmgr list sets`;
+  `adb shell bmgr enable true` and a Google account on the phone are prerequisites).
+- **Export with a password.** Settings → Your data → Export backup → type a password. The file is
+  AES-256-GCM with a PBKDF2-SHA256 key (200,000 iterations, 16-byte salt, 12-byte IV, all written in
+  the file, tag appended to the ciphertext). It opens without this app, for example in Python:
+  ```python
+  import json, base64, hashlib, unicodedata
+  from cryptography.hazmat.primitives.ciphers.aead import AESGCM   # pip install cryptography
+  f = json.load(open('daily-tracker-2026-10-26-k3f9a2.json'))
+  password = unicodedata.normalize('NFKC', 'your password')      # the app normalises the same way
+  key = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), base64.b64decode(f['salt']), f['iterations'], 32)
+  print(AESGCM(key).decrypt(base64.b64decode(f['iv']), base64.b64decode(f['ciphertext']), None).decode())
+  ```
+  Passwords are NFKC-normalised before hashing (so a password typed with a full-width or decomposed
+  character still opens the file); the recipe above does the same. There is no recovery for a
+  forgotten password.
+
+## After installing: the device checklist
+
+Run `docs/DEVICE_CHECKLIST.md`. Widget rows W1–W8 are from M3; Health Connect rows H1–H9 are new
+in M4. N6 ("Done with the app swiped away") and N17 are worth re-running because the headless
+tasks are registered from the entry file (`index.js`), which is what runs when Android starts the
+app without a screen.
+
+Health Connect notes: the phone needs the Health Connect app (built into Android 14+; on Android
+9–13 install it from the Play Store — the Body tab offers the link) and `minSdkVersion` is now 26,
+so Android 8.0 is the floor. The permission sheet only lists the data types declared in the
+manifest (`app.json` → `android.permissions`); if a type is missing there, it is silently absent
+from the sheet rather than denied. A debug build on an Android 14+ phone sometimes needs one
+reboot before Health Connect shows the app in its list.
+
+## When something fails
+
+| Symptom | Cause / fix |
+|---|---|
+| `Use pnpm instead` during install | You ran npm/yarn. Use `pnpm install` at the repo root. |
+| `SDK location not found` | `ANDROID_HOME` not exported, or create `android/local.properties` with `sdk.dir=/path/to/sdk` (git-ignored). |
+| `Unsupported class file major version` / Gradle JVM errors | Wrong JDK on `PATH`. Point `JAVA_HOME` at a JDK 17+. |
+| Widget not in the picker | The build predates the plugin: run prebuild with `--clean`, rebuild, and reinstall. Some launchers need a reboot to list new widgets. |
+| Widget shows "Open Daily Tracker…" | Fresh install with no habits yet: finish onboarding, then the widget redraws. |
+| Red screen `AndroidWidget could not be found` | Only possible in Expo Go. Expo Go has no widget module; use the dev build. |
+| App opens to a white screen after Ctrl-C on Metro | Debug builds need Metro. Start `pnpm exec expo start` again, or install the release variant. |
+| Body tab says "Not installed" on Android 14+ | Health Connect is disabled in system settings: Settings → Apps → Health Connect → enable, or the manifest `<queries>` entry is missing (run prebuild with `--clean`). |
+| Permission sheet is empty or crashes back | The build predates M4's manifest permissions, or the Health Connect app is outdated — update it from the Play Store. |
+ | sort -V | tail -1)"apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
+   adb install -r app/build/outputs/apk/release/app-release.apk
+   ```
+   Windows PowerShell:
+   ```powershell
+   cd artifacts\daily-tracker
+   pnpm exec expo prebuild --platform android --clean
+   cd android
+   .\gradlew.bat assembleRelease
+   $tools = Get-ChildItem "$env:ANDROID_HOME\build-tools" | Where-Object { $_.Name -match '^\d+(\.\d+)*
+   & "$($tools.FullName)\apksigner.bat" verify --print-certs app\build\outputs\apk\release\app-release.apk
+   adb install -r app\build\outputs\apk\release\app-release.apk
+   ```
+   `apksigner` must print the certificate you created (CN from the `keytool` prompts), not
+   `CN=Android Debug`. Switching an installed debug-key build to the release key means
+   uninstalling once (Android refuses a different signer): **export a backup first** from
+   Settings → Your data, install, then import it. Friends install the same APK from any shared
+   file; later versions update in place as long as they come from this key.
+
+`versionCode` discipline: Android installs a same-signer build whose `versionCode` is equal **or**
+higher over the existing one and rejects only a lower one (`INSTALL_FAILED_VERSION_DOWNGRADE`).
+This project still raises `expo.android.versionCode` in `app.json` on every release (M3 shipped 3,
+M4 4, M5 5, M6 6, round 3 7) so that "which build is this phone on" has one answer; `version`
+follows the tag (`0.7.0` = `v0.7`).
+
+Google Play is deliberately not part of this recipe; `./gradlew bundleRelease` produces the AAB if
+that day comes, and the remaining items (feature graphic, privacy policy, Health Connect
+declaration, data-safety form) are listed in `docs/IMPLEMENTATION_PLAN.md` M6.
+
+## Backups (M6)
+
+Two independent mechanisms, both leaving the live SQLite database alone:
+
+- **Android Auto Backup.** `plugins/withBackupRules.js` restricts the backup to `files/backup/`
+  (and switches it off on phones that cannot encrypt it with their own lock screen). The app keeps
+  `files/backup/snapshot.json` there — a plain export, refreshed on start and when leaving the app,
+  at most hourly, never for sample data, deleted by "Erase everything". After a factory reset or a
+  new phone, Android restores that file, the database is empty, and onboarding opens with
+  "Welcome back → Restore it / Start fresh". To rehearse without a reset:
+  `adb shell bmgr backupnow com.amanupadhyay.dailytracker`, uninstall, reinstall, and
+  `adb shell bmgr restore <token> com.amanupadhyay.dailytracker` (tokens from `adb shell bmgr list sets`;
+  `adb shell bmgr enable true` and a Google account on the phone are prerequisites).
+- **Export with a password.** Settings → Your data → Export backup → type a password. The file is
+  AES-256-GCM with a PBKDF2-SHA256 key (200,000 iterations, 16-byte salt, 12-byte IV, all written in
+  the file, tag appended to the ciphertext). It opens without this app, for example in Python:
+  ```python
+  import json, base64, hashlib, unicodedata
+  from cryptography.hazmat.primitives.ciphers.aead import AESGCM   # pip install cryptography
+  f = json.load(open('daily-tracker-2026-10-26-k3f9a2.json'))
+  password = unicodedata.normalize('NFKC', 'your password')      # the app normalises the same way
+  key = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), base64.b64decode(f['salt']), f['iterations'], 32)
+  print(AESGCM(key).decrypt(base64.b64decode(f['iv']), base64.b64decode(f['ciphertext']), None).decode())
+  ```
+  Passwords are NFKC-normalised before hashing (so a password typed with a full-width or decomposed
+  character still opens the file); the recipe above does the same. There is no recovery for a
+  forgotten password.
+
+## After installing: the device checklist
+
+Run `docs/DEVICE_CHECKLIST.md`. Widget rows W1–W8 are from M3; Health Connect rows H1–H9 are new
+in M4. N6 ("Done with the app swiped away") and N17 are worth re-running because the headless
+tasks are registered from the entry file (`index.js`), which is what runs when Android starts the
+app without a screen.
+
+Health Connect notes: the phone needs the Health Connect app (built into Android 14+; on Android
+9–13 install it from the Play Store — the Body tab offers the link) and `minSdkVersion` is now 26,
+so Android 8.0 is the floor. The permission sheet only lists the data types declared in the
+manifest (`app.json` → `android.permissions`); if a type is missing there, it is silently absent
+from the sheet rather than denied. A debug build on an Android 14+ phone sometimes needs one
+reboot before Health Connect shows the app in its list.
+
+## When something fails
+
+| Symptom | Cause / fix |
+|---|---|
+| `Use pnpm instead` during install | You ran npm/yarn. Use `pnpm install` at the repo root. |
+| `SDK location not found` | `ANDROID_HOME` not exported, or create `android/local.properties` with `sdk.dir=/path/to/sdk` (git-ignored). |
+| `Unsupported class file major version` / Gradle JVM errors | Wrong JDK on `PATH`. Point `JAVA_HOME` at a JDK 17+. |
+| Widget not in the picker | The build predates the plugin: run prebuild with `--clean`, rebuild, and reinstall. Some launchers need a reboot to list new widgets. |
+| Widget shows "Open Daily Tracker…" | Fresh install with no habits yet: finish onboarding, then the widget redraws. |
+| Red screen `AndroidWidget could not be found` | Only possible in Expo Go. Expo Go has no widget module; use the dev build. |
+| App opens to a white screen after Ctrl-C on Metro | Debug builds need Metro. Start `pnpm exec expo start` again, or install the release variant. |
+| Body tab says "Not installed" on Android 14+ | Health Connect is disabled in system settings: Settings → Apps → Health Connect → enable, or the manifest `<queries>` entry is missing (run prebuild with `--clean`). |
+| Permission sheet is empty or crashes back | The build predates M4's manifest permissions, or the Health Connect app is outdated — update it from the Play Store. |
+ } | Sort-Object { [version]$_.Name } | Select-Object -Last 1
    & "$($tools.FullName)\apksigner.bat" verify --print-certs app\build\outputs\apk\release\app-release.apk
    adb install -r app\build\outputs\apk\release\app-release.apk
    ```

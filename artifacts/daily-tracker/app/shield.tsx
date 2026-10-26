@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Platform, StyleSheet, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
+import { useBackOrHome } from '@/hooks/useBackOrHome';
 import { Card } from '@/components/ui/Card';
 import { HabitGlyph, UI } from '@/components/ui/icons';
 import { PillButton, Row } from '@/components/ui/primitives';
@@ -23,7 +24,7 @@ const FOLLOW_UP_MINUTES = 20;
  */
 export default function ShieldScreen() {
   const c = useColors();
-  const router = useRouter();
+  const leave = useBackOrHome();
   const { state, actions } = useTracker();
   const preset = PRESET_BY_ID['sugar-shield'];
 
@@ -81,7 +82,14 @@ export default function ShieldScreen() {
 
   const pending = useMemo(() => state.events.filter((e) => e.id.startsWith('shield-') && e.at > now()), [state.events]);
 
+  // One finish per session: the permission check below yields, and a second press meanwhile
+  // (or both buttons) must not log twice or set two walk reminders.
+  const finishing = useRef(false);
+  const [finished, setFinished] = useState(false);
   const finish = async () => {
+    if (finishing.current) return;
+    finishing.current = true;
+    setFinished(true);
     const habit = state.habits.find((h) => h.presetId === 'sugar-shield');
     actions.logSnack('SQUATS', { habitId: habit?.id, trigger: 'SUGAR_SHIELD' });
     // One last look at the permission right before promising the walk reminder.
@@ -96,7 +104,7 @@ export default function ShieldScreen() {
       });
     }
     if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    router.back();
+    leave();
   };
 
   useEffect(() => {
@@ -131,11 +139,11 @@ export default function ShieldScreen() {
 
         <Row gap={10} style={{ marginTop: 20, alignSelf: 'stretch' }}>
           {done ? (
-            <PillButton label={canRemind ? 'Log & set the walk reminder' : 'Log the squats'} Leading={UI.Check} color={c.gold} onPress={() => void finish()} style={{ flex: 1 }} />
+            <PillButton label={canRemind ? 'Log & set the walk reminder' : 'Log the squats'} Leading={UI.Check} color={c.gold} onPress={() => void finish()} disabled={finished} style={{ flex: 1 }} />
           ) : (
             <>
               <PillButton label={running ? 'Pause' : elapsedMs > 0 ? 'Resume' : 'Start'} Leading={running ? UI.Pause : UI.Play} color={c.green} onPress={() => setRunning((r) => !r)} style={{ flex: 1 }} />
-              <PillButton label="Did it already" kind="ghost" onPress={() => void finish()} />
+              <PillButton label="Did it already" kind="ghost" onPress={() => void finish()} disabled={finished} />
             </>
           )}
         </Row>

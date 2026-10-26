@@ -2,7 +2,7 @@
   "expo": {
     "name": "Daily Tracker",
     "slug": "daily-tracker",
-    "version": "0.7.0",
+    "version": "0.8.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "daily-tracker",
@@ -16,7 +16,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#0D120F"
       },
-      "versionCode": 7,
+      "versionCode": 8,
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.SCHEDULE_EXACT_ALARM",

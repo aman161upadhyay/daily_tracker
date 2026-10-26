@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Platform, StyleSheet, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Stack, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useNavigation } from 'expo-router';
+import { useBackOrHome } from '@/hooks/useBackOrHome';
 import { BreathCircle, phaseAt } from '@/components/tracker/BreathCircle';
 import { Card } from '@/components/ui/Card';
 import { UI } from '@/components/ui/icons';
@@ -21,7 +22,7 @@ const BREATHING_MINUTES = 5;
 /** Timer for meditation and the cyclic-sighing breathing guide; logs a session on finish. */
 export default function MindScreen() {
   const c = useColors();
-  const router = useRouter();
+  const goBack = useBackOrHome();
   const params = useLocalSearchParams<{ kind?: string }>();
   const { actions } = useTracker();
 
@@ -43,10 +44,12 @@ export default function MindScreen() {
   // One session is logged once, whichever path gets there first (the clock running out, Finish,
   // or the leave dialog); a dialog answered after the bell must not add a second entry.
   const logged = useRef(false);
-  const logOnce = (k: MindKind, mins: number) => {
+  /** The instant the clock ran out (not the moment the screen noticed): the session's real end. */
+  const completedAt = useRef<number | null>(null);
+  const logOnce = (k: MindKind, mins: number, endAt?: number) => {
     if (logged.current) return;
     logged.current = true;
-    actions.logMind(k, mins);
+    actions.logMind(k, mins, endAt !== undefined ? { endAt } : undefined);
   };
   useEffect(() => {
     if (Platform.OS === 'web') return;
@@ -107,6 +110,9 @@ export default function MindScreen() {
       const e = base + (now() - (startedAt.current ?? now()));
       setElapsedMs(e);
       if (e >= totalMs) {
+        // Android may have paused this timer while the screen was locked: the session ended when the
+        // clock reached the total, which is what the end bell's own log (and its dedupe) uses too.
+        completedAt.current = (startedAt.current ?? now()) + (totalMs - base);
         clearInterval(id);
         setRunning(false);
         setDone(true);
@@ -118,7 +124,7 @@ export default function MindScreen() {
 
   useEffect(() => {
     if (!done) return;
-    logOnce(kind, Math.round(totalMs / 60_000));
+    logOnce(kind, Math.round(totalMs / 60_000), completedAt.current ?? undefined);
     if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [done, kind, totalMs]);
@@ -129,6 +135,7 @@ export default function MindScreen() {
       setElapsedMs(0);
       setDone(false);
       logged.current = false;
+      completedAt.current = null;
       if (nextKind) setKind(nextKind);
     };
     // A minute or more on the clock is worth a question before it is thrown away.
@@ -152,7 +159,7 @@ export default function MindScreen() {
 
   const leave = () => {
     latest.current.leaving = true;
-    router.back();
+    goBack();
   };
 
   const finishEarly = () => {
@@ -203,7 +210,7 @@ export default function MindScreen() {
         </View>
 
         {kind === 'MEDITATION' && !running && !done && elapsedMs === 0 ? (
-          <Row gap={8} style={{ marginTop: 8 }}>
+          <Row gap={8} style={{ marginTop: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
             {MEDITATION_PRESETS.map((m) => (
               <Chip key={m} label={`${m} min`} selected={minutes === m} color={c.cat.mind} onPress={() => setMinutes(m)} />
             ))}

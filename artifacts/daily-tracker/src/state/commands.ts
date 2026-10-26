@@ -35,10 +35,46 @@ export interface NudgePayload {
   mind?: { kind: MindKind; minutes: number; startAt: number };
 }
 
+/** Payload kinds a notification can carry (planned nudges plus the timer bell). */
+const PAYLOAD_KINDS = new Set(['ROTATION', 'INTERVAL', 'FIXED', 'WATER', 'EVENT', 'SUMMARY', 'CYCLE', 'MIND_END']);
+const MIND_KINDS = new Set<MindKind>(['MEDITATION', 'BREATHING']);
+const MAX_ID = 200;
+const MAX_HABIT_IDS = 50;
+/** The largest drink a button may log (the Water target's own ceiling). */
+const MAX_PAYLOAD_WATER_ML = 20_000;
+const MAX_MIND_MINUTES = 24 * 60;
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const isId = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= MAX_ID;
+const isInt = (v: unknown, min: number, max: number): v is number => typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
+
+/**
+ * Read a notification's data as a payload we wrote. The bundle comes back from the OS (and on
+ * Android through a JSON string), so every field is checked on its own: the required ones must
+ * be right or the press is dropped; an optional one that is wrong is left out, so a drink with a
+ * broken size still logs the tap size instead of a negative amount. Only own properties count
+ * (`'constructor' in SNACK_LABELS` would be true).
+ */
+export function parsePayload(data: unknown): NudgePayload | null {
+  if (!data || typeof data !== 'object') return null;
+  const d = data as Record<string, unknown>;
+  if (!isId(d.nudgeId) || typeof d.kind !== 'string' || !PAYLOAD_KINDS.has(d.kind)) return null;
+  if (typeof d.day !== 'string' || !DAY_RE.test(d.day)) return null;
+  if (!Array.isArray(d.habitIds) || d.habitIds.length > MAX_HABIT_IDS || !d.habitIds.every(isId)) return null;
+  const out: NudgePayload = { nudgeId: d.nudgeId, kind: d.kind, habitIds: d.habitIds as string[], day: d.day };
+  if (typeof d.snackType === 'string' && Object.prototype.hasOwnProperty.call(SNACK_LABELS, d.snackType)) out.snackType = d.snackType;
+  if (isInt(d.waterMl, 1, MAX_PAYLOAD_WATER_ML)) out.waterMl = d.waterMl;
+  if (d.mind && typeof d.mind === 'object') {
+    const m = d.mind as Record<string, unknown>;
+    if (typeof m.kind === 'string' && MIND_KINDS.has(m.kind as MindKind) && isInt(m.minutes, 1, MAX_MIND_MINUTES) && typeof m.startAt === 'number' && Number.isFinite(m.startAt) && m.startAt > 0) {
+      out.mind = { kind: m.kind as MindKind, minutes: m.minutes, startAt: m.startAt };
+    }
+  }
+  return out;
+}
+
 export function isNudgePayload(data: unknown): data is NudgePayload {
-  if (!data || typeof data !== 'object') return false;
-  const d = data as Partial<NudgePayload>;
-  return typeof d.nudgeId === 'string' && Array.isArray(d.habitIds) && typeof d.day === 'string';
+  return parsePayload(data) !== null;
 }
 
 /**
@@ -129,7 +165,7 @@ export function nudgeResponseActions(state: TrackerState, payload: NudgePayload,
         // A one-off follow-up (the Sugar Shield walk): "Did it" means the walk itself, never another
         // round of the habit that scheduled it. The payload names the snack; a walk by default.
         // Payloads come from the OS; the snack type is checked against the known set first.
-        const type: SnackType = payload.snackType !== undefined && payload.snackType in SNACK_LABELS ? (payload.snackType as SnackType) : 'WALK';
+        const type: SnackType = payload.snackType !== undefined && Object.prototype.hasOwnProperty.call(SNACK_LABELS, payload.snackType) ? (payload.snackType as SnackType) : 'WALK';
         const meta = SNACK_LABELS[type];
         out.push({ type: 'LOG_SNACK', snack: { id: ctx.newId(), at: ctx.nowMs, zone: ctx.zone, day: ctx.today, type, reps: meta.defaultReps, seconds: type === 'WALK' ? 120 : meta.defaultSeconds, trigger: 'NUDGE' } });
         out.push({ type: 'REMOVE_EVENT', id: payload.nudgeId.replace(/^event:/, '') });
@@ -142,8 +178,10 @@ export function nudgeResponseActions(state: TrackerState, payload: NudgePayload,
     case 'WATER': {
       // The drink is recorded under its own ledger kind: a merged water + movement nudge ends in a
       // SNOOZED event (so the movement half comes back), which alone could not tell a replay of
-      // this press from a plain snooze — and would log the drink again.
-      if (alreadyRecorded('DONE') || alreadyRecorded('WATER')) return out;
+      // this press from a plain snooze — and would log the drink again. The slot keeps its id when
+      // it comes back, so a WATER is only a replay while the snooze it came with is still running:
+      // once that snooze expired, the notification on screen is a new delivery and a new drink.
+      if (alreadyRecorded('DONE') || waterStillCurrent(state, payload.nudgeId, ctx.nowMs)) return out;
       const ml = payload.waterMl ?? state.settings.tapSizeMl;
       out.push({ type: 'ADD_WATER', entry: { id: ctx.newId(), at: ctx.nowMs, zone: ctx.zone, day: ctx.today, ml, source: 'MANUAL' } });
       out.push(nudgeEventAction(payload, 'WATER', ctx));
@@ -166,6 +204,14 @@ export function nudgeResponseActions(state: TrackerState, payload: NudgePayload,
       break;
   }
   return out;
+}
+
+/** A WATER press on this slot whose snooze (if any) has not run out yet: a second copy of the same press. */
+function waterStillCurrent(state: TrackerState, nudgeId: string, nowMs: number): boolean {
+  const events = state.nudgeEvents.filter((e) => e.nudgeId === nudgeId);
+  return events.some(
+    (w) => w.kind === 'WATER' && !events.some((s) => s.kind === 'SNOOZED' && s.at >= w.at && s.untilMs !== undefined && s.untilMs <= nowMs),
+  );
 }
 
 /** Record delivered nudges the OS fired while we were not watching (see nudgeScheduler). */

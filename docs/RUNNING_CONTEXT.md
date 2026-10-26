@@ -15,10 +15,10 @@ Last updated: 2026-10-26, overnight autonomous session (council rounds 1–3 fix
 |---|---|
 | App | Daily Tracker — private Android tracker: habits · water · movement snacks · meditation · opt-in cycle · home-screen widget · configurable nudges · Health Connect import · app lock · encrypted backups |
 | Code | `artifacts/daily-tracker/` — Expo SDK 57, React Native 0.86, TypeScript, Expo Router, expo-sqlite |
-| Version | `app.json` `version 0.7.0`, `versionCode 7`, tag `v0.7` (M6 complete + council rounds 1–3) |
+| Version | `app.json` `version 0.8.0`, `versionCode 8`, tag `v0.8` (M6 complete + council rounds 1–4) |
 | Repo | https://github.com/aman161upadhyay/daily_tracker.git, branch `main`, commits authored as Aman |
 | Milestones | M0 skeleton ✅ · M1 storage/streaks/onboarding ✅ · M2 nudges/notifications ✅ · M3 widget ✅ · M4 Health Connect/Body ✅ · M5 cycle ✅ · M6 theme/lock/backup/signing ✅ (`docs/IMPLEMENTATION_PLAN.md`) |
-| Verified here | type-check (three packages), 215 unit tests, Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks, web walkthroughs by a browser-driving tester |
+| Verified here | type-check (three packages), 231 unit tests, Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks, web walkthroughs by a browser-driving tester |
 | Never run yet | a real Android device. Everything native (widget taps, notification buttons with the app closed, Health Connect, app lock, Auto Backup, signed APK) is coded and reviewed but untested on hardware — `docs/DEVICE_CHECKLIST.md` lists the exact rows |
 | User's next step | `docs/GET_IT_ON_YOUR_PHONE.md` (plain-language build guide) |
 
@@ -126,6 +126,18 @@ contradicts one, write down why.
     a notification "handled" mark, a snapshot or a sync result may only proceed once the generation
     it saw is in the database (`commitPending()`), and anything in flight across an erase or a reload
     (Health Connect sync, schedule sync, snapshot) is dropped when its generation is superseded.
+19. **Decide against the newest state, never the rendered one.** The provider keeps the newest state
+    in a ref that every dispatch updates synchronously; React renders it a moment later. Anything that
+    computes its next action from state (an action, a widget tap, a notification button, a sync
+    result) goes through `apply(state => actions)` on that ref, so two commands in the same tick see
+    each other. A dispatch that changes nothing is not a change: it does not bump the generation, so
+    nobody waits for a write that will never happen.
+20. **A read covers only what it was granted.** A Health Connect read with one of two heart
+    permissions says nothing about the other's fields; it neither replaces nor removes them. Same
+    for any import that is a subset of a stored record: replace what you read, keep the rest.
+21. **One formula per number.** The prorated period quota ("2 of 4 this week" in the first, partial
+    week) is computed once (`periodRequired`) and used by the streak, the card, the charts and the
+    planner. When two screens can disagree about a number, extract the formula before fixing either.
 
 ### How council findings are judged
 - Accept when: evidence is concrete (file:line, reproducible), it violates a paradigm or a user constraint,
@@ -164,6 +176,9 @@ Dates are America/New_York. Commits are on `main`.
 | 2026-10-26 night | **Council round 3** — the same six lenses re-read the round-2 result (new reviewer sessions). 37 findings, 22 of them high; triage in §6. Theme: the round-2 fixes closed the headless/foreground races at the file level but not at the decision level (stale state, generations, payload shape), plus input limits that only the importer enforced | — |
 | 2026-10-26 night | **Round-3 fixes:** notification responses parsed from the raw Android bundle (`dataString`) as well as the mapped shape; a live-store registry makes the running app the single writer for widget taps, notification buttons and background re-plans (no more load → decide → save against a stale database while the UI holds unsaved changes); dispatch generations guard reloads, the "handled" mark (`commitPending()`), snapshots (state getter, never a DB reload — fixes resurrecting an erased snapshot) and Health Connect results; schedule sync and cancel-all serialised with a generation so a late sync cannot restore cancelled alarms; only accepted schedules enter the ledger; widget task awaits its snapshot. Data: WATER became its own ledger kind so a replay of the drink button on a merged nudge is a no-op; step totals, strength ticks (including a workout *moved* to another day) and heart rows follow upstream deletions on complete reads; monthly quota capped at the month's length; paused slots no longer spend the daily budget; strict `HH:MM` for fixed times (bad ones skipped, never NaN); body sync metadata sanitised on import; input caps at every writer (amount ≤ 1,000,000, notes/names/units capped, water target 100–20,000 ml, goal↔rule sync clamps the same way and no longer activates a pending cadence change early). UX: meditation timer pauses while its leave dialog is open and logs once; Sugar Shield re-reads notification permission on return from Settings; habit editor target row wraps; heatmap dot at ≥ 5 dp cells, legend wraps; backup switch no longer pushed offscreen; onboarding privacy copy matches the backup disclosure. Privacy: cycle notifications discreet by default; "Start fresh" deletes the declined snapshot; abandoned document-picker copies purged at start-up and on erase; web export name gets the same random tag. Docs: Mac `EACCES` path, PowerShell variants of the signing recipe, explicit working directory per block, NFKC in the Python decrypt recipe, 3 am boundary rows in the checklist, equal-versionCode wording, RN 0.86. Version → `0.7.0` / `versionCode 7` | this commit, tag `v0.7` |
 | 2026-10-26 night | Verification: tsc clean in all three packages, 215 tests (15 new in `tests/round3.test.ts`), Android Metro bundle 200 (12.5 MB dev), `expo export --platform android`, web preview renders | this commit |
+| 2026-10-26 morning | **Council round 4** — six lenses over the round-3 result (new sessions). 30-odd findings; triage in §6. Theme: the single-writer design was right but its decisions still read React's *rendered* state (one render behind its own dispatches), a no-op dispatch could hang a waiter, and the live headless paths skipped the re-plan/widget/snapshot the database paths did | — |
+| 2026-10-26 morning | **Round-4 fixes:** provider rewritten around a synchronous newest-state ref + `publish` (generation only on a real change) + `apply(builder)`; every command path (actions, notification listener, widget tap, background re-plan, Health Connect sync) decides against that ref; live headless paths now re-plan, redraw the widget and snapshot before resolving; a shared body epoch cancels Health Connect reads across disconnect / remove / erase / restore from any screen; headless snapshot getters stand down when the app came alive; notification payloads validated field by field (prototype keys, bounds, shapes); WATER on a re-offered slot logs again once its snooze ran out; symptom severities / flow / mood validated on import; heart reads covering one permission keep the other's values; water goal mirrored from the editor side through one `syncWaterGoal`; prorated period quota shared by streak, card, charts and planner; app lock engages the moment it is enabled (toggle or restore); a foreground timer logs the instant it really ended (day boundary); Sugar Shield finish is single-shot; stepper snaps to its grid, 48 dp rows, shrinkable value; chips wrap; sheets keep taps with the keyboard up and skip the slide under reduce-motion; light-theme green/gold inks ≥ 4.5:1; oz hint shows the cap in oz; build guide (PowerShell 5 `&&`, first-clone vs later-build, Windows keystore path, build-tools filter) and checklist (R1 step 6, discreet default in C1–C3, R11 path, rows T1–T10) | this commit |
+| 2026-10-26 morning | Verification: tsc clean in all three packages, 231 tests (16 new in `tests/round4.test.ts`), Android Metro bundle 200 (12.5 MB dev), `expo export --platform android` → 5.9 MB Hermes bytecode, web preview renders (Settings) | this commit |
 
 (Entries for each council round follow below as they happen.)
 
@@ -277,6 +292,52 @@ Reviewers re-read the round-1 result. Ids are theirs where they gave one.
 **End-to-end tester (web preview)**
 - Checks 1–6 passed (onboarding both paths, logging, habit edit, backfill, export/import, cycle). Checks 7–8 were interrupted by a transient `slotStep is not defined` that came from my own half-saved edit to the planner, not from the product; re-run is owed and listed below.
 
+### Round 4 (2026-10-26 morning)
+
+Fresh reviewer sessions over the round-3 result. Ids are theirs.
+
+**Android runtime lens**
+- AND4-01 high · a dispatch that changed nothing (a replayed press the ledger deduped) bumped the generation without producing a render, so `commitPending()` waited forever and the button's "handled" mark never landed · **fixed** — the generation is bumped only when the reducer returned a new object; the live store's `apply` reports `applied: false` and still waits for earlier changes; paradigm 19.
+- AND4-02 high · live builders (widget tap, notification button, background re-plan) read `latest.current`, which is React's rendered state — one render behind the app's own dispatches, so two commands in one tick decided against the same base · **fixed** — `pendingRef` holds the newest state synchronously; `apply` folds the builder's actions from it and publishes once; actions use it too.
+- AND4-03 high · the background re-plan on a live runtime pulled Health Connect without the in-app generation guard, so a read in flight across Disconnect / Remove imported data landed · **fixed** — a shared body epoch (`src/state/epochs.ts`) bumped by disconnect, remove, erase, sample, restore and `healthConnectEnabled: false`; `performBodySync` returns a builder, applied only when the epoch is unchanged and the setting still on.
+- AND4-04 high · headless database paths queued `maybeSnapshot` with the object they had loaded; if the app came alive and erased meanwhile the queued job still wrote the old data · **fixed** — getters that return `null` (stand down) once a live store is registered; the database paths also re-check for a live store before persisting and hand it the builder instead.
+- AND4-05 med · the live paths returned right after `apply`, leaving the OS re-plan, the widget redraw and the snapshot to the app's debounced timers — which Android may never run before freezing the app · **fixed** — `replanLive` + awaited widget refresh + snapshot on every live path (notification button, widget tap, background task).
+- AND4-06 low · a Fast Refresh remount left a retry timer id behind · **fixed** — cleared and nulled on unmount.
+
+**Data-integrity lens**
+- DI4-01 high · a complete heart read with only one of the two heart permissions replaced (and pruned) the other subtype's stored values · **fixed** — `batch.heartSources`; replace/prune touch only the fields the read covered; tests; paradigm 20.
+- DI4-02 high · a WATER press on a merged slot that the snooze had re-offered (same id) was treated as a replay and dropped the second drink · **fixed** — a WATER counts as a replay only while the snooze written with it is still running; test.
+- DI4-03 med · editing the Water habit's target in the editor set the rule but mirrored the setting only through `setTarget`; the editor path clamped differently · **fixed** — one `syncWaterGoal` (today's rule, pending rules, setting) used by the editor, `setTarget` and `updateSettings`.
+- DI4-04 med · the streak prorated the first partial week ("required 2") but the Today card, charts and planner used the full quota ("0 of 4") · **fixed** — `periodRequired(rule, day, createdDay, offDays)` shared by all; test; paradigm 21.
+
+**UX lens**
+- UX4-01 med · Sugar Shield "Log & set the walk reminder" could be tapped twice (permission check yields) · **fixed** — single-shot with disabled buttons.
+- UX4-02/06 med · stepper value box pushed the + button off narrow cards; 40 dp buttons in a 40 dp row · **fixed** — value shrinks with font fit; row min-height 48; the editor shows the unit once, on the left.
+- UX4-03 med · Settings limited the water goal to 1,000–4,000 while the editor allowed 100–20,000 · **fixed** — one exported range (`WATER_GOAL_MIN_ML/MAX_ML`) in Settings, editor and provider.
+- UX4-04 low · interval / boundary / mind-minute chips overflowed at large font scale · **fixed** — wrap.
+- UX4-05 med · the first tap on Set/Log with the keyboard up only dismissed the keyboard · **fixed** — `keyboardShouldPersistTaps="handled"` on the sheet's scroll view.
+- UX4-07 med · light theme green text (`#16A34A`) was 2.9:1 on raised cards · **fixed** — `#166534` (6.3:1) and gold `#7A6016` (5.3:1) for text/icon inks; fills unchanged.
+- UX4-08 low · a value off the stepper grid stayed off it (100 → 350 → 600) · **fixed** — snaps to the next grid point.
+- UX4-09 low · the amount cap hint said "1,000,000" in an oz sheet · **fixed** — shown in the typed unit.
+- UX4-10 low · sheets slid up under "Remove animations" · **fixed** — `animationType="none"` with reduce motion.
+- UX4-11 info · "Today shows no name greeting" from the tester · **not a bug** — the name is shown as the avatar initial by design (Settings says so).
+
+**Security / privacy lens**
+- SEC4-01 high · cycle day logs from a file: symptom severities, flow and mood were not range-checked (a severity of 4 indexed past the label table) · **fixed** — `mapOf` validator (keys ≤ 64, values 1–3), flow 1–3, mood 1–5; the day sheet also tolerates an unknown severity; tests.
+- SEC4-02 · same root as AND4-03 · **fixed** (epoch).
+- SEC4-03 · same root as AND4-04 · **fixed** (getter stands down).
+- SEC4-04 med · enabling the lock (settings switch, or a restored backup that had it on) did not lock until the next background/foreground, so a restored file's records were visible before the first biometric check · **fixed** — the gate locks on every off → on transition.
+- SEC4-05 med · the payload guard checked three fields and trusted the rest (`snackType in SNACK_LABELS` matched prototype keys; a negative `waterMl` logged a negative drink) · **fixed** — `parsePayload` validates every field; wrong optionals are dropped, wrong required fields drop the press; bundle size cap; tests.
+
+**Release / docs lens**
+- REL4-01 · same root as AND4-02 · **fixed**.
+- REL4-02 med · a meditation finishing while the screen was on logged "now" as the end, so a session that ran out at 02:53 and was noticed at 03:10 moved to the next tracking day, while the end bell's own log (and its dedupe) used the real end · **fixed** — `logMind(kind, minutes, { endAt })`; the timer records the instant the clock reached the total.
+- REL4-03..08 · PowerShell 5 does not accept `&&` (split); clone vs pull were one block (split into first time / later); Windows keystore path needs forward slashes (noted); build-tools folder listing could pick `36.0.0-rc1` (filtered to numeric); checklist R1 said step 5 (Android has the backup step first → 6); C1/C3 assumed discreet off (it is the default on → rows rewritten); R11 pointed at `databases` (expo-sqlite uses `files/SQLite`) · **all fixed**; rows T1–T11 added.
+
+**End-to-end tester (web preview)**
+- Items 2–10 **pass** (water mirror clamps 100–20,000; editor caps 80/12; amount hint and Log label; "0 of 31 this month"; heatmap dot + legend; discreet on by default; export name with tag; no console errors). Item 1 (name greeting) is UX4-11 above.
+- After the fix batch, a second pass over the rewritten write path: two rapid water taps land as 500 ml and survive a reload; Settings goal stops at 100 ml and never shows less; the editor's target mirrors into Settings and back; a yes/no habit toggles on/off cleanly; no error banner. One real finding: a screen opened with no history behind it (`/shield` as a direct URL — on a phone, a notification or widget deep link) called `router.back()`, which is a dev error toast on web and a silent no-op in release, leaving the user on a screen that believed it had closed · **fixed** — `useBackOrHome()` (back when possible, else replace with Today) on Sugar Shield, the meditation timer and the habit page's archive/delete. The "movement 0 / 17 did not change" observation is by design: Sugar Shield squats count for the Sugar Shield habit, not the movement-snack quota.
+
 ### Round 3 (2026-10-26 night)
 
 Fresh reviewer sessions over the round-2 result. Ids are theirs.
@@ -338,5 +399,5 @@ Fresh reviewer sessions over the round-2 result. Ids are theirs.
 - Steps and cycle tiles in the widget; sleep-stages chart; write-back of water/mind sessions to Health Connect (v2).
 
 ### Device verification owed
-- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10 have never been run on hardware. First build on the laptop is the next real milestone.
+- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10, T1–T11 have never been run on hardware. First build on the laptop is the next real milestone.
 - Rows added this round: R9 and S6 now test both sides of the 3 am boundary; W4/W6/N-rows exercise the live-store path (app open vs swiped away) — both paths must log exactly once.

@@ -25,7 +25,7 @@ import { useTracker } from '@/src/state/TrackerProvider';
  * notification button presses into state changes. Renders nothing.
  */
 export function NudgeScheduler() {
-  const { state, ready, nowMs, zone, today, dispatch, commitPending } = useTracker();
+  const { state, ready, nowMs, zone, today, apply } = useTracker();
   const router = useRouter();
   const latest = useRef({ state, today, nowMs, zone });
   latest.current = { state, today, nowMs, zone };
@@ -35,17 +35,18 @@ export function NudgeScheduler() {
   const handle = async (r: NudgeResponse) => {
     if (!(await beginHandling(r.key))) return;
     const c = ctx();
-    // The durable "handled" mark is written only once the state write committed, so a crash in
-    // between replays the press rather than losing it (the ledger dedupes the replay). A save that
-    // gave up just releases the claim.
-    for (const a of nudgeResponseActions(latest.current.state, r.payload, r.action as NudgeActionKind | 'TAP', c)) dispatch(a);
-    await endHandling(r.key, await commitPending());
+    // Decided against the newest state (a press right after a tap on Today, or two presses in the
+    // same tick, see each other). The durable "handled" mark is written only once the state write
+    // committed, so a crash in between replays the press rather than losing it (the ledger dedupes
+    // the replay). A save that gave up just releases the claim.
+    const { next, persisted } = await apply((s) => nudgeResponseActions(s, r.payload, r.action as NudgeActionKind | 'TAP', c));
+    await endHandling(r.key, persisted);
     if (r.action === 'TAP') {
       // Land where the notification is about: the cycle tab for cycle reminders, the habit page
       // when the habit still exists, Today otherwise (a Sugar Shield walk without the habit added
       // carries a placeholder id; pushing it would show "This habit no longer exists").
-      const id = r.payload.habitIds.find((h) => latest.current.state.habits.some((x) => x.id === h && !x.archived));
-      if (r.payload.kind === 'CYCLE') router.push(latest.current.state.settings.cycleEnabled ? '/cycle' : '/');
+      const id = r.payload.habitIds.find((h) => next.habits.some((x) => x.id === h && !x.archived));
+      if (r.payload.kind === 'CYCLE') router.push(next.settings.cycleEnabled ? '/cycle' : '/');
       else if (r.payload.kind === 'SUMMARY' || r.payload.kind === 'EVENT' || !id) router.push('/');
       else router.push({ pathname: '/habit/[id]', params: { id } });
     }
@@ -78,8 +79,7 @@ export function NudgeScheduler() {
         if ((await getPermission()) !== 'granted') return;
         const c = ctx();
         const fired = await syncStateToOs(latest.current.state, c);
-        for (const a of firedActions(latest.current.state, fired, c)) dispatch(a);
-        dispatch({ type: 'PRUNE_EVENTS', beforeMs: c.nowMs - 60 * 60_000 });
+        await apply((s) => [...firedActions(s, fired, c), { type: 'PRUNE_EVENTS', beforeMs: c.nowMs - 60 * 60_000 }]);
       } catch (err) {
         console.warn('Notification sync failed', err);
       }
@@ -97,7 +97,7 @@ export function NudgeScheduler() {
         if ((await getPermission()) !== 'granted') return;
         const c = ctx();
         const fired = await syncStateToOs(latest.current.state, c);
-        for (const a of firedActions(latest.current.state, fired, c)) dispatch(a);
+        await apply((s) => firedActions(s, fired, c));
       })().catch((err) => console.warn('Notification sync failed', err));
     });
     return () => sub.remove();

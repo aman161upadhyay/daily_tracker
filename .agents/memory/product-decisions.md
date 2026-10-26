@@ -86,6 +86,31 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   `@types/react` single version across the workspace is desired; Mac/Windows installs must get platform binaries
   (overrides removed) because the user builds the APK on a laptop. **Why:** the user asked for adversarial review
   and fixes without questions; every disposition is logged in `docs/RUNNING_CONTEXT.md` §6 so it is not re-litigated.
+- Council-round-3 decisions (2026-10-26 night): while the app's provider is alive it is the *only writer* —
+  headless work (widget tap, notification button, background re-plan) hands a `state → actions` builder to the
+  provider through the live-store registry; the database load→decide→save path exists only for a dead app.
+  Dispatches carry a generation; reloads, the notification "handled" mark (`commitPending()`), snapshots (state
+  getter, never a DB reload) and Health Connect results proceed only once their generation is committed, and
+  schedule sync / cancel-all are serialised with a generation. The importer stays strict; every *writer* caps to
+  the same constants (notes `MAX_TEXT`, amounts 1e6, water target 100–20,000 ml mirrored both ways). WATER is its
+  own ledger kind (replay dedupe on merged nudges). Cycle notifications are discreet by default. Monthly quota =
+  min(timesPerPeriod, days in month). Paused slots never spend the daily budget. Rejected/as-designed: strength
+  tick judged by minutes threshold; web meditation leave dialog (Alert is a no-op on web; device row S4).
+  **Why:** rounds 1–2 fixed races at the file level only; round 3 found the decisions were still made against
+  stale state. Dispositions logged in `docs/RUNNING_CONTEXT.md` §6 Round 3.
+- Council-round-4 decisions (2026-10-26 morning): the provider holds the *newest* state in a synchronous ref
+  (`pendingRef`) and exposes `apply(state → actions)`; every decision (actions, notification listener, widget
+  tap, background re-plan, Health Connect result) is made against that ref, never React's rendered state. The
+  generation bumps only on a real change (no-op dispatches must not hang `commitPending`). Live headless paths
+  await re-plan + widget redraw + snapshot themselves (Android may freeze the app right after the task). A
+  shared body epoch (`src/state/epochs.ts`) cancels Health Connect reads across disconnect/remove/erase/restore
+  from any screen. Headless snapshot getters return null (stand down) once the app is alive. Heart reads only
+  replace/prune the subtype they covered (`batch.heartSources`). One prorated `periodRequired` for streak, card,
+  charts, planner. Notification payloads are validated field by field (own-property checks; bad optionals
+  dropped, bad required fields drop the press). A WATER on a re-offered slot is a new drink once its snooze
+  ran out. App lock engages on every off→on transition. Name greeting on Today is *not* wanted — the initial
+  avatar is the design. **Why:** round 4 showed the single-writer design still read one render behind itself.
+  Dispositions in `docs/RUNNING_CONTEXT.md` §6 Round 4.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app

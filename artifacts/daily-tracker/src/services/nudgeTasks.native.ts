@@ -9,24 +9,45 @@ import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
 import { createStore } from '@/src/data/createStore';
 import { reducer } from '@/src/state/reducer';
-import { applyAll, firedActions, nudgeResponseActions, type CommandContext } from '@/src/state/commands';
+import { applyAll, nudgeResponseActions, type CommandContext } from '@/src/state/commands';
 import type { NudgeActionKind } from '@/src/domain/nudges/planner';
-import { liveStore } from '@/src/state/liveStore';
+import { bodyEpoch } from '@/src/state/epochs';
+import { liveStore, type LiveStore } from '@/src/state/liveStore';
 import type { TrackerState } from '@/src/state/types';
 import { performBodySync } from './bodySync';
 import { HEALTH_CONNECT_SUPPORTED } from './healthConnect';
 import { withHeadlessLock } from './headlessLock';
 import { parseResponse } from './notificationPayload';
 import { BACKGROUND_REPLAN_TASK, NUDGE_RESPONSE_TASK, beginHandling, endHandling } from './notifications';
-import { contextFor, markHeadlessWrite, replanHeadless, syncStateToOs } from './replan';
+import { contextFor, markHeadlessWrite, replanHeadless, replanLive } from './replan';
 import { maybeSnapshot } from './snapshotSync';
 import { refreshWidgets } from './widget';
 
-/** A headless write changed what the home-screen widget shows (and what Android should back up). */
+/**
+ * A headless write changed what the home-screen widget shows (and what Android should back up).
+ * The snapshot reads its state when its turn comes: if the app came alive meanwhile (and may have
+ * erased or restored since), it stands down and leaves the snapshot to the app.
+ */
 async function afterHeadlessWrite(next: TrackerState, ctx: CommandContext): Promise<void> {
   await markHeadlessWrite();
   await refreshWidgets(next, ctx.today, ctx.nowMs, ctx.zone).catch((err) => console.warn('Widget refresh failed', err));
-  await maybeSnapshot(next, ctx.nowMs).catch((err) => console.warn('Snapshot after headless write failed', err));
+  await maybeSnapshot(() => (liveStore() ? null : next), ctx.nowMs).catch((err) => console.warn('Snapshot after headless write failed', err));
+}
+
+/**
+ * The same follow-up when the write went through the running app's store: re-plan, redraw,
+ * snapshot — awaited, because Android may freeze the app as soon as the task resolves, before
+ * the in-app components' debounced timers run.
+ */
+async function afterLiveWrite(live: LiveStore, ctx: CommandContext): Promise<void> {
+  let next = live.current();
+  try {
+    next = await replanLive(live, ctx);
+  } catch (err) {
+    console.warn('Re-plan after a live headless write failed', err);
+  }
+  await refreshWidgets(next, ctx.today, ctx.nowMs, ctx.zone).catch((err) => console.warn('Widget refresh failed', err));
+  await maybeSnapshot(() => live.current(), ctx.nowMs).catch((err) => console.warn('Snapshot after live headless write failed', err));
 }
 
 async function handleHeadlessResponse(raw: unknown): Promise<void> {
@@ -45,18 +66,25 @@ async function handleHeadlessResponse(raw: unknown): Promise<void> {
   try {
     // The app's own store is alive on this runtime: it is the only writer, and its components
     // re-plan, redraw the widget and refresh the snapshot themselves.
+    const build = (state: TrackerState) => nudgeResponseActions(state, payload, action, contextFor(state));
     const live = liveStore();
     if (live) {
-      const { persisted } = await live.apply((state) => nudgeResponseActions(state, payload, action, contextFor(state)));
+      const { applied, persisted } = await live.apply(build);
       committed = persisted;
+      if (applied) await afterLiveWrite(live, contextFor(live.current()));
       return;
     }
-    const written = await withHeadlessLock(async () => {
+    type Written = { live: LiveStore } | { next: TrackerState; ctx: CommandContext } | null;
+    const written = await withHeadlessLock(async (): Promise<Written> => {
       const store = await createStore();
       const state = await store.load();
       if (!state) return null;
+      // The app came alive while we were loading: it is the writer now, and it loaded the same
+      // rows we did. Persisting here would overwrite whatever it saves in the meantime.
+      const alive = liveStore();
+      if (alive) return { live: alive };
       const ctx = contextFor(state);
-      const applied = applyAll(state, nudgeResponseActions(state, payload, action, ctx), reducer);
+      const applied = applyAll(state, build(state), reducer);
       let next = applied;
       try {
         next = await replanHeadless(applied, ctx);
@@ -66,6 +94,12 @@ async function handleHeadlessResponse(raw: unknown): Promise<void> {
       await store.persist(state, next);
       return { next, ctx };
     });
+    if (written && 'live' in written) {
+      const { applied, persisted } = await written.live.apply(build);
+      committed = persisted;
+      if (applied) await afterLiveWrite(written.live, contextFor(written.live.current()));
+      return;
+    }
     committed = true;
     if (written) await afterHeadlessWrite(written.next, written.ctx);
   } finally {
@@ -89,18 +123,22 @@ TaskManager.defineTask(BACKGROUND_REPLAN_TASK, async () => {
     // apply through its store, so this never persists over a tap the screen just made.
     const live = liveStore();
     if (live) {
-      let base = (await live.apply(() => [])).next;
-      const ctx = contextFor(base);
-      const fired = await syncStateToOs(base, ctx);
-      base = (await live.apply((s) => [...firedActions(s, fired, ctx), { type: 'PRUNE_EVENTS', beforeMs: ctx.nowMs - 60 * 60_000 }])).next;
+      const ctx = contextFor(live.current());
+      const base = await replanLive(live, ctx);
       if (HEALTH_CONNECT_SUPPORTED && base.settings.healthConnectEnabled && base.body.sync.background) {
+        // The read takes a while; if the user disconnected or removed the import meanwhile
+        // (the epoch moved, or the setting is off by now) its rows must not land.
+        const epoch = bodyEpoch();
         try {
-          const { actions } = await performBodySync(base, ctx);
-          await live.apply(() => actions);
+          const { build } = await performBodySync(() => live.current(), ctx);
+          await live.apply((s) => (bodyEpoch() === epoch && s.settings.healthConnectEnabled ? build(s) : []));
         } catch (err) {
           console.warn('Background Health Connect sync failed', err);
         }
       }
+      const next = live.current();
+      await refreshWidgets(next, ctx.today, ctx.nowMs, ctx.zone).catch((err) => console.warn('Widget refresh failed', err));
+      await maybeSnapshot(() => live.current(), ctx.nowMs).catch((err) => console.warn('Snapshot in background re-plan failed', err));
       return BackgroundTask.BackgroundTaskResult.Success;
     }
     const written = await withHeadlessLock(async () => {
@@ -112,19 +150,21 @@ TaskManager.defineTask(BACKGROUND_REPLAN_TASK, async () => {
       // Pull Health Connect while we are awake anyway, when background reads were granted.
       if (HEALTH_CONNECT_SUPPORTED && next.settings.healthConnectEnabled && next.body.sync.background) {
         try {
-          const { actions } = await performBodySync(next, ctx);
-          next = applyAll(next, actions, reducer);
+          const { build } = await performBodySync(next, ctx);
+          next = applyAll(next, build(next), reducer);
         } catch (err) {
           console.warn('Background Health Connect sync failed', err);
         }
       }
+      // The app came alive meanwhile: it is the writer now; its own scheduler and sync take over.
+      if (liveStore()) return null;
       if (next === state) return { next, ctx, changed: false };
       await store.persist(state, next);
       return { next, ctx, changed: true };
     });
     if (written?.changed) await afterHeadlessWrite(written.next, written.ctx);
     // Even without a change, a stale snapshot gets refreshed here: widget-only use never foregrounds the app.
-    else if (written) await maybeSnapshot(written.next, written.ctx.nowMs).catch((err) => console.warn('Snapshot in background re-plan failed', err));
+    else if (written) await maybeSnapshot(() => (liveStore() ? null : written.next), written.ctx.nowMs).catch((err) => console.warn('Snapshot in background re-plan failed', err));
     return BackgroundTask.BackgroundTaskResult.Success;
   } catch (err) {
     console.error('Background re-plan failed', err);

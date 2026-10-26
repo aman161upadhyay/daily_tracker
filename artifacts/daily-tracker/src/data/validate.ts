@@ -91,6 +91,18 @@ const record =
     const obj = v as Record<string, unknown>;
     for (const key of Object.keys(shape)) shape[key]!(obj[key], `${p}.${key}`);
   };
+/** A free-form map: every own key short, every value checked (a symptom map with a severity of 4 must not reach the day sheet). */
+const mapOf =
+  (check: Check, maxKeys = 100, maxKey = 64): Check =>
+  (v, p) => {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) fail(p, 'expected a map');
+    const keys = Object.keys(v as object);
+    if (keys.length > maxKeys) fail(p, `too many keys (${keys.length})`);
+    for (const key of keys) {
+      if (key.length === 0 || key.length > maxKey) fail(`${p}.${key.slice(0, 20)}`, 'bad key');
+      check((v as Record<string, unknown>)[key], `${p}.${key}`);
+    }
+  };
 
 const CATEGORIES = ['hydration', 'movement', 'mind', 'cycle', 'body', 'fuel', 'craft'] as const;
 const HABIT_TYPES = ['YES_NO', 'COUNT', 'AMOUNT', 'TIMER'] as const;
@@ -147,7 +159,7 @@ const sleepNight = record({ id, startAt: num, endAt: num, day, minutes: nonNeg, 
 const heartDay = record({ day, restingBpm: optional(nonNeg), minBpm: optional(nonNeg), avgBpm: optional(nonNeg), maxBpm: optional(nonNeg) });
 const weight = record({ id, at: num, day, kg: nonNeg, origin: optional(str) });
 const workout = record({ id, startAt: num, endAt: num, day, type: num, title: optional(str), minutes: nonNeg, origin: optional(str), hidden: optional(bool) });
-const cycleLog = record({ day, flow: optional(num), mood: optional(num), symptoms: optional(record({})), note: optional(str) });
+const cycleLog = record({ day, flow: optional(numRange(1, 3, true)), mood: optional(numRange(1, 5, true)), symptoms: optional(mapOf(numRange(1, 3, true))), note: optional(str) });
 
 /**
  * Every persisted list has a primary key; SQLite upserts on it, so two rows
@@ -225,8 +237,12 @@ export function validateRecords(s: {
  * newer version with different units) falls back to the default rather than
  * reaching the planner, which loops over intervals and active hours.
  */
+/** The daily water goal's bounds, shared with the Water habit's target (editor, Settings, the mirror between them). */
+export const WATER_GOAL_MIN_ML = 100;
+export const WATER_GOAL_MAX_ML = 20_000;
+
 const SETTINGS_RANGES: Record<string, readonly [number, number, boolean]> = {
-  waterGoalMl: [100, 20_000, false],
+  waterGoalMl: [WATER_GOAL_MIN_ML, WATER_GOAL_MAX_ML, false],
   activeStartMin: [0, 24 * 60, true],
   activeEndMin: [0, 24 * 60, true],
   dayBoundaryHour: [0, 23, true],

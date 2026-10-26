@@ -80,9 +80,9 @@ cycle (phases, calendar, day sheet, insights) was verified in the web preview an
 
 | # | Scenario | Steps | Expect |
 |---|---|---|---|
-| C1 | Lock-screen privacy | Let the Vitamin C reminder fire while the phone is locked | On the lock screen the notification shows only the app name / "Contents hidden" (channel is PRIVATE); the title "Vitamin C" appears once unlocked. Android → App info → Notifications → Cycle shows "Lock screen: hide sensitive content" |
-| C2 | Discreet wording | Settings → Discreet notifications on; move the reminder time to a minute ahead; wait | Title "Daily Tracker", body "You have a reminder." both in the shade and on the lock screen; tapping opens the Cycle tab |
-| C3 | Expected-day prompt | Set the typical length so the expected day is today; no period logged | At 9:00 a "Cycle" notification ("Around the expected day — log it when it starts."); logging "Period started today" removes any pending copy |
+| C1 | Lock-screen privacy | Settings → Cycle → **Discreet notifications off** (it is on by default); let the Vitamin C reminder fire while the phone is locked | On the lock screen the notification shows only the app name / "Contents hidden" (channel is PRIVATE); the title "Vitamin C" appears once unlocked. Android → App info → Notifications → Cycle shows "Lock screen: hide sensitive content" |
+| C2 | Discreet wording (the default) | Leave Discreet notifications on; move the reminder time to a minute ahead; wait | Title "Daily Tracker", body "You have a reminder." both in the shade and on the lock screen; tapping opens the Cycle tab |
+| C3 | Expected-day prompt | Discreet notifications off; set the typical length so the expected day is today; no period logged | At 9:00 a "Cycle" notification ("Around the expected day — log it when it starts."); with Discreet on it reads "You have a reminder." instead; logging "Period started today" removes any pending copy |
 | C4 | Late suppression | Make the period 2 days late (log the last start ≥ typical + 2 days ago) | Cycle tab shows "n days late" and "Cycle reminders pause while the period is late"; no Vitamin C notification arrives until a start is logged |
 
 ## L — Lock, backup, release (M6)
@@ -104,7 +104,7 @@ cycle (phases, calendar, day sheet, insights) was verified in the web preview an
 
 | # | Scenario | Steps | Expect |
 |---|---|---|---|
-| R1 | Notification step in onboarding | Fresh install → onboarding step 5 "Reminders" → Allow notifications | System prompt appears; the step shows "Notifications allowed"; denying shows the "off for this app" copy and Settings → Reminders offers Open settings |
+| R1 | Notification step in onboarding | Fresh install → onboarding step 6 "Reminders" on Android (step 5 elsewhere; the Android "Phone backup" step comes before it) → Allow notifications | System prompt appears; the step shows "Notifications allowed"; denying shows the "off for this app" copy and Settings → Reminders offers Open settings |
 | R2 | Lock state: no screen lock while enabled | Enable App lock, then remove the phone's screen lock, reopen the app | The gate steps aside (no trap); Settings shows the lock as unavailable |
 | R3 | Lock state: biometric error | Enable App lock; cover the sensor / fail the fingerprint five times | Gate stays locked with "Try again"; a later success unlocks; no loop of prompts after Cancel |
 | R4 | Screenshots while locked | Lock the app, try a screenshot and open Recents | Screenshot blocked / recents thumbnail blank while locked; allowed again after unlocking |
@@ -114,7 +114,7 @@ cycle (phases, calendar, day sheet, insights) was verified in the web preview an
 | R8 | Weekly habit Done from a notification | Strength session (2× / week) already met this week; press Done on its nudge | Today gets one entry; pressing Done again adds nothing |
 | R9 | Timer bell across the day boundary | Day boundary at its default 3 am. Start a 13-min meditation at 02:40, lock the phone, tap the bell later in the morning; then a 13-min one at 02:55 | Each session shows on the tracking day it *ended* on: the first (ended 02:53) on the previous day, the second (ended 03:08) on the new day |
 | R10 | Headless write while the app is open | Keep Today open; press Done on a nudge from the shade | Today updates within a second without reopening; nothing is logged twice |
-| R11 | Persist failure banner | `adb shell run-as … chmod 000 databases` (debug build) then log water | Red banner appears; after restoring permissions it clears on the next write |
+| R11 | Persist failure banner | `adb shell run-as <package> chmod 000 files/SQLite` (debug build; the database is `files/SQLite/dailytracker.db`) then log water | Red banner appears; after `chmod 771 files/SQLite` it clears on the next write |
 | R12 | Sugar Shield entry points | Without the Sugar Shield habit: Today Movement card footer, the Log sheet's "Before something sweet", then add the habit and open its page | All three open /shield; the habit page has "Start Sugar Shield" |
 
 ## S — Council round 2 follow-ups (2026-10-26)
@@ -131,6 +131,22 @@ cycle (phases, calendar, day sheet, insights) was verified in the web preview an
 | S8 | Widget-only day | Log only from the widget for a day with phone backup on | `files/backup/snapshot.json` is at most an hour older than the last widget tap (check with `adb shell run-as … ls -l files/backup`) |
 | S9 | Export file name | Settings → Your data → Export backup, cancel the share sheet, repeat | Two files `daily-tracker-YYYY-MM-DD-xxxx.json` with different tags in the cache dir; gone after an hour / next start |
 | S10 | Heatmap with TalkBack | Habit page, 26-week heatmap | One spoken summary ("… of … days complete, longest run …"); complete days show a dot, not only a colour |
+
+## T — Council round 4 follow-ups (2026-10-26)
+
+| # | Scenario | Steps | Expect |
+|---|---|---|---|
+| T1 | Lock prompts the moment it is enabled | Settings → Privacy → App lock on | The lock screen appears at once and the fingerprint / PIN prompt opens; unlocking returns to Settings with the switch on |
+| T2 | Restored backup that had the lock on | Export from a phone with App lock on; fresh install → welcome → Restore that file | The lock screen appears before any record is shown; after unlocking, Today shows the restored data |
+| T3 | Mind timer finishing in the foreground across the day boundary | Day boundary 3 am; start a 13-min meditation at 02:35 and keep the screen on until it ends (02:48); then one at 02:50 (ends 03:03) | The first session is on the previous tracking day, the second on the new one — the day each *ended* on, the same as the end bell logs (R9); the Habit page and Today agree |
+| T4 | Two live writes before a render | App open on Today; tap the widget water tile and press Done on a nudge within the same second | Both land exactly once; the widget, the notification and Today agree; nothing is logged twice after reopening |
+| T5 | Water goal from the editor | Habits → Water → Edit → set the target to 1,750 with the stepper (100 → 250 → 500 … snaps to the grid) and save | Settings → Water → Daily goal shows 1,750 ml; Today's hydration ring uses it; the editor and Settings both refuse to go below 100 ml or above 20,000 ml |
+| T6 | Shield finish, double tap | Open Sugar Shield, let the squats end, tap "Log & set the walk reminder" twice quickly | One squat log, one walk reminder; the buttons grey out after the first tap |
+| T7 | Sheets with the keyboard up | Habit page → Log → type an amount → tap Log while the keyboard is still open | Logs on the first tap (the keyboard closing does not eat it) |
+| T8 | Reduced motion | Android → Accessibility → Remove animations; open any sheet | The sheet appears without the slide-up |
+| T9 | Light theme inks | Settings → Appearance → Light; look at a habit's evidence link, a "done" tick, the active tab | Green and gold text/icons are deep enough to read on the raised cards (no pale lime text) |
+| T11 | Deep-linked screen closes properly | Swipe the app away; tap the end bell of a meditation (opens the timer) or the widget name of the Sugar Shield habit, then finish / leave the screen | The screen closes to Today instead of staying put (no history behind it to go back to) |
+| T10 | Health Connect with one heart permission | Grant only Heart rate (not Resting heart rate), Sync now, then grant both and sync again | The first sync keeps any resting values already imported; the second fills both; removing a resting record upstream and syncing removes only that value |
 
 ## Recording results
 

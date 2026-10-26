@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, Platform, StyleSheet, Switch, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useBackOrHome } from '@/hooks/useBackOrHome';
 import { AdherenceBar } from '@/components/tracker/AdherenceBar';
 import { AmountSheet } from '@/components/tracker/AmountSheet';
 import { BackfillStrip } from '@/components/tracker/BackfillStrip';
@@ -26,6 +27,7 @@ import { useTracker } from '@/src/state/TrackerProvider';
 export default function HabitDetailScreen() {
   const c = useColors();
   const router = useRouter();
+  const goBack = useBackOrHome();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { state, today, zone, actions } = useTracker();
   const habit = state.habits.find((h) => h.id === id);
@@ -123,7 +125,7 @@ export default function HabitDetailScreen() {
   const archive = () => {
     const go = () => {
       actions.updateHabit(habit.id, { archived: true });
-      router.back();
+      goBack();
     };
     if (Platform.OS === 'web') return go();
     Alert.alert('Archive this habit?', 'Its history is kept; you can add it again from the Library.', [
@@ -134,7 +136,7 @@ export default function HabitDetailScreen() {
   const remove = () => {
     const go = () => {
       actions.deleteHabit(habit.id);
-      router.back();
+      goBack();
     };
     if (Platform.OS === 'web') return go();
     Alert.alert('Delete this habit?', 'Its logs are deleted too. This cannot be undone.', [

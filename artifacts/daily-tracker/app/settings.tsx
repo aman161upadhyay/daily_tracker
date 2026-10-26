@@ -14,6 +14,7 @@ import { Txt } from '@/components/ui/Txt';
 import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
 import type { ThemePreference, Units } from '@/src/domain/models';
+import { WATER_GOAL_MAX_ML, WATER_GOAL_MIN_ML } from '@/src/data/validate';
 import { formatClock, formatVolume } from '@/src/domain/time/format';
 import { useTracker } from '@/src/state/TrackerProvider';
 
@@ -82,8 +83,9 @@ export default function SettingsScreen() {
             value={s.waterGoalMl}
             onChange={(waterGoalMl) => actions.updateSettings({ waterGoalMl })}
             step={250}
-            min={1000}
-            max={4000}
+            // The same range the Water habit's editor accepts, so neither side shows a number the other refuses.
+            min={WATER_GOAL_MIN_ML}
+            max={WATER_GOAL_MAX_ML}
             label="water goal"
             format={(v) => {
               const f = formatVolume(v, s.units);
@@ -125,7 +127,7 @@ export default function SettingsScreen() {
         </Setting>
         <Divider />
         <Setting label="Movement interval" hint="One snack slot every…">
-          <Row gap={8}>
+          <Row gap={8} style={{ flexWrap: 'wrap' }}>
             {INTERVALS.map((m) => (
               <Chip key={m} label={`${m} min`} selected={s.nudgeIntervalMin === m} onPress={() => actions.updateSettings({ nudgeIntervalMin: m })} />
             ))}
@@ -143,7 +145,7 @@ export default function SettingsScreen() {
       <SectionHeader title="Day & cycle" />
       <Card>
         <Setting label="Day starts at" hint="Water after midnight counts for the evening before">
-          <Row gap={8}>
+          <Row gap={8} style={{ flexWrap: 'wrap' }}>
             {BOUNDARIES.map((h) => (
               <Chip key={h} label={h === 0 ? 'Midnight' : `${h} am`} selected={s.dayBoundaryHour === h} onPress={() => actions.updateSettings({ dayBoundaryHour: h })} />
             ))}

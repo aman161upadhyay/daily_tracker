@@ -3,7 +3,9 @@ import type { BodyRecordType } from '@/src/domain/body/types';
 import { describeSyncError, performBodySync } from '@/src/services/bodySync';
 import { HEALTH_CONNECT_SUPPORTED, getStatus, openInstallPage, openSettings, requestAccess, type HealthConnectStatus } from '@/src/services/healthConnect';
 import { contextFor } from '@/src/services/replan';
+import { bodyEpoch, bumpBodyEpoch } from '@/src/state/epochs';
 import { useTracker } from '@/src/state/TrackerProvider';
+import type { TrackerState } from '@/src/state/types';
 
 export interface HealthConnectUi {
   supported: boolean;
@@ -36,14 +38,11 @@ let lastAttemptAt = 0;
 export const AUTO_SYNC_GAP_MS = 2 * 60_000;
 
 export function useHealthConnect(): HealthConnectUi {
-  const { state, dispatch, actions, zone } = useTracker();
+  const { state, dispatch, apply, actions, zone } = useTracker();
   const [status, setStatus] = useState<HealthConnectStatus | 'checking'>(HEALTH_CONNECT_SUPPORTED ? 'checking' : 'unsupported');
   const [busy, setBusy] = useState(false);
   const latest = useRef(state);
   latest.current = state;
-  // Bumped by Disconnect / Remove imported data: a read that was in flight when the user turned
-  // the import off must not land its rows (or its auto-ticks) afterwards.
-  const generation = useRef(0);
 
   const refreshStatus = useCallback(async () => {
     if (!HEALTH_CONNECT_SUPPORTED) return;
@@ -64,17 +63,18 @@ export function useHealthConnect(): HealthConnectUi {
     if (inflight) return inflight;
     lastAttemptAt = Date.now();
     setBusy(true);
-    const started = generation.current;
-    const stillWanted = () => started === generation.current && latest.current.settings.healthConnectEnabled;
+    // A read that was in flight when the user disconnected, removed the import, erased or restored
+    // (the shared epoch moved, from any screen) must not land its rows or its auto-ticks afterwards.
+    const started = bodyEpoch();
+    const stillWanted = (s: TrackerState) => started === bodyEpoch() && s.settings.healthConnectEnabled;
     inflight = (async () => {
       try {
         const ctx = contextFor(latest.current, Date.now(), zone);
-        const { actions: out } = await performBodySync(() => latest.current, ctx);
-        if (!stillWanted()) return;
-        for (const a of out) dispatch(a);
+        const { build } = await performBodySync(() => latest.current, ctx);
+        await apply((s) => (stillWanted(s) ? build(s) : []));
       } catch (err) {
         console.warn('Health Connect sync failed', err);
-        if (stillWanted()) dispatch({ type: 'BODY_SYNC', patch: { lastError: describeSyncError(err) } });
+        await apply((s) => (stillWanted(s) ? [{ type: 'BODY_SYNC', patch: { lastError: describeSyncError(err) } }] : []));
       }
     })();
     try {
@@ -83,7 +83,7 @@ export function useHealthConnect(): HealthConnectUi {
       inflight = null;
       setBusy(false);
     }
-  }, [dispatch, zone]);
+  }, [apply, zone]);
 
   const connect = useCallback(async () => {
     if (!HEALTH_CONNECT_SUPPORTED) return;
@@ -106,13 +106,13 @@ export function useHealthConnect(): HealthConnectUi {
     await runSync();
   }, [actions, dispatch, runSync]);
 
+  // updateSettings({ healthConnectEnabled: false }) bumps the epoch that cancels reads in flight.
   const disconnect = useCallback(() => {
-    generation.current += 1;
     actions.updateSettings({ healthConnectEnabled: false });
   }, [actions]);
 
   const removeImported = useCallback(() => {
-    generation.current += 1;
+    bumpBodyEpoch();
     dispatch({ type: 'CLEAR_BODY' });
     actions.updateSettings({ healthConnectEnabled: false });
   }, [actions, dispatch]);

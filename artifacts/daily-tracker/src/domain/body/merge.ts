@@ -70,15 +70,57 @@ function coalesceHeart(rows: HeartDay[] | undefined): HeartDay[] | undefined {
   return [...byDay.values()];
 }
 
+const BOTH_HEART = { samples: true, resting: true };
+
+/** The fields of a stored heart day that a read did not cover (and so cannot confirm or deny). */
+function uncoveredHeart(old: HeartDay, sources: NonNullable<BodyBatch['heartSources']>): HeartDay {
+  const keep: HeartDay = { day: old.day };
+  if (!sources.samples) {
+    keep.minBpm = old.minBpm;
+    keep.avgBpm = old.avgBpm;
+    keep.maxBpm = old.maxBpm;
+  }
+  if (!sources.resting) keep.restingBpm = old.restingBpm;
+  return keep;
+}
+
+/**
+ * Heart rows inside a complete read's window: a day the read did not return loses the fields the
+ * read covered (deleted upstream) and keeps the rest; a row with nothing left goes. With only one
+ * heart permission granted, the other subtype's values survive every sync.
+ */
+function pruneHeart(prev: HeartDay[], incoming: HeartDay[] | undefined, window: BodyBatch['window'], sources: NonNullable<BodyBatch['heartSources']>): HeartDay[] {
+  if (!incoming || !window) return prev;
+  const seen = new Set(incoming.map((x) => x.day));
+  let changed = false;
+  const kept: HeartDay[] = [];
+  for (const x of prev) {
+    if (x.day < window.fromDay || x.day > window.toDay || seen.has(x.day)) {
+      kept.push(x);
+      continue;
+    }
+    const rest = compact(uncoveredHeart(x, sources));
+    if (Object.keys(rest).length > 1) kept.push(rest);
+    if (Object.keys(rest).length <= 1 || !shallowEqual(rest, x)) changed = true;
+  }
+  return changed ? kept : prev;
+}
+
 export function mergeBody(body: BodyState, batch: BodyBatch): BodyState {
   const w = batch.window;
   const steps = prune(upsert(body.steps, batch.steps?.map(compact), STEP), batch.steps, STEP, w);
   const sleep = prune(upsert(body.sleep, batch.sleep?.map(compact), SLEEP), batch.sleep, SLEEP, w);
-  // A complete read says everything there is about a heart day, so its row replaces the stored one
-  // (a resting value deleted upstream goes away too). A partial read may lack one of the two heart
-  // reads and only fills in what it brought.
+  // A complete read says everything there is about the heart fields it covered, so those replace
+  // the stored ones (a resting value deleted upstream goes away too); fields of a read it did not
+  // cover (permission not granted) stay. A partial read only fills in what it brought.
   const heartRows = coalesceHeart(batch.heart);
-  const heart = prune(upsert(body.heart, heartRows, HEART, (old, next) => (w ? next : compact({ ...old, ...next }))), heartRows, HEART, w);
+  const sources = batch.heartSources ?? BOTH_HEART;
+  const heart = pruneHeart(
+    upsert(body.heart, heartRows, HEART, (old, next) => (w ? compact({ ...uncoveredHeart(old, sources), ...next }) : compact({ ...old, ...next }))),
+    heartRows,
+    w,
+    sources,
+  );
   const weight = prune(upsert(body.weight, batch.weight?.map(compact), WEIGHT), batch.weight, WEIGHT, w);
   // A hidden workout stays hidden when it is read again.
   const workouts = prune(upsert(body.workouts, batch.workouts?.map(compact), WORKOUT, (old, next) => ({ ...next, hidden: old.hidden })), batch.workouts, WORKOUT, w);

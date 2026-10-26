@@ -84,6 +84,13 @@ export interface BodyBatch {
   habitSteps?: StepDay[];
   sleep?: SleepNight[];
   heart?: HeartDay[];
+  /**
+   * Which of the two heart reads this batch covers (samples → min/avg/max, resting records →
+   * resting). A read covering one of them says nothing about the other's fields, so a complete
+   * read with only the samples permission neither replaces nor removes stored resting values.
+   * Absent means both.
+   */
+  heartSources?: { samples: boolean; resting: boolean };
   weight?: WeightEntry[];
   workouts?: Workout[];
   hydration?: HydrationImport[];

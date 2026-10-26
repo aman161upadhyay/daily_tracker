@@ -6,6 +6,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { reducer } from '@/src/state/reducer';
 import { applyAll, firedActions, type CommandContext } from '@/src/state/commands';
+import type { LiveStore } from '@/src/state/liveStore';
 import { nudgePlan } from '@/src/state/selectors';
 import type { TrackerState } from '@/src/state/types';
 import { currentZone, newId, now } from '@/src/domain/time/clock';
@@ -31,6 +32,19 @@ export async function replanHeadless(state: TrackerState, ctx: CommandContext): 
   const actions = firedActions(state, fired, ctx);
   actions.push({ type: 'PRUNE_EVENTS', beforeMs: ctx.nowMs - 60 * 60_000 });
   return applyAll(state, actions, reducer);
+}
+
+/**
+ * The same re-plan through the running app's store: for a headless task that
+ * found the app alive on its runtime. Awaited by the task, so the OS schedule
+ * is current before the task resolves — Android may freeze the app right after,
+ * before the in-app scheduler's own debounced sync gets its turn. Returns the
+ * newest state.
+ */
+export async function replanLive(live: LiveStore, ctx: CommandContext): Promise<TrackerState> {
+  const fired = await syncStateToOs(live.current(), ctx);
+  const { next } = await live.apply((s) => [...firedActions(s, fired, ctx), { type: 'PRUNE_EVENTS', beforeMs: ctx.nowMs - 60 * 60_000 }]);
+  return next;
 }
 
 /**

@@ -91,11 +91,13 @@ const light: typeof dark = {
   flowGlow: 'rgba(109, 63, 224, 0.15)',
   scrim: 'rgba(0, 0, 0, 0.4)',
   green: '#128A3E',
-  greenBright: '#16A34A',
+  // Text and icon inks: 6.3:1 (green) and 5.3:1 (gold) on the raised surface, where footnotes sit.
+  // #16A34A reads as green on white but is 2.9:1 on #EEF2EF.
+  greenBright: '#166534',
   greenMist: '#3B9D5D',
   lime: '#7A8A1F',
   gold: '#9A7A1F',
-  goldBright: '#8A6D1C',
+  goldBright: '#7A6016',
   goldPale: '#B8973F',
   violet: '#6D3FE0',
   violetSoft: '#6D3FE0',

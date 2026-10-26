@@ -20,16 +20,18 @@ let queue: Promise<unknown> = Promise.resolve();
 
 /**
  * Write a snapshot when the policy says so and the last one is old enough.
- * Writes are queued so two callers never interleave on the file. Pass a getter
- * from the running app so the state is read when the job runs, not when it was
- * queued: a job queued before "Erase everything" then sees the erased state and
- * writes nothing, instead of putting the old data back after the delete.
- * Resolves true when a snapshot was written.
+ * Writes are queued so two callers never interleave on the file. The state is
+ * read from the getter when the job runs, not when it was queued: a job queued
+ * before "Erase everything" then sees the erased state and writes nothing,
+ * instead of putting the old data back after the delete. A getter that returns
+ * null stands down (a headless writer that found the app alive by the time its
+ * turn came leaves the snapshot to the app). Resolves true when a snapshot was
+ * written.
  */
-export function maybeSnapshot(source: TrackerState | (() => TrackerState), nowMs = Date.now()): Promise<boolean> {
+export function maybeSnapshot(source: () => TrackerState | null, nowMs = Date.now()): Promise<boolean> {
   const job = async (): Promise<boolean> => {
-    const state = typeof source === 'function' ? source() : source;
-    if (!shouldSnapshot(state)) return false;
+    const state = source();
+    if (!state || !shouldSnapshot(state)) return false;
     const writtenAt = await snapshotWrittenAt();
     if (writtenAt !== null && nowMs - writtenAt < SNAPSHOT_MIN_AGE_MS) return false;
     await writeSnapshot(serializeExport(state));

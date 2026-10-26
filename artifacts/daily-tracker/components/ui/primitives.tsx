@@ -222,13 +222,17 @@ export function Stepper({
   label: string;
 }) {
   const c = useColors();
+  // A value off the step grid (100 ml typed in the editor, a restored 1,750) moves to the next
+  // grid point rather than staying off it forever: 100 → 250 → 500, not 100 → 350 → 600.
+  const up = Math.min(max, Math.max(min, value % step === 0 ? value + step : Math.ceil(value / step) * step));
+  const down = Math.max(min, Math.min(max, value % step === 0 ? value - step : Math.floor(value / step) * step));
   return (
     <View style={styles.stepper} accessibilityLabel={label}>
-      <IconButton Glyph={UI.Minus} label={`Decrease ${label}`} onPress={() => onChange(Math.max(min, value - step))} size={40} color={c.text} />
-      <Txt role="title2" style={styles.stepperValue} align="center">
+      <IconButton Glyph={UI.Minus} label={`Decrease ${label}`} onPress={() => onChange(down)} size={40} color={c.text} />
+      <Txt role="title2" style={styles.stepperValue} align="center" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
         {format ? format(value) : String(value)}
       </Txt>
-      <IconButton Glyph={UI.Plus} label={`Increase ${label}`} onPress={() => onChange(Math.min(max, value + step))} size={40} color={c.text} />
+      <IconButton Glyph={UI.Plus} label={`Increase ${label}`} onPress={() => onChange(up)} size={40} color={c.text} />
     </View>
   );
 }
@@ -315,9 +319,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    // The 40 dp buttons get a 48 dp row, so their hit slop never overlaps the row above or below.
+    minHeight: 48,
   },
   stepperValue: {
     minWidth: 84,
+    // Long values ("1,750 ml", "12:30 pm") shrink before they push the + button off the card.
+    flexShrink: 1,
   },
   segment: {
     flexDirection: 'row',

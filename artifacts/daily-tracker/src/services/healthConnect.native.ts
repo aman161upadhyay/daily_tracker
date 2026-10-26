@@ -184,6 +184,7 @@ export async function readBatch(window: ReadWindow, granted: BodyRecordType[]): 
       heart.push({ day, minBpm: Math.round(r.BPM_MIN), avgBpm: Math.round(r.BPM_AVG), maxBpm: Math.round(r.BPM_MAX) });
     }
     batch.heart = [...(batch.heart ?? []), ...heart];
+    batch.heartSources = { samples: true, resting: batch.heartSources?.resting ?? false };
   });
 
   await attempt('RestingHeartRate', async () => {
@@ -198,6 +199,7 @@ export async function readBatch(window: ReadWindow, granted: BodyRecordType[]): 
     }
     const heart: HeartDay[] = [...byDay].map(([day, v]) => ({ day, restingBpm: v.bpm }));
     batch.heart = [...(batch.heart ?? []), ...heart];
+    batch.heartSources = { samples: batch.heartSources?.samples ?? false, resting: true };
   });
 
   await attempt('SleepSession', async () => {

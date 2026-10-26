@@ -111,7 +111,8 @@ export function AmountSheet({ visible, onClose, habit, mode = 'add', day, curren
       </Row>
       {tooLarge ? (
         <Txt role="caption" tone="tertiary" style={{ marginTop: 6 }}>
-          {`That is more than ${formatNumber(MAX_AMOUNT)} — check the number.`}
+          {/* The cap in the unit being typed: 1,000,000 ml reads as 33,814 oz when the sheet is in ounces. */}
+          {`That is more than ${formatNumber(Math.floor(toDisplay(MAX_AMOUNT)))}${typedUnit ? ` ${typedUnit}` : ''} — check the number.`}
         </Txt>
       ) : null}
     </Sheet>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SPACE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
@@ -18,8 +19,10 @@ export interface SheetProps {
 export function Sheet({ visible, title, onClose, children }: SheetProps) {
   const c = useColors();
   const insets = useSafeAreaInsets();
+  // "Remove animations" in Android's accessibility settings also stops the slide-up.
+  const reduceMotion = useReducedMotion();
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType={reduceMotion ? 'none' : 'slide'} onRequestClose={onClose} statusBarTranslucent>
       <View style={styles.root}>
         <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: c.scrim }]} onPress={onClose} accessibilityLabel="Close" accessibilityRole="button" />
         <View style={[styles.sheet, { backgroundColor: c.surfaceRaised, borderColor: c.hairline, paddingBottom: Math.max(insets.bottom, 16) }]}>
@@ -30,7 +33,8 @@ export function Sheet({ visible, title, onClose, children }: SheetProps) {
             </Txt>
             <IconButton Glyph={UI.Close} label="Close" onPress={onClose} size={36} color={c.textSecondary} haptic={false} />
           </View>
-          <ScrollView bounces={false} contentContainerStyle={{ paddingHorizontal: SPACE.screen, paddingBottom: 8 }} style={{ maxHeight: 560 }}>
+          {/* A tap on Set/Log while the keyboard is up acts at once instead of only closing the keyboard. */}
+          <ScrollView bounces={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: SPACE.screen, paddingBottom: 8 }} style={{ maxHeight: 560 }}>
             {children}
           </ScrollView>
         </View>

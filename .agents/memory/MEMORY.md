@@ -1,3 +1,3 @@
 - [Expo workspace quirks](expo-workspace-quirks.md) — Phosphor deep-require, node --test not Vitest, SQLite/JSON stores, platform splits, headless via index.js, widget lazy-require, HC manifest, gated-screen checks, pnpm stale-hoist fix, hermesc path.
-- [Git / GitHub push workflow](git-github-push.md) — workspace repo tracks origin/main; plain git push via Replit's proxy; commits authored as Aman; push after every milestone, tag v0.<n> (v0.6 = M6).
-- [Product decisions](product-decisions.md) — user constraints (widget = any habit), nudge/headless/Health Connect/cycle rules, M6 theme-lock-backup-signing decisions, open questions.
+- [Git / GitHub push workflow](git-github-push.md) — workspace repo tracks origin/main; plain git push via Replit's proxy; commits authored as Aman; push after every milestone, tag v0.<n> (v0.6 = M6, then one per council round: v0.8 = round 4).
+- [Product decisions](product-decisions.md) — user constraints (widget = any habit), nudge/headless/Health Connect/cycle rules, M6 decisions, council rounds 3–4 (single writer, newest-state ref, epochs), open questions.

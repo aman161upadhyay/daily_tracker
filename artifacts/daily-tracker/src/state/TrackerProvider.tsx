@@ -1,6 +1,7 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { createStore } from '@/src/data/createStore';
+import { WATER_GOAL_MAX_ML, WATER_GOAL_MIN_ML } from '@/src/data/validate';
 import { headlessRevision, onHeadlessWrite } from '@/src/services/replan';
 import type { TrackerStore } from '@/src/data/store';
 import type { Cadence, Category, CycleDayLog, CycleReminder, Habit, HabitIcon, HabitRule, HabitType, MindKind, NudgePolicy, Settings, SnackTrigger, SnackType } from '@/src/domain/models';
@@ -11,6 +12,7 @@ import { addDays, calendarDayOf, instantOf, minutesOfDay, trackingDayOf, weekSta
 import { PRESET_BY_ID } from '@/src/library/presets';
 import { reducer, type Action } from './reducer';
 import { buildEmptyState, buildSampleState, habitFromPreset } from './seed';
+import { bumpBodyEpoch } from './epochs';
 import { setLiveStore } from './liveStore';
 import { latestRule, ruleFor } from './selectors';
 import type { TrackerState } from './types';
@@ -28,6 +30,8 @@ export interface TrackerContextValue {
   calendarToday: string;
   nowMin: number;
   dispatch: React.Dispatch<Action>;
+  /** Build actions from the newest state and apply them as one change; resolves once they are saved. */
+  apply(build: (state: TrackerState) => Action[]): Promise<{ next: TrackerState; applied: boolean; persisted: boolean }>;
   actions: TrackerActions;
   /**
    * Resolves once everything dispatched so far is in the database (false when
@@ -75,7 +79,8 @@ export interface TrackerActions {
   undoWater(): void;
   removeLog(log: 'entry' | 'water' | 'snack' | 'mind', id: string): void;
   logSnack(type: SnackType, opts?: { habitId?: string; trigger?: SnackTrigger; reps?: number; seconds?: number }): void;
-  logMind(kind: MindKind, minutes: number): void;
+  /** Log a session; `endAt` is the instant it really ended (a timer that ran out while the phone was locked), now by default. */
+  logMind(kind: MindKind, minutes: number, opts?: { endAt?: number }): void;
   addPreset(presetId: string): Habit | null;
   createHabit(draft: HabitDraft): Habit;
   /** Edit name/icon/pin and the rule. Rule changes are versioned, never retroactive. */
@@ -132,21 +137,33 @@ function nextPeriodStart(cadence: Cadence, day: string): string {
   return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-01`;
 }
 
-/** Bounds the Water habit's target shares with the `waterGoalMl` setting (see data/validate). */
-const WATER_GOAL_MIN_ML = 100;
-const WATER_GOAL_MAX_ML = 20_000;
+/** The Water habit's target and the `waterGoalMl` setting are one number, inside the bounds both sides accept. */
 const clampWaterGoal = (ml: number) => Math.min(WATER_GOAL_MAX_ML, Math.max(WATER_GOAL_MIN_ML, Math.round(ml)));
 
 export function TrackerProvider({ children }: { children: React.ReactNode }) {
-  const [state, rawDispatch] = useReducer(reducer, PLACEHOLDER);
-  /** Dispatches so far. Bumped synchronously, so a reload can tell that something changed under it. */
+  const [state, setRendered] = useState(PLACEHOLDER);
+  /**
+   * The newest state: every dispatch so far folded in, synchronously. React renders it a moment
+   * later; anything that decides what to do next (an action, a widget tap, a notification button
+   * arriving while a render is pending) reads this, never the rendered copy, so two commands in
+   * the same tick see each other.
+   */
+  const pendingRef = useRef(PLACEHOLDER);
+  /** Changes so far (a dispatch that changed nothing is not one), and which change each state is. */
   const genRef = useRef(0);
-  const dispatch = useCallback((action: Action) => {
+  const genOf = useRef(new WeakMap<TrackerState, number>());
+  /** Make `next` the newest state. Every state change goes through here. */
+  const publish = useCallback((next: TrackerState) => {
+    if (next === pendingRef.current) return false;
     genRef.current += 1;
-    rawDispatch(action);
+    genOf.current.set(next, genRef.current);
+    pendingRef.current = next;
+    setRendered(next);
+    return true;
   }, []);
-  /** Dispatches folded into the `state` being rendered. */
-  const renderGen = genRef.current;
+  const dispatch = useCallback((action: Action) => void publish(reducer(pendingRef.current, action)), [publish]);
+  /** Change folded into the `state` being rendered (0 for the placeholder). */
+  const renderGen = genOf.current.get(state) ?? 0;
   const [ready, setReady] = useState(false);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => now());
@@ -263,13 +280,34 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
     }
   }, [flush, dispatch]);
 
-  /** True once every dispatch so far has been written (false when the save gave up). */
+  /**
+   * True once every change so far has been written (false when the save gave up). Every change
+   * is rendered and persisted (a dispatch that changes nothing is not a change), so the wait
+   * always ends: with the write, when the save gives up, or when the provider goes away.
+   */
   const commitPending = useCallback((): Promise<boolean> => {
     const gen = genRef.current;
     if (committedGenRef.current >= gen) return Promise.resolve(true);
     if (!storeRef.current) return Promise.resolve(false);
     return new Promise((resolve) => waitersRef.current.push({ gen, resolve }));
   }, []);
+
+  /**
+   * Compute actions from the newest state and apply them as one change. Used by the live store
+   * (widget taps, notification buttons, the background re-plan while the app is alive) and by the
+   * in-app notification listener, so a press never decides against a state a render behind.
+   */
+  const apply = useCallback(
+    async (build: (state: TrackerState) => Action[]): Promise<{ next: TrackerState; applied: boolean; persisted: boolean }> => {
+      const base = pendingRef.current;
+      let next = base;
+      for (const a of build(base)) next = reducer(next, a);
+      const applied = publish(next);
+      // An empty or no-op build still waits for earlier changes: the caller is about to report "done".
+      return { next, applied, persisted: await commitPending() };
+    },
+    [publish, commitPending],
+  );
 
   // Open the store and hydrate. A fresh install starts empty (onboarding takes over).
   useEffect(() => {
@@ -303,7 +341,10 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
     })();
     return () => {
       cancelled = true;
-      if (retryRef.current !== null) clearTimeout(retryRef.current);
+      if (retryRef.current !== null) {
+        clearTimeout(retryRef.current);
+        retryRef.current = null;
+      }
       settleWaiters(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -321,21 +362,9 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   // notification button that runs here goes through the reducer instead of racing our saves.
   useEffect(() => {
     if (!ready || !storeRef.current) return;
-    setLiveStore({
-      apply: async (build) => {
-        const base = latest.current;
-        const built = build(base);
-        if (built.length === 0) return { next: base, applied: false, persisted: true };
-        let next = base;
-        for (const a of built) {
-          next = reducer(next, a);
-          dispatch(a);
-        }
-        return { next, applied: true, persisted: await commitPending() };
-      },
-    });
+    setLiveStore({ apply, current: () => pendingRef.current });
     return () => setLiveStore(null);
-  }, [ready, dispatch, commitPending]);
+  }, [ready, apply]);
 
   // Clock: refresh every 30 s and whenever the app returns to the foreground.
   // Headless writers (notification button, widget, background re-plan) are picked up on
@@ -385,11 +414,9 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
     [zone, boundary],
   );
 
-  const latest = useRef(state);
-  latest.current = state;
-
   const actions = useMemo<TrackerActions>(() => {
-    const stateRef = () => latest.current;
+    // The newest state, not the rendered one: an action right after another sees it.
+    const stateRef = () => pendingRef.current;
 
     const logFor = (habit: Habit, value: number, day?: string) => {
       const { at, zone: z, day: d } = stamp(day);
@@ -415,6 +442,28 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
 
     const currentRule = (habit: Habit, day: string): HabitRule =>
       latestRule(stateRef(), habit.id) ?? { habitId: habit.id, effectiveFrom: day, cadence: 'DAILY', timesPerPeriod: 1, target: 1, freezesPerMonth: 2 };
+
+    /**
+     * The water goal lives twice: as a setting (Today's hydration card, the planner) and as the
+     * Water habit's versioned target (completion, streaks, the widget). One number, inside the
+     * bounds both sides accept, whichever side was edited. Today's rule changes from today; a
+     * rhythm already scheduled for later keeps its start date and only takes the new number, so
+     * it neither starts early nor undoes the goal later.
+     */
+    const syncWaterGoal = (ml: number) => {
+      const goal = clampWaterGoal(ml);
+      const { day } = stamp();
+      const s = stateRef();
+      const water = s.habits.find((h) => h.presetId === 'water');
+      if (water) {
+        const todayRule = ruleFor(s, water.id, day) ?? currentRule(water, day);
+        if (todayRule.target !== goal) dispatch({ type: 'SET_RULE', rule: { ...todayRule, effectiveFrom: day, target: goal } });
+        for (const pending of s.rules.filter((r) => r.habitId === water.id && r.effectiveFrom > day && r.target !== goal)) {
+          dispatch({ type: 'SET_RULE', rule: { ...pending, target: goal } });
+        }
+      }
+      if (s.settings.waterGoalMl !== goal) dispatch({ type: 'UPDATE_SETTINGS', patch: { waterGoalMl: goal } });
+    };
 
     return {
       toggleYesNo(habit, day) {
@@ -474,9 +523,13 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
           },
         });
       },
-      logMind(kind, minutes) {
+      logMind(kind, minutes, opts) {
         const { at, zone: z, day } = stamp();
-        dispatch({ type: 'LOG_MIND', session: { id: newId(), startAt: at - minutes * 60_000, endAt: at, zone: z, day, kind, minutes } });
+        // A session belongs to the day it ended on: a timer that ran out at 02:53 and was seen at
+        // 03:10 counts for the evening before, exactly as the end bell's own log would.
+        const endAt = opts?.endAt ?? at;
+        const d = endAt === at ? day : trackingDayOf(endAt, z, boundary);
+        dispatch({ type: 'LOG_MIND', session: { id: newId(), startAt: endAt - minutes * 60_000, endAt, zone: z, day: d, kind, minutes } });
       },
       addPreset(presetId) {
         const preset = PRESET_BY_ID[presetId];
@@ -544,9 +597,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
           const effectiveFrom = next.cadence === current.cadence ? day : nextPeriodStart(current.cadence, day);
           dispatch({ type: 'SET_RULE', rule: { ...next, effectiveFrom: effectiveFrom < current.effectiveFrom ? current.effectiveFrom : effectiveFrom } });
         }
-        if (habit.presetId === 'water' && next.target !== current.target) {
-          dispatch({ type: 'UPDATE_SETTINGS', patch: { waterGoalMl: clampWaterGoal(next.target) } });
-        }
+        if (habit.presetId === 'water' && next.target !== current.target) syncWaterGoal(next.target);
       },
       updateHabit(id, patch) {
         dispatch({ type: 'UPDATE_HABIT', id, patch });
@@ -555,34 +606,23 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
         dispatch({ type: 'DELETE_HABIT', id });
       },
       setTarget(habit, target) {
+        if (habit.presetId === 'water') return syncWaterGoal(target);
         const { day } = stamp();
         const base = currentRule(habit, day);
         dispatch({ type: 'SET_RULE', rule: { ...base, effectiveFrom: day, target: Math.max(1, Math.round(target)) } });
-        if (habit.presetId === 'water') dispatch({ type: 'UPDATE_SETTINGS', patch: { waterGoalMl: clampWaterGoal(target) } });
       },
       setPolicy(policy) {
         dispatch({ type: 'SET_POLICY', policy });
       },
       updateSettings(patch) {
-        // The water goal lives twice: as a setting (Today's hydration card, the planner) and as the
-        // Water habit's versioned target (completion, streaks, the widget). Keep them one number,
-        // inside the bounds both sides accept.
         if (patch.waterGoalMl !== undefined) {
-          const goal = clampWaterGoal(patch.waterGoalMl);
-          patch = { ...patch, waterGoalMl: goal };
-          const { day } = stamp();
-          const s = stateRef();
-          const water = s.habits.find((h) => h.presetId === 'water');
-          if (water) {
-            // Today's rule changes from today; a rhythm already scheduled for later keeps its start
-            // date and only takes the new number, so it does not start early or undo the goal later.
-            const todayRule = ruleFor(s, water.id, day) ?? currentRule(water, day);
-            if (todayRule.target !== goal) dispatch({ type: 'SET_RULE', rule: { ...todayRule, effectiveFrom: day, target: goal } });
-            for (const pending of s.rules.filter((r) => r.habitId === water.id && r.effectiveFrom > day && r.target !== goal)) {
-              dispatch({ type: 'SET_RULE', rule: { ...pending, target: goal } });
-            }
-          }
+          const { waterGoalMl, ...rest } = patch;
+          syncWaterGoal(waterGoalMl);
+          patch = rest;
+          if (Object.keys(patch).length === 0) return;
         }
+        // Turning the import off withdraws it: a read still in flight must not add rows afterwards.
+        if (patch.healthConnectEnabled === false) bumpBodyEpoch();
         dispatch({ type: 'UPDATE_SETTINGS', patch });
       },
       completeOnboarding(choices) {
@@ -638,13 +678,16 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
         dispatch({ type: 'REMOVE_EVENT', id });
       },
       startFresh() {
+        bumpBodyEpoch();
         dispatch({ type: 'REPLACE', state: buildEmptyState(stamp().day, { ...stateRef().settings, onboardingDone: true }) });
       },
       loadSample() {
+        bumpBodyEpoch();
         const t = now();
         dispatch({ type: 'REPLACE', state: buildSampleState(trackingDayOf(t, zone, boundary), zone, t) });
       },
       importState(next) {
+        bumpBodyEpoch();
         dispatch({ type: 'REPLACE', state: { ...next, settings: { ...next.settings, onboardingDone: true } } });
       },
       periodStart(day) {
@@ -681,8 +724,8 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   }, [stamp, zone, boundary]);
 
   const value = useMemo<TrackerContextValue>(
-    () => ({ state, ready, storageError, nowMs, zone, today, calendarToday, nowMin, dispatch, actions, commitPending }),
-    [state, ready, storageError, nowMs, zone, today, calendarToday, nowMin, dispatch, actions, commitPending],
+    () => ({ state, ready, storageError, nowMs, zone, today, calendarToday, nowMin, dispatch, apply, actions, commitPending }),
+    [state, ready, storageError, nowMs, zone, today, calendarToday, nowMin, dispatch, apply, actions, commitPending],
   );
 
   return <TrackerContext.Provider value={value}>{children}</TrackerContext.Provider>;

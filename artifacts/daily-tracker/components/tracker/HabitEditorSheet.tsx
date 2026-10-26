@@ -2,7 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { StyleSheet, Switch, TextInput, View } from 'react-native';
 import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
+import { WATER_GOAL_MAX_ML, WATER_GOAL_MIN_ML } from '@/src/data/validate';
 import type { Cadence, Category, Habit, HabitIcon, HabitRule, HabitType } from '@/src/domain/models';
+import { formatNumber } from '@/src/domain/time/format';
 import { CATEGORY_LABELS } from '@/src/library/presets';
 import { type HabitDraft, useTracker } from '@/src/state/TrackerProvider';
 import { UI } from '../ui/icons';
@@ -79,9 +81,8 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
   const targetStep = d.type === 'AMOUNT' ? (d.unit === 'ml' ? 250 : 1) : d.type === 'TIMER' ? 5 : 1;
   // The Water target is also the water goal setting; both sides accept 100 ml to 20 l a day.
   const isWater = habit?.presetId === 'water';
-  const targetMin = isWater ? 100 : targetStep;
-  const targetMax = isWater ? 20_000 : 100_000;
-  const targetLabel = d.type === 'YES_NO' ? '' : `${d.target} ${d.unit}`.trim();
+  const targetMin = isWater ? WATER_GOAL_MIN_ML : targetStep;
+  const targetMax = isWater ? WATER_GOAL_MAX_ML : 100_000;
   const perDay = d.cadence === 'DAILY' ? 'a day' : 'on each counted day';
   const canSave = d.name.trim().length > 0;
 
@@ -146,7 +147,8 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
                   accessibilityLabel="Unit"
                 />
               )}
-              <Stepper value={d.target} onChange={(target) => set({ target })} step={targetStep} min={targetMin} max={targetMax} label="target" format={() => targetLabel} />
+              {/* The unit is shown once, on the left; the stepper keeps to the number so "1,750 ml" fits beside it. */}
+              <Stepper value={d.target} onChange={(target) => set({ target })} step={targetStep} min={targetMin} max={targetMax} label={`target in ${d.unit || 'times'}`} format={formatNumber} />
             </Row>
           </Field>
         ) : null}

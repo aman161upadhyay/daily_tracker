@@ -162,14 +162,16 @@ export function DaySheet({ day, today, timeline, birthControl, log, onClose, onS
       <Row gap={8} style={{ flexWrap: 'wrap' }}>
         {SYMPTOMS.map((s) => {
           const sev = draft.symptoms[s.key];
+          // Defensive: a value the validator did not see (an old file) renders as plain "on".
+          const sevLabel = sev ? (SEVERITY_LABELS[sev] ?? 'on') : '';
           return (
             <Chip
               key={s.key}
-              label={sev ? `${s.label} · ${SEVERITY_LABELS[sev].toLowerCase()}` : s.label}
+              label={sev ? `${s.label} · ${sevLabel.toLowerCase()}` : s.label}
               color={c.gold}
               selected={!!sev}
               onPress={() => setSymptom(s.key)}
-              accessibilityLabel={sev ? `${s.label}, ${SEVERITY_LABELS[sev]}` : s.label}
+              accessibilityLabel={sev ? `${s.label}, ${sevLabel}` : s.label}
             />
           );
         })}

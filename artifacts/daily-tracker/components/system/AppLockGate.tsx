@@ -61,6 +61,16 @@ export function AppLockGate() {
     void setScreenProtection(enabled);
   }, [enabled]);
 
+  // The lock turning on while the app is open locks right away: a restored backup that had it on
+  // (the welcome screen's Restore) must not show its records before the first check, and the
+  // settings switch confirms the phone's lock works the moment it is turned on. Without a screen
+  // lock on the phone `unlock` lets the screen through at once.
+  const wasEnabled = useRef(enabled);
+  useEffect(() => {
+    if (enabled && !wasEnabled.current) setLocked(true);
+    wasEnabled.current = enabled;
+  }, [enabled]);
+
   // Re-lock after the configured time away; ignore the transitions the biometric prompt itself causes.
   useEffect(() => {
     if (!enabled) {
