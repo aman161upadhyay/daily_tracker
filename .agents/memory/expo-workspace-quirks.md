@@ -158,6 +158,14 @@ Hermes compiler path for bundle checks: `node_modules/.pnpm/hermes-compiler@*/no
   embeds the config at build time (unaffected). Also: react-native-web 0.21 dropped `accessibilityState`
   (use `aria-*`), and phosphor's testID reads `...-undefined` when no weight is passed (harmless).
 
+## Long commands from the shell tool
+- A `( ... ) &` subshell started inside a ShellExec call dies with the call: a 10-minute `expo export`
+  launched that way left a two-line log and no bundle. Use the tool's run_in_background option for
+  anything longer than the call (exports, prebuilds), and read its log file afterwards.
+- The notification service's scripted-OS harness lives in `tests/support/scriptedOs.ts` (module hooks
+  that stub expo-notifications, AsyncStorage, react-native); import it from any round's test rather
+  than importing another test file (that would re-run its describes in the importing file's process).
+
 ## Hot-path parsing and PBKDF2 (round 20)
 - `addDays(day, 1)` is the hot call in every streak/period loop over long histories; it keeps a bounded
   (8192) next-day cache and the streak loop reuses its cursor. Re-measure with a 730-day fixture under

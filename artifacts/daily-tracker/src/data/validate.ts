@@ -206,7 +206,8 @@ const HEART_DAY: Shape = { day, restingBpm: optional(nonNeg), minBpm: optional(n
 const WEIGHT: Shape = { id, at: instant, day, kg: nonNeg, origin: optional(str) };
 const WORKOUT: Shape = { id, startAt: instant, endAt: instant, day, type: num, title: optional(str), minutes: nonNeg, origin: optional(str), hidden: optional(bool) };
 const CYCLE_LOG: Shape = { day, flow: optional(numRange(1, 3, true)), mood: optional(numRange(1, 5, true)), symptoms: optional(mapOf(numRange(1, 3, true))), note: optional(str) };
-const NUDGE_SWAP: Shape = { day: str, offset: num };
+// The offset indexes the rotation: a whole, non-negative number or the planner reads past the list.
+const NUDGE_SWAP: Shape = { day, offset: numRange(0, 1e6, true) };
 
 const habit = record(HABIT);
 const rule = record(RULE);

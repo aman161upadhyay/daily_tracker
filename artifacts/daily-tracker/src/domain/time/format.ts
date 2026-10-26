@@ -58,7 +58,7 @@ export function resolveClockFormat(preference: 'system' | ClockFormat, deviceUse
 
 /** "9:30 PM" / "12:05 AM", or "21:30" / "00:05" in the 24-hour format. */
 export function formatClock(minutesOfDay: number, clock: ClockFormat): string {
-  const m = ((minutesOfDay % 1440) + 1440) % 1440;
+  const m = ((Math.floor(minutesOfDay) % 1440) + 1440) % 1440;
   const h24 = Math.floor(m / 60);
   const min = m % 60;
   const mm = `${min < 10 ? '0' : ''}${min}`;
@@ -172,13 +172,18 @@ function asciiDigits(text: string): string {
  * keyboard), "2.000" (a decimal-point keyboard's thousands dot), "1,850.5", "1.850,5", "٢٥٠".
  * A lone separator that groups exactly three digits is a thousands separator — "1,850" and
  * "2.000" are volumes in ml far more often than 1.85 or 2.000 of anything — and a decimal mark
- * otherwise; with both kinds present the last one is the decimal mark. A stray unit word is
- * ignored. Returns null when nothing numeric was typed. Every sheet and stepper parses through
- * here, so the same text means the same number everywhere.
+ * otherwise; with both kinds present the last one is the decimal mark. A unit word after the
+ * number ("64 oz", "1,850 ml") is ignored; letters or a sign inside it ("1e3", "-5", "1 2 3") are
+ * not a number. Returns null when nothing numeric was typed. Every sheet and stepper parses
+ * through here, so the same text means the same number everywhere.
  */
 export function parseDecimalInput(text: string): number | null {
-  let t = asciiDigits(text).replace(/[^\d.,]/g, '').replace(/[.,]+$/, '');
-  if (!/\d/.test(t)) return null; // "oz", "", "  ": nothing typed yet, keep the current value
+  // Digits folded, a trailing unit word dropped; what is left must be digits, marks and grouping spaces.
+  const folded = asciiDigits(text).trim().replace(/\s*[^\d\s.,\u202f\u00a0]+\.?$/u, '');
+  if (!/\d/.test(folded)) return null; // "oz", "", "  ": nothing typed yet, keep the current value
+  if (/[^\d.,\s\u202f\u00a0]/u.test(folded)) return null; // "1e3", "-5", "0x10"
+  if (/\d[\s\u202f\u00a0]+\d/.test(folded)) return null; // a space that groups nothing: "1 2 3", "12 00"
+  let t = folded.replace(/[^\d.,]/g, '').replace(/[.,]+$/, '');
   const lastDot = t.lastIndexOf('.');
   const lastComma = t.lastIndexOf(',');
   if (lastDot >= 0 && lastComma >= 0) {

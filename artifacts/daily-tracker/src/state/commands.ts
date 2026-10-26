@@ -82,6 +82,13 @@ export function parsePayload(data: unknown): NudgePayload | null {
 /** Identifier of the one scheduled timer bell. */
 export const MIND_END_ID = 'mind-end';
 
+/**
+ * Identifier of the one test ring (Settings → Reminders → "Send a test reminder"): a notification a
+ * minute out so a person can lock the phone and see one arrive. Outside the plan and the ledger —
+ * the sync leaves it alone, and its payload names no nudge, so a tap on it logs nothing.
+ */
+export const TEST_RING_ID = 'test-ring';
+
 /** What the timer's end bell carries: enough to log the session if the app was gone when it rang. */
 export function mindEndPayload(endAtMs: number, minutes: number, kind: MindKind): NudgePayload {
   return { nudgeId: MIND_END_ID, kind: 'MIND_END', habitIds: [], day: '', mind: { kind, minutes, startAt: endAtMs - minutes * 60_000 } };

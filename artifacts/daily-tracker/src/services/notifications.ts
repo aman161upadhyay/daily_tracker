@@ -101,6 +101,10 @@ export async function scheduleMindEnd(_endAtMs: number, _minutes: number, _kind:
 
 export async function cancelMindEnd(): Promise<void> {}
 
+export async function scheduleTestRing(_atMs: number): Promise<void> {}
+
+export async function cancelTestRing(): Promise<void> {}
+
 export async function beginHandling(_r: NudgeResponse): Promise<boolean> {
   return true;
 }

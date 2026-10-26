@@ -254,7 +254,10 @@ export default function HabitsScreen() {
                 label="Add to my habits"
                 Leading={UI.Plus}
                 onPress={() => {
-                  const h = actions.addPreset(preset.id, reminderTouched && reminderPreview ? reminderPreview : undefined);
+                  // An archived copy without a reminder row is shown with the preset's default; the default is then
+                  // installed as shown rather than promised and skipped.
+                  const installShown = reminderTouched || (!!archivedCopy && !policyFor(state, archivedCopy.id));
+                  const h = actions.addPreset(preset.id, installShown && reminderPreview ? reminderPreview : undefined);
                   setPreset(null);
                   setReminderFor(null);
                   if (h) openHabit(h.id);

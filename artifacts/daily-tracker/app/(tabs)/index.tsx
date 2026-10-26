@@ -137,7 +137,7 @@ export default function TodayScreen() {
         color={c.cat.movement}
         icon="squat"
         value={String(summary.snacksDone)}
-        unit={`of ${summary.snacksTarget}`}
+        unit={summary.snacksTarget > 0 ? `of ${summary.snacksTarget}` : 'today'}
         detail={lastSnack ? `Last: ${snackSuggestion(lastSnack.type)}` : 'None yet today'}
         timestamp={lastSnack ? formatClock(minutesOfDay(lastSnack.at, zone), clock) : undefined}
         chart={{ values: snackSeries(state, today, 7), goal: summary.snacksTarget }}
@@ -151,7 +151,7 @@ export default function TodayScreen() {
         color={c.cat.mind}
         icon="lotus"
         value={formatNumber(summary.mindMinutes)}
-        unit={`of ${formatNumber(summary.mindTarget)} min`}
+        unit={summary.mindTarget > 0 ? `of ${formatNumber(summary.mindTarget)} min` : 'min today'}
         detail={lastMind ? (lastMind.kind === 'MEDITATION' ? 'Meditation' : 'Breathing') : 'Open the timer to start'}
         timestamp={lastMind ? formatClock(minutesOfDay(lastMind.endAt, zone), clock) : undefined}
         chart={{ values: mindSeries(state, today, 7), goal: summary.mindTarget, kind: 'line' }}
@@ -200,8 +200,9 @@ export default function TodayScreen() {
           </TodayRings>
           <View style={{ flex: 1, gap: 12 }}>
             <Legend color={c.cat.hydration} label="Hydration" value={`${logged.value} / ${goal.value} ${goal.unit}`} />
-            <Legend color={c.cat.movement} label="Movement" value={`${summary.snacksDone} / ${summary.snacksTarget} snacks`} />
-            <Legend color={c.cat.mind} label="Mind" value={`${formatNumber(summary.mindMinutes)} / ${formatNumber(summary.mindTarget)} min`} />
+            {/* With nothing asked today (no movement or mind habit, or every quota met), the count stands alone: "6 / 0" reads as broken. */}
+            <Legend color={c.cat.movement} label="Movement" value={summary.snacksTarget > 0 ? `${summary.snacksDone} / ${summary.snacksTarget} snacks` : `${summary.snacksDone} snacks`} />
+            <Legend color={c.cat.mind} label="Mind" value={summary.mindTarget > 0 ? `${formatNumber(summary.mindMinutes)} / ${formatNumber(summary.mindTarget)} min` : `${formatNumber(summary.mindMinutes)} min`} />
           </View>
         </Row>
       </Card>

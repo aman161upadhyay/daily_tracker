@@ -91,6 +91,15 @@ describe('parseDecimalInput folds every keyboard', () => {
     assert.equal(parseDecimalInput('1.2.3'), null);
     assert.equal(parseDecimalInput('2.'), 2, 'a trailing separator is dropped while typing');
     assert.equal(parseDecimalInput('1,5,'), 1.5);
+    assert.equal(parseDecimalInput('64 oz'), 64, 'a unit word after the number is ignored');
+    assert.equal(parseDecimalInput('1.5l'), 1.5);
+    assert.equal(parseDecimalInput('1e3'), null, 'letters inside are not a number');
+    assert.equal(parseDecimalInput('-5'), null, 'a sign is not a number here');
+    assert.equal(parseDecimalInput('0x10'), null);
+    assert.equal(parseDecimalInput('1 2 3'), null, 'a space that groups nothing');
+    assert.equal(parseDecimalInput('12 00'), null);
+    assert.equal(parseDecimalInput(' 1 '), 1);
+    assert.equal(formatClock(90.7, '24h'), '01:30', 'a fractional minute is floored');
   });
 });
 

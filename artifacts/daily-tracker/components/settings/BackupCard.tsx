@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Platform, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { Card } from '@/components/ui/Card';
 import { UI } from '@/components/ui/icons';
@@ -263,24 +263,47 @@ function UnlockSheet({ file, onClose, onUnlocked }: { file: EncryptedBackup | nu
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The derivation yields, so Cancel, a new file and an unmount can all happen while it runs: each
+  // retires the request, and a retired request's result — a state to replace everything with, or
+  // an error — is dropped rather than shown for a sheet the person has left.
+  const request = useRef(0);
+  const inFlight = useRef(false);
+  const retire = () => {
+    request.current += 1;
+    inFlight.current = false;
+  };
+  useEffect(() => {
+    retire();
+    setBusy(false);
+    return retire;
+  }, [file]);
   const close = () => {
+    retire();
     setPassword('');
     setError(null);
+    setBusy(false);
     onClose();
   };
   const unlock = async () => {
-    if (!file || !password) return;
+    // The keyboard's submit reaches here while the button is disabled: one derivation at a time.
+    if (!file || !password || inFlight.current) return;
+    inFlight.current = true;
+    const mine = request.current;
     setBusy(true);
     setError(null);
-    // The key derivation yields every few milliseconds, so the busy label paints and Cancel stays live.
     try {
       const state = await unlockExportAsync(file, password);
+      if (request.current !== mine) return;
       setPassword('');
       onUnlocked(state);
     } catch (err) {
+      if (request.current !== mine) return;
       setError(message(err));
     } finally {
-      setBusy(false);
+      if (request.current === mine) {
+        inFlight.current = false;
+        setBusy(false);
+      }
     }
   };
   return (

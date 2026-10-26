@@ -39,6 +39,11 @@ describe('import validation', () => {
   it('rejects a day string that is not YYYY-MM-DD and non-finite numbers', () => {
     const state = sample();
     assert.throws(() => validateRecords({ ...state, entries: [{ id: 'e', habitId: 'x', day: '25/10/2026', at: NOW, zone: ZONE, value: 1, source: 'MANUAL' }] } as never), ValidationError);
+    // The rotation offset indexes a list: a fraction or a negative would have the planner read past it.
+    assert.throws(() => validateRecords({ ...state, nudgeSwap: { day: '2026-10-26', offset: 0.5 } } as never), ValidationError);
+    assert.throws(() => validateRecords({ ...state, nudgeSwap: { day: '2026-10-26', offset: -1 } } as never), ValidationError);
+    assert.throws(() => validateRecords({ ...state, nudgeSwap: { day: 'today', offset: 1 } } as never), ValidationError);
+    assert.doesNotThrow(() => validateRecords({ ...state, nudgeSwap: { day: '2026-10-26', offset: 2 } } as never));
     assert.throws(() => validateRecords({ ...state, entries: [{ id: 'e', habitId: 'x', day: TODAY, at: Number.NaN, zone: ZONE, value: 1, source: 'MANUAL' }] } as never), ValidationError);
   });
 

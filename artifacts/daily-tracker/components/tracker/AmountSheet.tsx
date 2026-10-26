@@ -91,7 +91,8 @@ export function AmountSheet({ visible, onClose, habit, mode = 'add', day, curren
   const prefilled = mode === 'set' && current > 0 && text === String(toDisplay(current));
   const parsed = prefilled ? current : toStored(parseDecimalInput(text) ?? NaN);
   const tooLarge = Number.isFinite(parsed) && parsed > maxAmount;
-  const typedValid = text.trim().length > 0 && Number.isFinite(parsed) && parsed >= 0 && !tooLarge;
+  // "Set" to 0 clears the day; "Log" 0 would log nothing, so the button waits for a number.
+  const typedValid = text.trim().length > 0 && Number.isFinite(parsed) && (mode === 'set' ? parsed >= 0 : parsed > 0) && !tooLarge;
   const title = mode === 'set' ? (backfill ? 'Set the day’s total' : 'Set today’s total') : `Log ${habit.name}`;
   const subtitle = backfill ? formatDayLong(theDay) : 'Today';
 

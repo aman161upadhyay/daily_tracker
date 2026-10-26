@@ -21,7 +21,7 @@ import { Linking, PermissionsAndroid, Platform } from 'react-native';
 import type { MindKind, Units } from '@/src/domain/models';
 import { formatVolume } from '@/src/domain/time/format';
 import type { NudgeChannel, ScheduledNudge } from '@/src/domain/nudges/planner';
-import { MIND_END_ID, mindEndPayload, type NudgePayload } from '@/src/state/commands';
+import { MIND_END_ID, TEST_RING_ID, mindEndPayload, type NudgePayload } from '@/src/state/commands';
 import { canScheduleExactAlarms } from '@/modules/exact-alarms';
 import { classifyPermission, type PermissionState } from './notificationPermission';
 import { createStore } from '@/src/data/createStore';
@@ -408,7 +408,7 @@ async function syncPlanNow(plan: ScheduledNudge[], nowMs: number, still: () => b
   const cancelling: string[] = [];
   for (const req of scheduled) {
     const id = req.identifier;
-    if (id === MIND_END_ID) continue;
+    if (id === MIND_END_ID || id === TEST_RING_ID) continue;
     if (keep.has(id)) {
       ours.add(id);
       continue;
@@ -504,7 +504,7 @@ export function cancelAll(): Promise<void> {
     const pending = new Set(scheduled.map((r) => r.identifier));
     const { fired, live } = deliveries(bk, pending, nowMs);
     const journal = journalWith(bk.journal, fired, nowMs);
-    const ids = scheduled.map((r) => r.identifier).filter((id) => id !== MIND_END_ID);
+    const ids = scheduled.map((r) => r.identifier).filter((id) => id !== MIND_END_ID && id !== TEST_RING_ID);
     // Everything pending is about to be cancelled: written down first, so a death between the
     // cancel and the final write does not read the gone alarms as rung.
     const stored = await writeBookkeeping({ ledger: live, journal, cancelling: ids, scheduling: [] }, raw);
@@ -631,6 +631,30 @@ export function scheduleMindEnd(endAtMs: number, minutes: number, kind: MindKind
 export function cancelMindEnd(): Promise<void> {
   ++mindBellGen;
   return mindBellOp(() => Notifications.cancelScheduledNotificationAsync(MIND_END_ID).catch(() => {}));
+}
+
+/**
+ * The one test ring: scheduled like a real nudge (same channel, same trigger, so it meets the
+ * same battery and alarm rules), outside the plan. Its data names no nudge — a tap opens the app
+ * and nothing is logged.
+ */
+export async function scheduleTestRing(atMs: number): Promise<void> {
+  await Notifications.cancelScheduledNotificationAsync(TEST_RING_ID).catch(() => {});
+  await Notifications.scheduleNotificationAsync({
+    identifier: TEST_RING_ID,
+    content: {
+      title: 'Test reminder',
+      body: 'Reminders reach this phone. Nothing to log — swipe this away.',
+      data: { kind: 'TEST' },
+      sound: 'default',
+      ...(ANDROID ? { color: '#1DB954' } : {}),
+    },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: atMs, channelId: 'nudges' },
+  });
+}
+
+export async function cancelTestRing(): Promise<void> {
+  await Notifications.cancelScheduledNotificationAsync(TEST_RING_ID).catch(() => {});
 }
 
 /** Every ~3 h the OS lets us re-plan so tomorrow's nudges exist even if the app stays closed. */

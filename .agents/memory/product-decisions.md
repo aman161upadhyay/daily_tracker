@@ -329,6 +329,19 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   uses the units setting. Weekly-habit history re-reads when the week start changes — by design, said
   in the setting's hint. Erase keeps settings and the Water habit and lands on an empty Today, not
   onboarding — by design, the copy says so. Dispositions in §6 Round 20.
+- Round 21 (2026-10-26 night) rules, paradigms 93–95: a sheet that awaits (the unlock's derivation)
+  keeps a request token retired on close / new file / unmount, and a retired request's result is
+  dropped; anything that indexes a list (the rotation's `nudgeSwap.offset`) is validated as a whole
+  non-negative number at import AND normalised where used; Settings → Reminders → Test schedules
+  `TEST_RING_ID` a minute out on the real channel, outside the plan — the sync and `cancelAll` must
+  skip it (like `MIND_END_ID`), its payload names no nudge so a tap logs nothing, and the person
+  answers Yes / No (the app cannot see its own notification on a locked screen). `parseDecimalInput`
+  ignores a trailing unit word but refuses letters / a sign inside and a space that groups nothing.
+  With no movement / mind ask today the rings card writes the count alone ("6 snacks"), never "6 / 0".
+  Rejected / by design: "Restore all" for archived habits, highlights over archived habits' logs,
+  bounded steppers clamping silently, `/shield` without the habit. A tester's "15 taps → 30 entries"
+  was its selector matching Today's and the Habits tab's identical + buttons — re-check tap counts
+  four ways (spaced, tight, DOM click, touchscreen) before chasing a double dispatch.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app

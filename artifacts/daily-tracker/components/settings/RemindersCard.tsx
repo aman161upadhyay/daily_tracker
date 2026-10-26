@@ -8,7 +8,8 @@ import { useColors } from '@/hooks/useColors';
 import type { ScheduledNudge } from '@/src/domain/nudges/planner';
 import { formatClock, parseClockInput, weekdayName, type ClockFormat } from '@/src/domain/time/format';
 import { addDays, calendarDayOf, instantOf, minutesOfDay } from '@/src/domain/time/trackingDay';
-import { NOTIFICATIONS_SUPPORTED, exactAlarmsAllowed, getPermission, onSyncHealth, openExactAlarmSettings, openNotificationSettings, requestPermission, syncHealth, type PermissionState, type SyncHealth } from '@/src/services/notifications';
+import { NOTIFICATIONS_SUPPORTED, cancelTestRing, exactAlarmsAllowed, getPermission, onSyncHealth, openExactAlarmSettings, openNotificationSettings, requestPermission, scheduleTestRing, syncHealth, type PermissionState, type SyncHealth } from '@/src/services/notifications';
+import { REMINDER_TEST_CHECKS, TEST_RING_LEAD_MS, reminderTestLine, reminderTestPhase, type ReminderTest } from '@/src/domain/nudges/reminderTest';
 import { nudgePlan } from '@/src/state/selectors';
 import { useTracker } from '@/src/state/TrackerProvider';
 import { useClockFormat } from '@/src/state/hooks';
@@ -63,6 +64,26 @@ export function RemindersCard() {
   const health = useSyncHealth();
   const plan = nudgePlan(state, today, nowMs, zone);
   const paused = s.offUntil !== undefined && s.offUntil > nowMs;
+
+  // The reminder self-test: one ring a minute out, then the question — the app cannot see its own
+  // notification on a locked screen, so the person answers. Kept for this visit of the screen.
+  const [test, setTest] = useState<ReminderTest | null>(null);
+  const [testResult, setTestResult] = useState<'ok' | 'missed' | null>(null);
+  const [testError, setTestError] = useState<string | null>(null);
+  const testPhase = reminderTestPhase(test, nowMs);
+  const startTest = () => {
+    const dueAt = Date.now() + TEST_RING_LEAD_MS;
+    setTestResult(null);
+    setTestError(null);
+    scheduleTestRing(dueAt).then(
+      () => setTest({ dueAt }),
+      (err: unknown) => setTestError(err instanceof Error ? err.message : String(err)),
+    );
+  };
+  const stopTest = () => {
+    setTest(null);
+    void cancelTestRing();
+  };
 
   const pauseFor = (hours: number | 'day') => {
     // "Rest of today" is the rest of the tracking day: it ends at the day boundary (3 am by default),
@@ -150,6 +171,71 @@ export function RemindersCard() {
           </Row>
         ) : null}
       </View>
+
+      {s.remindersEnabled && perm === 'granted' && NOTIFICATIONS_SUPPORTED ? (
+        <>
+          <Divider />
+          <View style={{ paddingVertical: 12, gap: 10 }}>
+            <Txt role="title2">Test</Txt>
+            {testPhase === 'idle' ? (
+              <>
+                <Txt role="footnote" tone="secondary">
+                  {testResult === 'ok'
+                    ? 'The test reminder arrived. Reminders reach this phone.'
+                    : testResult === 'missed'
+                      ? 'The test reminder did not arrive. Check, then test again:'
+                      : 'Not sure reminders reach this phone? Send one, lock the phone and wait a minute.'}
+                </Txt>
+                {testResult === 'missed'
+                  ? REMINDER_TEST_CHECKS.map((line, i) => (
+                      <Txt key={i} role="footnote" tone="secondary">
+                        {i + 1}. {line}
+                      </Txt>
+                    ))
+                  : null}
+                {testError ? (
+                  <Txt role="footnote" tone="danger">
+                    The test could not be scheduled: {testError}
+                  </Txt>
+                ) : null}
+                <Row gap={8} style={{ flexWrap: 'wrap' }}>
+                  <PillButton label={testResult ? 'Test again' : 'Send a test reminder'} Leading={UI.Bell} kind="ghost" onPress={startTest} />
+                  {testResult === 'missed' ? <PillButton label="Open app settings" kind="ghost" onPress={() => void openNotificationSettings()} /> : null}
+                </Row>
+              </>
+            ) : test ? (
+              <>
+                <Txt role="body">{reminderTestLine(test, nowMs, zone, clock)}</Txt>
+                {testPhase === 'waiting' ? (
+                  <Row gap={8}>
+                    <PillButton label="Cancel the test" kind="ghost" onPress={stopTest} />
+                  </Row>
+                ) : (
+                  <Row gap={8}>
+                    <PillButton
+                      label="Yes"
+                      Leading={UI.Check}
+                      onPress={() => {
+                        setTest(null);
+                        setTestResult('ok');
+                      }}
+                    />
+                    <PillButton
+                      label="No"
+                      kind="ghost"
+                      onPress={() => {
+                        setTest(null);
+                        setTestResult('missed');
+                        void cancelTestRing();
+                      }}
+                    />
+                  </Row>
+                )}
+              </>
+            ) : null}
+          </View>
+        </>
+      ) : null}
 
       {s.remindersEnabled ? (
         <>

@@ -330,7 +330,10 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
         const hasRoom = (h: PlanHabit) => (perHabit.get(h.id) ?? 0) < h.policy.maxPerDay;
         // The rotation advances once per completed snack (and per swap), exactly like the Today card,
         // so the first pending slot always matches what the card shows. Past slots do not move it.
-        const base = slotDay === input.today ? input.rotationCompletedToday + input.swapOffset : 0;
+        // Whole and non-negative whatever the stored offsets hold (a restored file is checked, but an
+        // index into the rotation must never come from arithmetic on a fraction or a negative).
+        const raw = slotDay === input.today ? input.rotationCompletedToday + input.swapOffset : 0;
+        const base = Number.isSafeInteger(raw) && raw >= 0 ? raw : 0;
         const history = latest.get(id);
         let item: PlanHabit | undefined;
         if (history?.kind === 'SNOOZED') {

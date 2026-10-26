@@ -176,6 +176,9 @@ Do these once, in the app and in the phone's Settings:
    timing** (Android 14 and newer start with it off), tap it and allow *Alarms & reminders* on the
    Android screen that opens; the button disappears once it is on. Without it, reminders arrive
    minutes late — longer while the phone sleeps — and the meditation bell can be late too.
+   Then, on the same card, **Test → Send a test reminder**, lock the phone and wait a minute: a
+   "Test reminder" should light up the lock screen. If it does not, tap **No** and the card lists
+   what to check (the battery setting below is the usual cause).
 3. **Battery.** Phone Settings → Apps → Daily Tracker → *Battery* → **Unrestricted** (Samsung:
    also Settings → Battery → Background usage limits → make sure Daily Tracker is not in
    "Sleeping apps"). Otherwise the phone may silence reminders after a few days.
@@ -211,7 +214,7 @@ Then try the list in `docs/DEVICE_CHECKLIST.md` if you want to check every featu
    on a Mac (Finder → Go → Go to Folder…, paste exactly that, including the `~`) and
    `C:\dev\daily_tracker\artifacts\daily-tracker\android\app\build\outputs\apk\release\app-release.apk`
    on Windows (paste it into the File Explorer address bar).
-   Rename a copy to something like `DailyTracker-0.24.apk` (the `version` from `app.json`) if you like.
+   Rename a copy to something like `DailyTracker-0.25.apk` (the `version` from `app.json`) if you like.
 2. Send it any way you want: Google Drive link, WhatsApp, email, AirDrop-style apps.
 3. On their phone they tap the file. Android asks to allow installing from that app (Files,
    Chrome, WhatsApp…) → **Allow** → **Install**. Two different prompts can appear, and they mean
