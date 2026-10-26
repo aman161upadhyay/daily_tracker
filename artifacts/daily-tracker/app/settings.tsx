@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Alert, Platform, StyleSheet, Switch, TextInput, View } from 'react-native';
 import Constants from 'expo-constants';
+import { AppLockCard } from '@/components/settings/AppLockCard';
+import { BackupCard } from '@/components/settings/BackupCard';
 import { HealthConnectCard } from '@/components/settings/HealthConnectCard';
 import { RemindersCard } from '@/components/settings/RemindersCard';
 import { WidgetPickerCard } from '@/components/settings/WidgetPickerCard';
@@ -11,8 +13,7 @@ import { Screen } from '@/components/ui/Screen';
 import { Txt } from '@/components/ui/Txt';
 import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
-import { describeImport, exportState, pickImport } from '@/src/data/transfer';
-import type { Units } from '@/src/domain/models';
+import type { ThemePreference, Units } from '@/src/domain/models';
 import { formatClock, formatVolume } from '@/src/domain/time/format';
 import { useTracker } from '@/src/state/TrackerProvider';
 
@@ -22,10 +23,8 @@ const TAP_SIZES = [150, 250, 350, 500];
 
 export default function SettingsScreen() {
   const c = useColors();
-  const { state, actions, storageError } = useTracker();
+  const { state, actions } = useTracker();
   const s = state.settings;
-  const [transfer, setTransfer] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
-  const [busy, setBusy] = useState(false);
 
   const confirm = (title: string, message: string, label: string, run: () => void) => {
     if (Platform.OS === 'web') {
@@ -37,38 +36,6 @@ export default function SettingsScreen() {
       { text: 'Cancel', style: 'cancel' },
       { text: label, style: 'destructive', onPress: run },
     ]);
-  };
-
-  const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
-
-  const doExport = async () => {
-    setBusy(true);
-    setTransfer(null);
-    try {
-      await exportState(state);
-      setTransfer({ tone: 'ok', text: 'Backup created. Keep it somewhere safe; it contains everything you logged.' });
-    } catch (err) {
-      setTransfer({ tone: 'error', text: `Export failed: ${message(err)}` });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const doImport = async () => {
-    setBusy(true);
-    setTransfer(null);
-    try {
-      const incoming = await pickImport();
-      if (!incoming) return;
-      confirm('Replace everything with this backup?', `It holds ${describeImport(incoming)}. Your current data on this phone is replaced.`, 'Import', () => {
-        actions.importState(incoming);
-        setTransfer({ tone: 'ok', text: `Imported ${describeImport(incoming)}.` });
-      });
-    } catch (err) {
-      setTransfer({ tone: 'error', text: `Import failed: ${message(err)}` });
-    } finally {
-      setBusy(false);
-    }
   };
 
   return (
@@ -91,7 +58,22 @@ export default function SettingsScreen() {
             <Segmented<Units> options={[{ value: 'ml', label: 'ml' }, { value: 'oz', label: 'oz' }]} value={s.units} onChange={(units) => actions.updateSettings({ units })} />
           </View>
         </Setting>
+        <Divider />
+        <Setting label="Appearance" hint="Dark is the designed look; System follows the phone">
+          <Segmented<ThemePreference>
+            options={[
+              { value: 'dark', label: 'Dark' },
+              { value: 'light', label: 'Light' },
+              { value: 'system', label: 'System' },
+            ]}
+            value={s.theme}
+            onChange={(theme) => actions.updateSettings({ theme })}
+          />
+        </Setting>
       </Card>
+
+      <SectionHeader title="Privacy" />
+      <AppLockCard />
 
       <SectionHeader title="Water" />
       <Card>
@@ -236,34 +218,7 @@ export default function SettingsScreen() {
       <HealthConnectCard confirm={confirm} />
 
       <SectionHeader title="Your data" />
-      <Card>
-        <Txt role="body">{s.sampleData ? 'You are looking at sample data.' : 'Everything is stored on this phone only. Export a backup before switching phones or reinstalling.'}</Txt>
-        {storageError ? (
-          <Txt role="footnote" color={c.danger} style={{ marginTop: 8 }}>
-            Saving is failing: {storageError}
-          </Txt>
-        ) : null}
-        <Row gap={8} style={{ marginTop: 12, flexWrap: 'wrap' }}>
-          <PillButton label="Export backup" Leading={UI.Download} kind="ghost" onPress={doExport} disabled={busy} />
-          <PillButton label="Import backup" Leading={UI.Upload} kind="ghost" onPress={doImport} disabled={busy} />
-        </Row>
-        {transfer ? (
-          <Txt role="footnote" color={transfer.tone === 'error' ? c.danger : c.greenBright} style={{ marginTop: 10 }}>
-            {transfer.text}
-          </Txt>
-        ) : null}
-        <Divider />
-        <Row gap={8} style={{ marginTop: 12, flexWrap: 'wrap' }}>
-          {s.sampleData ? (
-            <PillButton label="Start fresh" kind="ghost" onPress={() => confirm('Start fresh?', 'Removes the sample history and keeps your settings.', 'Start fresh', actions.startFresh)} />
-          ) : (
-            <>
-              <PillButton label="Load sample data" kind="ghost" onPress={() => confirm('Replace your data?', 'This replaces everything you logged with sample history.', 'Replace', actions.loadSample)} />
-              <PillButton label="Erase everything" kind="danger" Leading={UI.Trash} onPress={() => confirm('Erase everything?', 'All habits and logs on this phone are deleted. Settings are kept.', 'Erase', actions.startFresh)} />
-            </>
-          )}
-        </Row>
-      </Card>
+      <BackupCard confirm={confirm} />
 
       <SectionHeader title="About" />
       <Card>

@@ -1,3 +1,3 @@
-- [Expo workspace quirks](expo-workspace-quirks.md) — Phosphor deep-require, node --test not Vitest, SQLite/JSON/node:sqlite stores, platform splits, headless via index.js, widget lazy-require, Health Connect manifest from app.json, gated-screen verification.
-- [Git / GitHub push workflow](git-github-push.md) — workspace repo tracks origin/main; plain git push via Replit's proxy; commits authored as Aman; push after every milestone, tag v0.<n> (v0.5 = M5).
-- [Product decisions](product-decisions.md) — user constraints (widget = any habit), nudge-planner rules, headless actions, Health Connect rules, cycle logging/exclusion/late/discreet/insight thresholds, open questions.
+- [Expo workspace quirks](expo-workspace-quirks.md) — Phosphor deep-require, node --test not Vitest, SQLite/JSON stores, platform splits, headless via index.js, widget lazy-require, HC manifest, gated-screen checks, noble/theme/plugin/file-system notes.
+- [Git / GitHub push workflow](git-github-push.md) — workspace repo tracks origin/main; plain git push via Replit's proxy; commits authored as Aman; push after every milestone, tag v0.<n> (v0.6 = M6).
+- [Product decisions](product-decisions.md) — user constraints (widget = any habit), nudge/headless/Health Connect/cycle rules, M6 theme-lock-backup-signing decisions, open questions.

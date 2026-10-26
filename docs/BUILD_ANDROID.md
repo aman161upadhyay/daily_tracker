@@ -58,29 +58,78 @@ cd artifacts/daily-tracker/android
 adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
-The Expo template signs *release* builds with your machine's **debug keystore**
-(`~/.android/debug.keystore`). That is fine for a phone you own, with one rule: Android only
-updates an app signed with the same key, so **keep building on the same machine** (or copy that
-keystore over). To be independent of the laptop, create a real key once and use it from then on:
+Without a release key configured (next section) the Expo template signs *release* builds with
+your machine's **debug keystore** (`~/.android/debug.keystore`). That is fine for a phone you own,
+with one rule: Android only updates an app signed with the same key, so **keep building on the
+same machine** (or copy that keystore over).
 
-```bash
-keytool -genkeypair -v -storetype PKCS12 -keystore ~/keystores/daily-tracker-release.jks \
-  -alias daily-tracker -keyalg RSA -keysize 2048 -validity 10000
-```
-Then in `~/.gradle/gradle.properties` (never in the repo):
-```
-DAILY_TRACKER_STORE_FILE=/Users/you/keystores/daily-tracker-release.jks
-DAILY_TRACKER_STORE_PASSWORD=…
-DAILY_TRACKER_KEY_ALIAS=daily-tracker
-DAILY_TRACKER_KEY_PASSWORD=…
-```
-and point `android/app/build.gradle`'s `signingConfigs.release` at those properties (the
-Expo/React Native docs show the exact block). Because `android/` is regenerated, keep that edit
-as a small config plugin or re-apply it after each `--clean` prebuild. Back the keystore up twice.
-Switching from debug-key builds to the new key means uninstalling once (data is lost — export
-first from Settings → Your data).
+## Release signing (M6) — do this once
 
-Every later install must raise `expo.android.versionCode` in `app.json` (M3 shipped 3, M4 ships 4).
+`plugins/withReleaseSigning.js` adds a `release` signing config to the generated
+`android/app/build.gradle` that reads four Gradle properties. Nothing secret lives in the repo and
+the block survives every `--clean` prebuild.
+
+1. Create the key once and back it up twice (a lost key means a new package name for everyone):
+   ```bash
+   mkdir -p ~/keystores
+   keytool -genkeypair -v -storetype PKCS12 -keystore ~/keystores/daily-tracker-release.jks \
+     -alias daily-tracker -keyalg RSA -keysize 2048 -validity 10000
+   ```
+2. Put the credentials in `~/.gradle/gradle.properties` (your home directory, never the repo):
+   ```
+   DT_RELEASE_STORE_FILE=/Users/you/keystores/daily-tracker-release.jks
+   DT_RELEASE_STORE_PASSWORD=…
+   DT_RELEASE_KEY_ALIAS=daily-tracker
+   DT_RELEASE_KEY_PASSWORD=…
+   ```
+   When the properties are absent the release build type falls back to the debug keystore, so the
+   command below always works; only the signature differs.
+3. Build, verify the signature, install:
+   ```bash
+   cd artifacts/daily-tracker
+   pnpm exec expo prebuild --platform android --clean
+   cd android && ./gradlew assembleRelease
+   "$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
+   adb install -r app/build/outputs/apk/release/app-release.apk
+   ```
+   `apksigner` must print the certificate you created (CN from the `keytool` prompts), not
+   `CN=Android Debug`. Switching an installed debug-key build to the release key means
+   uninstalling once (Android refuses a different signer): **export a backup first** from
+   Settings → Your data, install, then import it. Friends install the same APK from any shared
+   file; later versions update in place as long as they come from this key.
+
+`versionCode` discipline: every install that should update an existing one needs a higher
+`expo.android.versionCode` in `app.json` (M3 shipped 3, M4 4, M5 5, M6 6); `version` follows the
+tag (`0.6.0` = `v0.6`).
+
+Google Play is deliberately not part of this recipe; `./gradlew bundleRelease` produces the AAB if
+that day comes, and the remaining items (feature graphic, privacy policy, Health Connect
+declaration, data-safety form) are listed in `docs/IMPLEMENTATION_PLAN.md` M6.
+
+## Backups (M6)
+
+Two independent mechanisms, both leaving the live SQLite database alone:
+
+- **Android Auto Backup.** `plugins/withBackupRules.js` restricts the backup to `files/backup/`
+  (and switches it off on phones that cannot encrypt it with their own lock screen). The app keeps
+  `files/backup/snapshot.json` there — a plain export, refreshed on start and when leaving the app,
+  at most hourly, never for sample data, deleted by "Erase everything". After a factory reset or a
+  new phone, Android restores that file, the database is empty, and onboarding opens with
+  "Welcome back → Restore it / Start fresh". To rehearse without a reset:
+  `adb shell bmgr backupnow com.amanupadhyay.dailytracker`, uninstall, reinstall, and
+  `adb shell bmgr restore <token> com.amanupadhyay.dailytracker` (tokens from `adb shell bmgr list sets`;
+  `adb shell bmgr enable true` and a Google account on the phone are prerequisites).
+- **Export with a password.** Settings → Your data → Export backup → type a password. The file is
+  AES-256-GCM with a PBKDF2-SHA256 key (200,000 iterations, 16-byte salt, 12-byte IV, all written in
+  the file, tag appended to the ciphertext). It opens without this app, for example in Python:
+  ```python
+  import json, base64, hashlib
+  from cryptography.hazmat.primitives.ciphers.aead import AESGCM   # pip install cryptography
+  f = json.load(open('daily-tracker-2026-10-26.json'))
+  key = hashlib.pbkdf2_hmac('sha256', 'your password'.encode(), base64.b64decode(f['salt']), f['iterations'], 32)
+  print(AESGCM(key).decrypt(base64.b64decode(f['iv']), base64.b64decode(f['ciphertext']), None).decode())
+  ```
+  Passwords are NFKC-normalised before hashing. There is no recovery for a forgotten password.
 
 ## After installing: the device checklist
 

@@ -1,13 +1,13 @@
 /**
  * Design tokens — the only source of color in the app.
- * Mirrors docs/DESIGN_SYSTEM.md §2. Dark theme is the default; light tokens
- * are defined so the switch later is a one-line change in useColors().
+ * Mirrors docs/DESIGN_SYSTEM.md §2. Dark theme is the designed default; the
+ * light palette is selected by `settings.theme` through useColors().
  *
  * Scaffold alias keys (background, foreground, card, primary, border, …) are
  * kept so the shared ErrorFallback keeps working.
  */
 
-const brand = {
+const brand: Record<'green' | 'greenBright' | 'greenDeep' | 'greenMist' | 'lime' | 'gold' | 'goldBright' | 'goldPale' | 'violet' | 'violetSoft' | 'plum' | 'danger', string> = {
   green: '#1DB954',
   greenBright: '#1ED760',
   greenDeep: '#128A3E',
@@ -20,9 +20,9 @@ const brand = {
   violetSoft: '#B8A1F5',
   plum: '#5E35B1',
   danger: '#F26D6D',
-} as const;
+};
 
-const category = {
+const category: Record<'hydration' | 'movement' | 'mind' | 'cycle' | 'body' | 'fuel' | 'craft', string> = {
   hydration: '#5CD3C0',
   movement: '#1DB954',
   mind: '#B8A1F5',
@@ -30,7 +30,7 @@ const category = {
   body: '#E6C76A',
   fuel: '#F0A35E',
   craft: '#D7E58C',
-} as const;
+};
 
 const dark = {
   bg: '#0D120F',
@@ -69,6 +69,13 @@ const dark = {
   input: '#2A3430',
 };
 
+/**
+ * Light theme (design system §2.5): same geometry, AA-safe inks. Tokens that
+ * screens use for text and icons get deeper shades here; fills are tinted
+ * through `withAlpha`, so the same deeper shades read as soft tints there.
+ * Primary buttons become deep green with white text (dark text on #1DB954 is
+ * fine, but #1DB954 text on white is only 2.9:1).
+ */
 const light: typeof dark = {
   ...dark,
   bg: '#F5F7F6',
@@ -77,11 +84,31 @@ const light: typeof dark = {
   hairline: '#DCE3DF',
   text: '#0D120F',
   textSecondary: '#4F5B55',
-  textTertiary: '#7B877F',
-  onGreen: '#0D120F',
+  textTertiary: '#6B776F',
+  onGreen: '#FFFFFF',
   goldFrame: 'rgba(184, 151, 63, 0.7)',
   goldFrameInner: 'rgba(184, 151, 63, 0.15)',
+  flowGlow: 'rgba(109, 63, 224, 0.15)',
   scrim: 'rgba(0, 0, 0, 0.4)',
+  green: '#128A3E',
+  greenBright: '#16A34A',
+  greenMist: '#3B9D5D',
+  lime: '#7A8A1F',
+  gold: '#9A7A1F',
+  goldBright: '#8A6D1C',
+  goldPale: '#B8973F',
+  violet: '#6D3FE0',
+  violetSoft: '#6D3FE0',
+  danger: '#C62828',
+  cat: {
+    hydration: '#13897A',
+    movement: '#128A3E',
+    mind: '#6D3FE0',
+    cycle: '#C2487A',
+    body: '#8A6D1C',
+    fuel: '#B5541A',
+    craft: '#6F7F14',
+  },
   tint: '#128A3E',
   background: '#F5F7F6',
   foreground: '#0D120F',
@@ -95,6 +122,8 @@ const light: typeof dark = {
   mutedForeground: '#4F5B55',
   accent: '#EEF2EF',
   accentForeground: '#0D120F',
+  destructive: '#C62828',
+  destructiveForeground: '#FFFFFF',
   border: '#DCE3DF',
   input: '#DCE3DF',
 };
@@ -109,5 +138,6 @@ const colors = {
 
 export type Palette = typeof dark;
 export type CategoryKey = keyof typeof category;
+export type Scheme = 'dark' | 'light';
 
 export default colors;

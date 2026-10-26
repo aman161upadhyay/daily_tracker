@@ -109,3 +109,16 @@ The screenshot tool starts with empty storage, so anything behind onboarding (`s
 the onboarding page. Routes outside `(tabs)` (`/body/setup`, `/body/steps`, `/settings`) have no gate and can be
 screenshotted directly; for the tabs with sample data, one testing-subagent run that taps "Explore with sample
 data instead" on onboarding is the cheapest path (it also accepts `window.confirm` dialogs for destructive buttons).
+
+## M6 quirks (2026-10-26)
+- `@noble/ciphers` / `@noble/hashes` 2.x import with the `.js` suffix (`@noble/ciphers/aes.js`); Metro resolves
+  them through package exports and Hermes has `btoa`/`atob`; keep base64 spread chunks ≤ 8 KiB for Hermes'
+  argument limit. PBKDF2 200k runs ~0.2 s in Node — the phone is the slow case, hence the busy label.
+- Theme switching: `useColorScheme()` only follows the phone when `app.json` `userInterfaceStyle` is
+  `automatic`; a scheme context must wrap the `ThemeProvider` *inside* `TrackerProvider` (settings drive it), and
+  the error fallback outside it falls back to dark via the context default.
+- Local config plugins (`plugins/*.js`, listed as `./plugins/<name>` in app.json) are verified the same way as the
+  Health Connect manifest: `CI=1 pnpm exec expo prebuild --platform android --no-install` + grep, then
+  `rm -rf android`. `withAppBuildGradle` text edits must be idempotent (prebuild may run mods twice).
+- `expo-file-system` SDK 57 new API: `File.modificationTime` (ms | null), `file.move(dest, { overwrite: true })`
+  returns a Promise, `create({ overwrite })` / `write()` are sync.

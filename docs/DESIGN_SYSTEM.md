@@ -95,17 +95,27 @@ Rules:
 - "Flow" additionally gets the `gold` 1 dp frame with a soft outer glow (`violet` at 25%, 12 dp blur).
 - Heatmap cells use the same scale at 70% opacity; empty cells are `surfaceRaised`.
 
-### 2.5 Light theme (ship after dark is finished)
+### 2.5 Light theme (shipped in M6, opt-in: Settings → Appearance; dark stays the default)
 
 `bg #F5F7F6`, `surface #FFFFFF`, `surfaceRaised #EEF2EF`, `hairline #DCE3DF`, `text #0D120F`,
-`textSecondary #4F5B55`. Hero green becomes `greenDeep #128A3E` for text and icons; fills keep
-`green`. Gold frames become `#B8973F` at 70%. The adherence scale is unchanged (fills only).
+`textSecondary #4F5B55`, `textTertiary #6B776F`, `scrim` 40 % black. Gold frames become `#B8973F`
+at 70 % (inner 15 %). The adherence scale is unchanged (fills only).
+
+Because screens use one token for both an icon/text ink and (through `withAlpha`) its tinted fill,
+the light palette remaps the brand tokens themselves to AA inks and lets the tints follow:
+`green → #128A3E` (so primary buttons are deep green with **white** `onGreen` text — 5.9:1),
+`greenBright → #16A34A`, `greenMist → #3B9D5D`, `lime → #7A8A1F`, `gold → #9A7A1F`,
+`goldBright → #8A6D1C`, `goldPale → #B8973F`, `violet`/`violetSoft → #6D3FE0`, `danger → #C62828`;
+categories `hydration #13897A`, `movement #128A3E`, `mind #6D3FE0`, `cycle #C2487A`, `body #8A6D1C`,
+`fuel #B5541A`, `craft #6F7F14`. Cards get the `0 1 2 rgba(0,0,0,.06)` shadow; the home-screen
+widget stays dark in both themes.
 
 ### 2.6 Contrast rules (WCAG AA)
 - `text` on `bg`/`surface`: ≥ 12:1. `textSecondary` on `surface`: ≥ 6:1.
 - `goldBright` on `surface`: 9.7:1 → fine for labels. `goldPale` is **never** used for text on light surfaces.
-- White text on `green` is only 2.9:1 → **buttons use `#0D120F` text on green** (Spotify does this too).
-- Violet/soft violet text only on dark surfaces.
+- White text on `green` is only 2.9:1 → **dark-theme buttons use `#0D120F` text on green** (Spotify does this too);
+  the light theme's deep green takes white text instead.
+- Violet/soft violet text only on dark surfaces; the light theme substitutes `#6D3FE0` for both.
 
 ---
 

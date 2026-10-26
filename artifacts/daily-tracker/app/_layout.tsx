@@ -1,5 +1,5 @@
-import React, { useEffect } from "react";
-import { View } from "react-native";
+import React, { useEffect, useMemo } from "react";
+import { Platform, useColorScheme, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -11,46 +11,39 @@ import {
   Manrope_800ExtraBold,
   useFonts,
 } from "@expo-google-fonts/manrope";
-import { DarkTheme, Stack, ThemeProvider } from "expo-router";
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
+import * as SystemUI from "expo-system-ui";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { BodySync } from "@/components/system/BodySync";
 import { NudgeScheduler } from "@/components/system/NudgeScheduler";
 import { WidgetSync } from "@/components/system/WidgetSync";
+import { AppLockGate } from "@/components/system/AppLockGate";
+import { BackupSync } from "@/components/system/BackupSync";
 import { UI } from "@/components/ui/icons";
 import { Txt } from "@/components/ui/Txt";
-import colors from "@/constants/colors";
+import colors, { type Scheme } from "@/constants/colors";
 import { FONTS } from "@/constants/typography";
+import { SchemeContext, useColors } from "@/hooks/useColors";
 import { TrackerProvider, useTracker } from "@/src/state/TrackerProvider";
 
 SplashScreen.preventAutoHideAsync();
 
-const theme = {
-  ...DarkTheme,
-  colors: {
-    ...DarkTheme.colors,
-    primary: colors.dark.green,
-    background: colors.dark.bg,
-    card: colors.dark.surface,
-    text: colors.dark.text,
-    border: colors.dark.hairline,
-    notification: colors.dark.violet,
-  },
-  fonts: {
-    regular: { fontFamily: FONTS.medium, fontWeight: "500" as const },
-    medium: { fontFamily: FONTS.semibold, fontWeight: "600" as const },
-    bold: { fontFamily: FONTS.bold, fontWeight: "700" as const },
-    heavy: { fontFamily: FONTS.extrabold, fontWeight: "800" as const },
-  },
+const NAV_FONTS = {
+  regular: { fontFamily: FONTS.medium, fontWeight: "500" as const },
+  medium: { fontFamily: FONTS.semibold, fontWeight: "600" as const },
+  bold: { fontFamily: FONTS.bold, fontWeight: "700" as const },
+  heavy: { fontFamily: FONTS.extrabold, fontWeight: "800" as const },
 };
 
 /** Shown when writes to the on-device store fail; the app keeps working in memory but says so. */
 function StorageBanner({ message }: { message: string }) {
   const insets = useSafeAreaInsets();
+  const c = useColors();
   return (
     <View
-      style={{ paddingTop: insets.top, backgroundColor: colors.dark.danger }}
+      style={{ paddingTop: insets.top, backgroundColor: c.danger }}
       accessibilityRole="alert"
     >
       <View
@@ -62,8 +55,8 @@ function StorageBanner({ message }: { message: string }) {
           paddingVertical: 8,
         }}
       >
-        <UI.Info size={18} color={colors.dark.onGreen} weight="bold" />
-        <Txt role="footnote" color={colors.dark.onGreen} style={{ flex: 1 }}>
+        <UI.Info size={18} color="#FFFFFF" weight="bold" />
+        <Txt role="footnote" color="#FFFFFF" style={{ flex: 1 }}>
           Changes are not being saved: {message}
         </Txt>
       </View>
@@ -73,6 +66,7 @@ function StorageBanner({ message }: { message: string }) {
 
 function RootLayoutNav() {
   const { ready, storageError } = useTracker();
+  const c = useColors();
 
   useEffect(() => {
     if (ready) SplashScreen.hideAsync();
@@ -82,20 +76,20 @@ function RootLayoutNav() {
   if (!ready) return null;
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
       {storageError ? <StorageBanner message={storageError} /> : null}
       <Stack
         screenOptions={{
           headerBackTitle: "Back",
-          headerTintColor: colors.dark.text,
-          headerStyle: { backgroundColor: colors.dark.bg },
+          headerTintColor: c.text,
+          headerStyle: { backgroundColor: c.bg },
           headerShadowVisible: false,
           headerTitleStyle: {
             fontFamily: FONTS.bold,
             fontSize: 17,
-            color: colors.dark.text,
+            color: c.text,
           },
-          contentStyle: { backgroundColor: colors.dark.bg },
+          contentStyle: { backgroundColor: c.bg },
         }}
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -125,7 +119,48 @@ function RootLayoutNav() {
       <NudgeScheduler />
       <WidgetSync />
       <BodySync />
+      <BackupSync />
+      <AppLockGate />
     </View>
+  );
+}
+
+/** Resolves `settings.theme` (+ the phone's scheme) and feeds it to the tokens, navigation and status bar. */
+function ThemeRoot() {
+  const { state } = useTracker();
+  const system = useColorScheme();
+  const pref = state.settings.theme;
+  const scheme: Scheme = pref === "system" ? (system === "light" ? "light" : "dark") : pref;
+  const palette = colors[scheme];
+
+  const navTheme = useMemo(
+    () => ({
+      ...(scheme === "dark" ? DarkTheme : DefaultTheme),
+      colors: {
+        ...(scheme === "dark" ? DarkTheme.colors : DefaultTheme.colors),
+        primary: palette.green,
+        background: palette.bg,
+        card: palette.surface,
+        text: palette.text,
+        border: palette.hairline,
+        notification: palette.violet,
+      },
+      fonts: NAV_FONTS,
+    }),
+    [scheme, palette],
+  );
+
+  useEffect(() => {
+    if (Platform.OS !== "web") SystemUI.setBackgroundColorAsync(palette.bg).catch(() => {});
+  }, [palette.bg]);
+
+  return (
+    <SchemeContext.Provider value={scheme}>
+      <ThemeProvider value={navTheme}>
+        <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+        <RootLayoutNav />
+      </ThemeProvider>
+    </SchemeContext.Provider>
   );
 }
 
@@ -146,12 +181,9 @@ export default function RootLayout() {
           style={{ flex: 1, backgroundColor: colors.dark.bg }}
         >
           <KeyboardProvider>
-            <ThemeProvider value={theme}>
-              <TrackerProvider>
-                <StatusBar style="light" />
-                <RootLayoutNav />
-              </TrackerProvider>
-            </ThemeProvider>
+            <TrackerProvider>
+              <ThemeRoot />
+            </TrackerProvider>
           </KeyboardProvider>
         </GestureHandlerRootView>
       </ErrorBoundary>

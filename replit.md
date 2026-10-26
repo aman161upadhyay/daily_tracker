@@ -81,6 +81,22 @@ original Kotlin spec being ported (this plan wins where they disagree).
   `settings.cycle.discreet` swaps every cycle notification for "Daily Tracker · You have a reminder."). Tracking off
   hides the tab, the Today card and the planner input but keeps the data; only Settings → Cycle data → Delete wipes it.
   UI in `components/cycle/` (`PhaseRing`, `CycleCalendar`, `DaySheet`, `ReminderSheet`, `InsightsCard`, `phaseColors`).
+- Theme (M6): `settings.theme` (dark default — the dark UI is the design — | light | system) is resolved once in
+  `app/_layout.tsx` (`ThemeRoot`) into `SchemeContext`; `useColors()` / `useScheme()` read it, nothing else should
+  branch on the theme. Light tokens in `constants/colors.ts` are deeper AA inks (fills are alpha tints of them); the
+  widget stays dark. `Txt` caps font scaling per role; `useReducedMotion` gates the tweens (not the breathing circle).
+- App lock (M6): `src/services/appLock[.native].ts` (expo-local-authentication, PIN fallback; web = unavailable) and
+  `components/system/AppLockGate.tsx` (a Modal over the stack, visual only — widgets and notification buttons keep
+  writing; phones without a screen lock cannot enable it and never get trapped).
+- Backups (M6): `src/data/backupCrypto.ts` (PBKDF2-SHA256 200k + AES-256-GCM, every parameter in the envelope; opens
+  with standard tools, recipe in `docs/BUILD_ANDROID.md`) behind `transferFormat.ts` `inspectExport` / `unlockExport`;
+  `components/settings/BackupCard.tsx` owns the password sheets. Android Auto Backup: `components/system/BackupSync.tsx`
+  keeps `files/backup/snapshot.json` (plain export, hourly at most, not for sample data, deleted on erase) via
+  `src/services/backup[.native].ts`; `plugins/withBackupRules.js` includes only that folder. Onboarding offers
+  "Welcome back → Restore it" when a snapshot exists.
+- Config plugins live in `plugins/` (`withBackupRules`, `withReleaseSigning` — release key from `DT_RELEASE_*` Gradle
+  properties, debug keystore fallback) and are tested with `expo prebuild --platform android --no-install` + grep,
+  then `android/` is deleted again (it is git-ignored and never committed).
 - Icons: Phosphor, imported only through `components/ui/icons.tsx` using
   `require('phosphor-react-native/src/icons/<Name>').<Name>Icon` (the root import would bundle every icon; the
   package only exports `.` and `./src/icons/*`). Add new icons there, never import Phosphor elsewhere.

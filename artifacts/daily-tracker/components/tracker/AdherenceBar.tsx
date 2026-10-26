@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
-import Animated, { interpolateColor, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { interpolateColor, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
 import { ADHERENCE_LUT_INPUT, ADHERENCE_LUT_OUTPUT, clamp01, FLOW_GRADIENT, FLOW_THRESHOLD } from '@/src/domain/adherence/adherenceScale';
@@ -24,12 +24,13 @@ export function AdherenceBar({ adherence, fill, height = 4 }: AdherenceBarProps)
   const f = clamp01(fill ?? adherence);
   const flow = a >= FLOW_THRESHOLD;
 
+  const reduceMotion = useReducedMotion();
   const width = useSharedValue(f);
   const tone = useSharedValue(a);
   useEffect(() => {
-    width.value = withTiming(f, { duration: 400 });
-    tone.value = withTiming(a, { duration: 400 });
-  }, [a, f, width, tone]);
+    width.value = reduceMotion ? f : withTiming(f, { duration: 400 });
+    tone.value = reduceMotion ? a : withTiming(a, { duration: 400 });
+  }, [a, f, width, tone, reduceMotion]);
 
   const style = useAnimatedStyle(() => ({
     width: `${Math.max(2, width.value * 100)}%`,

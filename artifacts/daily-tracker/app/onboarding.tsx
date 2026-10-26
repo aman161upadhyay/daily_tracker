@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Switch, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { EvidencePill } from '@/components/tracker/EvidenceBlock';
@@ -10,11 +10,14 @@ import { Screen } from '@/components/ui/Screen';
 import { Txt } from '@/components/ui/Txt';
 import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
+import { describeImport, inspectExport } from '@/src/data/transfer';
 import { withAlpha } from '@/src/domain/color/oklch';
 import { DEFAULT_SETTINGS, type Units } from '@/src/domain/models';
 import { formatClock, formatVolume } from '@/src/domain/time/format';
 import { CATEGORY_LABELS, CATEGORY_ORDER, PRESETS } from '@/src/library/presets';
+import { readSnapshot } from '@/src/services/backup';
 import { useTracker } from '@/src/state/TrackerProvider';
+import type { TrackerState } from '@/src/state/types';
 
 const STARTER_SET = ['water', 'squat-snack', 'walk-break', 'meditate'];
 
@@ -33,6 +36,28 @@ export default function OnboardingScreen() {
   const [activeEndMin, setEnd] = useState(DEFAULT_SETTINGS.activeEndMin);
   const [selected, setSelected] = useState<Set<string>>(() => new Set(STARTER_SET));
   const [cycleEnabled, setCycleEnabled] = useState(false);
+  const [restore, setRestore] = useState<{ state: TrackerState; writtenAt: number | null } | null>(null);
+
+  // A snapshot left by Android Auto Backup (or a previous install) means this is a returning user.
+  useEffect(() => {
+    let alive = true;
+    readSnapshot()
+      .then((snap) => {
+        if (!snap || !alive) return;
+        const inspected = inspectExport(snap.text);
+        if (inspected.kind === 'plain' && inspected.state.habits.length > 0) setRestore({ state: inspected.state, writtenAt: snap.writtenAt });
+      })
+      .catch((err) => console.warn('[backup] snapshot unreadable', err));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const restoreSnapshot = () => {
+    if (!restore) return;
+    actions.importState(restore.state);
+    router.replace('/');
+  };
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -68,6 +93,24 @@ export default function OnboardingScreen() {
           Small habits, honest numbers. Everything stays on this phone.
         </Txt>
       </View>
+
+      {restore ? (
+        <Card featured style={{ marginBottom: 20 }}>
+          <Row gap={12}>
+            <IconTile Glyph={UI.Archive} color={c.gold} size={40} />
+            <View style={{ flex: 1 }}>
+              <Txt role="title2">Welcome back</Txt>
+              <Txt role="footnote" tone="secondary" style={{ marginTop: 2 }}>
+                {`Android restored a backup${restore.writtenAt ? ` from ${new Date(restore.writtenAt).toLocaleDateString()}` : ''} with ${describeImport(restore.state)}.`}
+              </Txt>
+            </View>
+          </Row>
+          <Row gap={8} style={{ marginTop: 14, flexWrap: 'wrap' }}>
+            <PillButton label="Restore it" Leading={UI.Check} onPress={restoreSnapshot} />
+            <PillButton label="Start fresh" kind="ghost" onPress={() => setRestore(null)} />
+          </Row>
+        </Card>
+      ) : null}
 
       <Step n={1} title="About you">
         <TextInput

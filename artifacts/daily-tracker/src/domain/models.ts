@@ -260,7 +260,21 @@ export interface Settings {
   widgetHabitIds: string[];
   /** The user connected Health Connect; reads happen on every foreground (and in the background when granted). */
   healthConnectEnabled: boolean;
+  /** Colour theme; 'system' follows the phone. Dark is the designed default. */
+  theme: ThemePreference;
+  /** Biometric / screen-lock gate on open and after `appLock.afterMin` minutes in the background. */
+  appLock: AppLockSettings;
 }
+
+export type ThemePreference = 'dark' | 'light' | 'system';
+
+export interface AppLockSettings {
+  enabled: boolean;
+  /** Minutes in the background before the lock engages again; 0 = immediately. */
+  afterMin: number;
+}
+
+export const APP_LOCK_DELAYS = [0, 1, 5, 15] as const;
 
 export const DEFAULT_SETTINGS: Settings = {
   name: '',
@@ -281,6 +295,8 @@ export const DEFAULT_SETTINGS: Settings = {
   weeklySummary: { enabled: true, weekday: 6, minute: 18 * 60 },
   widgetHabitIds: [],
   healthConnectEnabled: false,
+  theme: 'dark',
+  appLock: { enabled: false, afterMin: 1 },
 };
 
 export const SNACK_LABELS: Record<SnackType, { label: string; defaultReps?: number; defaultSeconds?: number; unit: string }> = {

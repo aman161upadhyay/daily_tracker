@@ -85,6 +85,21 @@ cycle (phases, calendar, day sheet, insights) was verified in the web preview an
 | C3 | Expected-day prompt | Set the typical length so the expected day is today; no period logged | At 9:00 a "Cycle" notification ("Around the expected day — log it when it starts."); logging "Period started today" removes any pending copy |
 | C4 | Late suppression | Make the period 2 days late (log the last start ≥ typical + 2 days ago) | Cycle tab shows "n days late" and "Cycle reminders pause while the period is late"; no Vitamin C notification arrives until a start is logged |
 
+## L — Lock, backup, release (M6)
+
+| # | Scenario | Steps | Expect |
+|---|---|---|---|
+| L1 | App lock on open | Settings → Privacy → App lock on (needs a screen lock on the phone); swipe the app away; open it | The lock screen (padlock, "Locked. Widgets and reminders keep working.") appears and the fingerprint / PIN prompt opens by itself; cancelling leaves the Unlock button; unlocking shows Today |
+| L2 | Lock after delay | Set "Lock again after" to 1 min; go Home for 20 s and come back; then for 90 s and come back | No prompt after 20 s; prompt after 90 s. "Right away" prompts even after a 2 s switch |
+| L3 | Locked widget still logs | While the app is locked, tap "+" on the water tile of the widget and the "Done" button of a nudge notification | Both log (widget count rises, notification clears); opening the app still asks to unlock and then shows the new entries |
+| L4 | No screen lock | Remove the phone's screen lock (or use a phone without one) and open Settings | App lock switch is off and disabled with the hint to set up a screen lock first; an already-enabled lock lets the app open instead of trapping the user |
+| L5 | Encrypted export round-trip | Settings → Your data → Export backup with password `test-pass-1`; share to Files; Import backup → choose that file | Import asks for the password; a wrong one says "Wrong password, or the file is damaged."; the right one shows the replace confirmation and imports |
+| L6 | Auto Backup snapshot | Use the app for a minute, leave it; `adb shell run-as com.amanupadhyay.dailytracker ls -l files/backup` (debug build) | `snapshot.json` exists and is newer than the last foreground; "Erase everything" removes it |
+| L7 | Restore prompt | `adb shell bmgr backupnow com.amanupadhyay.dailytracker`; uninstall; reinstall; `adb shell bmgr restore <token> com.amanupadhyay.dailytracker`; open the app | Onboarding shows the gold "Welcome back" card with the habit / log counts; "Restore it" lands on Today with the data; "Start fresh" hides the card |
+| L8 | Light theme | Settings → Appearance → Light, then System with the phone in dark mode | Light: light header, tab bar and cards, green buttons with white text, all text readable. System: follows the phone's setting live |
+| L9 | Large text + reduce motion | Phone Display → Font size largest, Accessibility → Remove animations | Today's rings and numbers stay inside their cards (titles cap their growth; body copy grows); press-scale, ring fill and bar animations are instant; the breathing circle still breathes |
+| L10 | Release signature | `apksigner verify --print-certs app-release.apk` after the M6 recipe | Certificate is the one from `keytool`, not `CN=Android Debug`; `adb install -r` over a previous release build succeeds |
+
 ## Recording results
 
 Add a dated line under the milestone in `docs/IMPLEMENTATION_PLAN.md` ("Device run YYYY-MM-DD, Pixel 7 / Android 15: N1–N17 pass except …") and open follow-ups for anything that failed.

@@ -65,6 +65,9 @@ const StairsIcon = require('phosphor-react-native/src/icons/Stairs').StairsIcon 
 const SunHorizonIcon = require('phosphor-react-native/src/icons/SunHorizon').SunHorizonIcon as Icon;
 const TimerIcon = require('phosphor-react-native/src/icons/Timer').TimerIcon as Icon;
 const TrashIcon = require('phosphor-react-native/src/icons/Trash').TrashIcon as Icon;
+const LockSimpleIcon = require('phosphor-react-native/src/icons/LockSimple').LockSimpleIcon as Icon;
+const FingerprintSimpleIcon = require('phosphor-react-native/src/icons/FingerprintSimple').FingerprintSimpleIcon as Icon;
+const KeyIcon = require('phosphor-react-native/src/icons/Key').KeyIcon as Icon;
 const UploadSimpleIcon = require('phosphor-react-native/src/icons/UploadSimple').UploadSimpleIcon as Icon;
 const WindIcon = require('phosphor-react-native/src/icons/Wind').WindIcon as Icon;
 const XIcon = require('phosphor-react-native/src/icons/X').XIcon as Icon;
@@ -133,6 +136,9 @@ export const UI = {
   Sparkle: SparkleIcon,
   Timer: TimerIcon,
   Trash: TrashIcon,
+  Lock: LockSimpleIcon,
+  Fingerprint: FingerprintSimpleIcon,
+  Key: KeyIcon,
   Upload: UploadSimpleIcon,
   Today: SunHorizonIcon,
   Undo: ArrowUUpLeftIcon,

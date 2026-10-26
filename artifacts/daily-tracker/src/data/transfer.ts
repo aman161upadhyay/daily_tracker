@@ -4,13 +4,13 @@
  * The file format itself is in transferFormat.ts (shared by both).
  */
 import type { TrackerState } from '@/src/state/types';
-import { exportFileName, parseExport, serializeExport } from './transferFormat';
+import { exportFileName, serializeExport } from './transferFormat';
 
-export { describeImport, exportFileName, parseExport, serializeExport, type ExportFile } from './transferFormat';
+export { describeImport, exportFileName, inspectExport, parseExport, serializeExport, unlockExport, type ExportFile, type InspectedExport } from './transferFormat';
 
 /** Triggers a browser download. Resolves once the download has been handed to the browser. */
-export async function exportState(state: TrackerState): Promise<void> {
-  const blob = new Blob([serializeExport(state)], { type: 'application/json' });
+export async function exportState(state: TrackerState, password?: string): Promise<void> {
+  const blob = new Blob([serializeExport(state, new Date(), password)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -21,8 +21,8 @@ export async function exportState(state: TrackerState): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** Opens a file picker and returns the parsed state, or null if the user cancelled. */
-export function pickImport(): Promise<TrackerState | null> {
+/** Opens a file picker and returns the file's text, or null if the user cancelled. */
+export function pickImport(): Promise<string | null> {
   return new Promise((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -31,7 +31,7 @@ export function pickImport(): Promise<TrackerState | null> {
       const file = input.files?.[0];
       if (!file) return resolve(null);
       try {
-        resolve(parseExport(await file.text()));
+        resolve(await file.text());
       } catch (err) {
         reject(err);
       }

@@ -39,6 +39,8 @@ export function normalizeSettings(raw: Partial<Settings> | undefined): Settings 
     pinned: Array.isArray(base.pinned) ? base.pinned : DEFAULT_SETTINGS.pinned,
     widgetHabitIds: Array.isArray(base.widgetHabitIds) ? base.widgetHabitIds : [],
     weeklySummary: { ...DEFAULT_SETTINGS.weeklySummary, ...(base.weeklySummary ?? {}) },
+    theme: base.theme === 'light' || base.theme === 'system' ? base.theme : 'dark',
+    appLock: { ...DEFAULT_SETTINGS.appLock, ...(base.appLock ?? {}) },
     cycle: {
       ...DEFAULT_SETTINGS.cycle,
       ...(base.cycle ?? {}),

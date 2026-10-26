@@ -63,6 +63,17 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   ≥ 3 cycles, "tended to" wording, never causal. Turning tracking off hides all cycle UI but keeps data; only
   the explicit Delete wipes it. **Why:** irregular cycles are the norm, so the user — not a heuristic — decides
   what counts, and a notification must never reveal cycle details on a shared or locked screen.
+- M6 decisions (2026-10-26): dark stays the default theme (user loves it); light/system are opt-in and the
+  light palette remaps the *brand tokens* to AA inks (deep green + white button text) rather than adding
+  separate ink/fill tokens, because screens derive fills from inks with `withAlpha`. App lock is visual only —
+  widgets and notification actions keep writing (one-tap water is the point) — and a phone without a screen
+  lock can neither enable it nor get trapped by it. Backups: Android Auto Backup includes *only*
+  `files/backup/snapshot.json` (never the live SQLite/WAL or SharedPreferences) and is disabled on phones that
+  cannot encrypt it; snapshot never for sample data, deleted by "Erase everything"; encrypted exports use an
+  envelope that opens with standard tools (PBKDF2-SHA256 200k, AES-256-GCM, NFKC passwords, min 6 chars) — no
+  lock-in, no recovery. Release signing reads `DT_RELEASE_*` Gradle properties with a debug-keystore fallback
+  so `assembleRelease` always builds; Play Store work is explicitly not done. **Why:** privacy-first health
+  data, and the user wants friends to install from a shared APK, not a store.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app

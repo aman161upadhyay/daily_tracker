@@ -134,7 +134,7 @@ beat automatic ones**; streaks are recomputed from raw entries, never stored.
 - **Sugar Shield** (`EVENT`) → button in app/widget → full-screen 60 s countdown with squat count → logs a snack → schedules a one-off "2-minute walk" nudge 20 min later.
 - **Day close** (`dayCloser.ts`, runs on open / background task / after the boundary): sync Health Connect for yesterday and today, auto-tick habits (steps goal, workout ≥ 15 min, water goal, meditation minutes), close finished days (streak/freeze status), write the backup snapshot (if > 20 h old), replan, refresh widgets. Idempotent; never re-scores closed days with today's settings.
 - **Health Connect import**: read Steps (aggregate/day), SleepSession, ExerciseSession, HeartRate (resting), Weight, Hydration; de-duplicate by record id; background read only if granted, otherwise on app open and widget taps.
-- **Backup**: daily `files/backup/snapshot.json.gz` (same schema as export) included in Auto Backup (end-to-end encrypted; live DB excluded); on a fresh install with a restored snapshot show "Welcome back → Restore / Start fresh". Manual export/import via share sheet (optional password in M6).
+- **Backup**: `files/backup/snapshot.json` (same schema as export; uncompressed — years of data stay far under the 25 MB cap) refreshed on start / leaving the app, at most hourly, and the only thing Auto Backup includes (encrypted-capable phones only; live DB excluded); on a fresh install with a restored snapshot show "Welcome back → Restore it / Start fresh". Manual export/import via share sheet, optional password (PBKDF2-SHA256 200k + AES-256-GCM).
 
 ---
 
@@ -272,12 +272,42 @@ week-start setting; per-habit notification sounds.
   symptom windows and Spearman, reducer, planner input + discreet wording, sample data). **Needs the phone:**
   `docs/DEVICE_CHECKLIST.md` C1–C4 (lock-screen visibility, discreet text, reminder delivery, late suppression).
 
-### M6 — Polish, lock, release
+### M6 — Polish, lock, release ✅ (built 2026-10-26, verified in the web preview; lock, Auto Backup and signing need the phone)
 - App lock (biometric/PIN, lock after N minutes; widgets and notification buttons keep working); Auto Backup rules + restore prompt; export password (PBKDF2 + AES-GCM).
 - Light theme; large-text and TalkBack pass; reduce-motion.
 - Release signing recipe (`~/keystores/daily-tracker-release.jks`, credentials in `~/.gradle/gradle.properties`, never in the repo), `versionCode` discipline, `assembleRelease`, `apksigner verify`, install over the debug build on a second slot.
 - Play Store readiness (only when wanted): adaptive icon, feature graphic, privacy policy page, Health Connect permissions declaration, data-safety form, `bundleRelease` AAB.
 **Done when:** a signed release APK runs a full day on Aman's phone; friends can install it from a shared file.
+
+**Built:**
+- Theme: `settings.theme` (dark | light | system, default dark — the dark UI is the design), resolved once in the
+  root layout into a `SchemeContext` that `useColors()` reads; navigation theme, header, status bar and the Android
+  system bars follow. Light palette = design system §2.5 with AA inks (deep green buttons with white text, deeper
+  gold / violet / category inks; fills are alpha tints of the same inks; the adherence scale is unchanged). Cards
+  gain the soft light shadow. `userInterfaceStyle` is `automatic` so "System" can follow the phone.
+- Accessibility: `Txt` caps font scaling per role (display 1.3× … body 2×) so rings, tiles and rows never clip;
+  `useReducedMotion` turns off press-scale, ring fill and adherence-bar tweens (the breathing circle is the
+  exercise itself and keeps moving).
+- App lock: `settings.appLock {enabled, afterMin ∈ 0/1/5/15}`; `AppLockGate` is a Modal over the whole stack, prompts
+  on open and after the delay (AppState `background → active`, ignoring the transitions the prompt itself causes),
+  through `expo-local-authentication` with the device PIN as fallback. Phones without any screen lock cannot
+  enable it (Settings explains why) and an already-enabled lock steps aside rather than trapping the user. The gate
+  is purely visual: widgets and notification actions keep writing.
+- Export password: `src/data/backupCrypto.ts` — PBKDF2-SHA256 (200k) → AES-256-GCM via `@noble/*`, envelope
+  `{app, encrypted, envelope: 1, kdf, iterations, salt, cipher, iv, ciphertext, exportedAt}` with every parameter in
+  the file; Node cross-check test proves it opens with standard tooling (recipe in `docs/BUILD_ANDROID.md`).
+  Import inspects the file and asks for the password in a sheet; wrong password = "Wrong password, or the file is
+  damaged."; minimum 6 characters; passwords are NFKC-normalised.
+- Auto Backup: `BackupSync` writes `files/backup/snapshot.json` (temp file + atomic move) on start and on each
+  foreground/background change when the state moved and the last snapshot is > 1 h old; never for sample data;
+  removed when the user erases everything. `plugins/withBackupRules.js` writes `backup_rules.xml` +
+  `data_extraction_rules.xml` (include only `file:backup/`, `disableIfNoEncryptionCapabilities`) and the manifest
+  attributes. Onboarding reads the snapshot and offers "Welcome back → Restore it / Start fresh".
+- Release signing: `plugins/withReleaseSigning.js` adds a property-driven `signingConfigs.release`
+  (`DT_RELEASE_*` from `~/.gradle/gradle.properties`) with the debug keystore as fallback; the recipe, `apksigner
+  verify` and the uninstall-once caveat are in `docs/BUILD_ANDROID.md`. Play Store items stay on the list above.
+- Tests: 170 (backup crypto round-trip / tamper / cross-check / large base64, encrypted export + import, signing
+  plugin idempotence). Phone rows L1–L10 in `docs/DEVICE_CHECKLIST.md`.
 
 ---
 

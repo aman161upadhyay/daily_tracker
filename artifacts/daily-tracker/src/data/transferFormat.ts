@@ -11,6 +11,7 @@
  * informational fields, so a backup can be re-imported with `parseState`.
  */
 import type { TrackerState } from '@/src/state/types';
+import { decryptBackup, encryptBackup, isEncryptedBackup, type EncryptedBackup } from './backupCrypto';
 import { parseState, StorageError } from './store';
 
 export interface ExportFile extends TrackerState {
@@ -22,20 +23,41 @@ export function exportFileName(now = new Date()): string {
   return `daily-tracker-${now.toISOString().slice(0, 10)}.json`;
 }
 
-export function serializeExport(state: TrackerState, now = new Date()): string {
+/** The file text: plain JSON, or — with a password — the encrypted envelope around that JSON. */
+export function serializeExport(state: TrackerState, now = new Date(), password?: string): string {
   const file: ExportFile = { app: 'daily-tracker', exportedAt: now.toISOString(), ...state };
-  return JSON.stringify(file, null, 2);
+  const json = JSON.stringify(file, null, 2);
+  if (!password) return json;
+  return JSON.stringify(encryptBackup(json, password, { now }), null, 2);
 }
 
-/** Parse the text of a chosen file. Throws StorageError with a user-readable message. */
+export type InspectedExport = { kind: 'plain'; state: TrackerState } | { kind: 'encrypted'; file: EncryptedBackup };
+
+/** Look at a chosen file: a readable backup, or a locked one that needs its password. */
+export function inspectExport(text: string): InspectedExport {
+  const raw = parseJson(text);
+  if (isEncryptedBackup(raw)) return { kind: 'encrypted', file: raw };
+  return { kind: 'plain', state: parseState(raw) };
+}
+
+/** Open a password-protected backup. Throws StorageError on a wrong password or damaged file. */
+export function unlockExport(file: EncryptedBackup, password: string): TrackerState {
+  return parseState(parseJson(decryptBackup(file, password)));
+}
+
+/** Parse the text of a plain (unencrypted) backup. Throws StorageError with a user-readable message. */
 export function parseExport(text: string): TrackerState {
-  let raw: unknown;
+  const inspected = inspectExport(text);
+  if (inspected.kind === 'encrypted') throw new StorageError('This backup is password-protected.');
+  return inspected.state;
+}
+
+function parseJson(text: string): unknown {
   try {
-    raw = JSON.parse(text);
+    return JSON.parse(text);
   } catch {
     throw new StorageError('That file is not valid JSON.');
   }
-  return parseState(raw);
 }
 
 export function describeImport(state: TrackerState): string {

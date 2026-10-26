@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
-import Animated, { Easing, useAnimatedProps, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, useAnimatedProps, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 import Svg, { Circle, G } from 'react-native-svg';
 import { useColors } from '@/hooks/useColors';
 import { withAlpha } from '@/src/domain/color/oklch';
@@ -55,7 +55,8 @@ export function TodayRings({ values, size = 160, children }: { values: RingValue
   const r1 = (size - STROKE) / 2;
   const r2 = r1 - STROKE - GAP;
   const r3 = r2 - STROKE - GAP;
-  const animate = Platform.OS !== 'web';
+  const reduceMotion = useReducedMotion();
+  const animate = Platform.OS !== 'web' && !reduceMotion;
 
   return (
     <View style={{ width: size, height: size }} accessibilityRole="image" accessibilityLabel={`Rings: hydration ${Math.round(values.hydration * 100)} percent, movement ${Math.round(values.movement * 100)} percent, mind ${Math.round(values.mind * 100)} percent`}>
