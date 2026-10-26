@@ -70,7 +70,12 @@ function monthEndOf(day: string): string {
   return toDayString(year, month, last);
 }
 
-function periodBounds(cadence: Cadence, day: string): { start: string; end: string; length: number } {
+/** First day of the period (week or month) a day belongs to; the day itself for DAILY. */
+export function periodStartOf(cadence: Cadence, day: string): string {
+  return periodBounds(cadence, day).start;
+}
+
+export function periodBounds(cadence: Cadence, day: string): { start: string; end: string; length: number } {
   if (cadence === 'DAILY') return { start: day, end: day, length: 1 };
   if (cadence === 'WEEKLY') {
     const start = weekStartOf(day);

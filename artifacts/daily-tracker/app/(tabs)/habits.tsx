@@ -12,6 +12,7 @@ import { PressableScale } from '@/components/ui/PressableScale';
 import { Screen, ScreenHeader } from '@/components/ui/Screen';
 import { Sheet } from '@/components/ui/Sheet';
 import { Txt } from '@/components/ui/Txt';
+import { SampleDataChip } from '@/components/tracker/SampleDataChip';
 import { useColors } from '@/hooks/useColors';
 import type { Category, Habit } from '@/src/domain/models';
 import { CATEGORY_LABELS, CATEGORY_ORDER, PRESETS, type Preset } from '@/src/library/presets';
@@ -39,6 +40,7 @@ export default function HabitsScreen() {
   }, [views]);
 
   const addedIds = new Set(state.habits.filter((h) => !h.archived && h.presetId).map((h) => h.presetId));
+  const archived = state.habits.filter((h) => h.archived);
   const libraryGroups = CATEGORY_ORDER.map((k) => ({ key: k, items: PRESETS.filter((p) => p.category === k) })).filter((g) => g.items.length > 0);
 
   const openHabit = (id: string) => router.push({ pathname: '/habit/[id]', params: { id } });
@@ -46,6 +48,7 @@ export default function HabitsScreen() {
   return (
     <Screen>
       <ScreenHeader title="Habits" right={<IconButton Glyph={UI.Plus} label="New custom habit" onPress={() => setCustomOpen(true)} size={40} filled />} />
+      <SampleDataChip />
 
       {grouped.length === 0 ? (
         <Card>
@@ -139,6 +142,33 @@ export default function HabitsScreen() {
           </Card>
         </View>
       ))}
+
+      {archived.length > 0 ? (
+        <>
+          <SectionHeader title="Archived" />
+          <Txt role="footnote" tone="secondary" style={{ marginTop: -4, marginBottom: 4, paddingHorizontal: 4 }}>
+            History is kept. Restore brings a habit back with its streaks and chart.
+          </Txt>
+          <Card padded={false} style={{ paddingHorizontal: 16 }}>
+            {archived.map((h, i) => (
+              <View key={h.id} style={[styles.presetRow, i < archived.length - 1 ? { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.hairline } : null]}>
+                <PressableScale haptic={false} scaleTo={0.985} onPress={() => openHabit(h.id)} accessibilityRole="button" accessibilityLabel={`${h.name}, archived. Open`} style={styles.presetMain}>
+                  <IconTile icon={h.icon} color={c.textTertiary} size={40} />
+                  <View style={{ flex: 1 }}>
+                    <Txt role="title2" numberOfLines={1} tone="secondary">
+                      {h.name}
+                    </Txt>
+                    <Txt role="footnote" tone="tertiary" numberOfLines={1}>
+                      {CATEGORY_LABELS[h.category]}
+                    </Txt>
+                  </View>
+                </PressableScale>
+                <PillButton label="Restore" compact kind="ghost" onPress={() => actions.updateHabit(h.id, { archived: false })} accessibilityLabel={`Restore ${h.name}`} />
+              </View>
+            ))}
+          </Card>
+        </>
+      ) : null}
 
       <Sheet visible={!!preset} title={preset?.name ?? ''} onClose={() => setPreset(null)}>
         {preset ? (

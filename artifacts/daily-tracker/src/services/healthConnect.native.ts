@@ -21,7 +21,8 @@ export const HEALTH_CONNECT_SUPPORTED: boolean = Platform.OS === 'android' && !i
 
 const PROVIDER = 'com.google.android.apps.healthdata';
 const PAGE_SIZE = 500;
-const MAX_PAGES = 20;
+/** 20 000 records per type and read window; a read that needs more is reported, never silently cut short. */
+const MAX_PAGES = 40;
 
 function hc(): Hc {
   return require('react-native-health-connect') as Hc;
@@ -105,9 +106,10 @@ async function readAllPages<T extends BodyRecordType>(type: T, startTime: string
     const page = await api.readRecords(type, { timeRangeFilter: { operator: 'between', startTime, endTime }, pageSize: PAGE_SIZE, ascendingOrder: true, pageToken });
     records.push(...page.records);
     pageToken = page.pageToken;
-    if (!pageToken || page.records.length === 0) break;
+    if (!pageToken || page.records.length === 0) return records;
   }
-  return records;
+  // Merging a truncated read would make the missing records look deleted on the next pass.
+  throw new Error(`Too many ${type} records in one read (over ${MAX_PAGES * PAGE_SIZE}); shorten the window and try again.`);
 }
 
 function recordId(meta: { id?: string } | undefined, fallback: string): string {

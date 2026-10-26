@@ -35,8 +35,10 @@ export function autoTickActions(state: TrackerState, batch: BodyBatch, ctx: Comm
     for (const day of batch.steps) {
       const existing = state.entries.filter((e) => e.habitId === stepsHabit.id && e.day === day.day);
       if (existing.some((e) => e.source === 'MANUAL')) continue;
-      const autoTotal = existing.filter((e) => e.source === 'AUTO_HC').reduce((a, e) => a + e.value, 0);
-      if (autoTotal === day.steps && (day.steps > 0 || existing.length === 0)) continue;
+      const autoRows = existing.filter((e) => e.source !== 'MANUAL');
+      const autoTotal = autoRows.reduce((a, e) => a + e.value, 0);
+      const onlyHc = autoRows.every((e) => e.source === 'AUTO_HC');
+      if (onlyHc && autoTotal === day.steps && (day.steps > 0 || existing.length === 0)) continue;
       if (day.steps <= 0) {
         if (existing.length > 0) actions.push({ type: 'SET_AUTO_ENTRY', habitId: stepsHabit.id, day: day.day });
         continue;

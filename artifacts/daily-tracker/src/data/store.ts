@@ -10,6 +10,7 @@
 import { normalizeBody } from '@/src/domain/body/merge';
 import { DEFAULT_SETTINGS, type CycleDayLog, type Settings } from '@/src/domain/models';
 import type { TrackerState } from '@/src/state/types';
+import { sanitizeCycleReminders, sanitizePeriodHistory, sanitizeSettings, validateRecords, ValidationError } from './validate';
 
 export interface TrackerStore {
   /** Saved state, or null on a fresh install. */
@@ -30,9 +31,17 @@ export class StorageError extends Error {
   }
 }
 
-/** Fill in settings added after a state was saved, so new fields get defaults. */
+/** The data version this build writes; files from a newer version are refused (see parseState). */
+export const DATA_VERSION = 1;
+
+/**
+ * Fill in settings added after a state was saved, so new fields get defaults.
+ * Unknown keys and wrongly-typed values are dropped (a hand-edited or newer
+ * file never carries junk into the state or the database).
+ */
 export function normalizeSettings(raw: Partial<Settings> | undefined): Settings {
-  const base = raw ?? {};
+  const base = sanitizeSettings(raw);
+  const cycle: Partial<Settings['cycle']> = base.cycle ?? {};
   return {
     ...DEFAULT_SETTINGS,
     ...base,
@@ -43,23 +52,29 @@ export function normalizeSettings(raw: Partial<Settings> | undefined): Settings 
     appLock: { ...DEFAULT_SETTINGS.appLock, ...(base.appLock ?? {}) },
     cycle: {
       ...DEFAULT_SETTINGS.cycle,
-      ...(base.cycle ?? {}),
-      history: Array.isArray(base.cycle?.history) ? base.cycle.history : [],
-      reminders: Array.isArray(base.cycle?.reminders) ? base.cycle.reminders : DEFAULT_SETTINGS.cycle.reminders,
+      ...cycle,
+      history: sanitizePeriodHistory(cycle.history),
+      reminders: sanitizeCycleReminders(cycle.reminders) ?? DEFAULT_SETTINGS.cycle.reminders,
     },
   };
 }
 
-/** Validate the shape of a saved / imported state. Throws on anything unusable. */
+/**
+ * Validate the shape of a saved / imported state. Throws StorageError with a
+ * user-readable message on anything unusable: wrong app, a newer data version,
+ * a missing list, or a record without its required fields.
+ */
 export function parseState(raw: unknown): TrackerState {
-  if (!raw || typeof raw !== 'object') throw new StorageError('Not a Daily Tracker export.');
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new StorageError('Not a Daily Tracker export.');
   const s = raw as Partial<TrackerState>;
-  if (s.version !== 1) throw new StorageError(`Unsupported data version ${String(s.version)}.`);
+  if (typeof s.version !== 'number') throw new StorageError('Not a Daily Tracker export (no data version).');
+  if (s.version > DATA_VERSION) throw new StorageError(`This backup was made by a newer version of the app (data version ${s.version}). Update the app, then import it again.`);
+  if (s.version !== DATA_VERSION) throw new StorageError(`Unsupported data version ${String(s.version)}.`);
   const lists = ['habits', 'rules', 'policies', 'entries', 'water', 'snacks', 'mind'] as const;
   for (const key of lists) {
     if (!Array.isArray(s[key])) throw new StorageError(`Missing "${key}" list.`);
   }
-  return {
+  const state: TrackerState = {
     version: 1,
     habits: s.habits!,
     rules: s.rules!,
@@ -77,6 +92,13 @@ export function parseState(raw: unknown): TrackerState {
     ...(s.nudgeSnoozedUntil !== undefined ? { nudgeSnoozedUntil: s.nudgeSnoozedUntil } : {}),
     ...(s.nudgeSwap !== undefined ? { nudgeSwap: s.nudgeSwap } : {}),
   };
+  try {
+    validateRecords(state);
+  } catch (err) {
+    if (err instanceof ValidationError) throw new StorageError(`The file has data this version of the app cannot read (${err.message}). It may be damaged, or made by a newer version.`);
+    throw err;
+  }
+  return state;
 }
 
 /** Day logs from older files may lack the symptoms map. */

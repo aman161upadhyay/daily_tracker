@@ -140,11 +140,16 @@ export default function MindScreen() {
           ) : (
             <>
               <PillButton label={running ? 'Pause' : elapsedMs > 0 ? 'Resume' : 'Start'} Leading={running ? UI.Pause : UI.Play} color={c.cat.mind} onPress={() => setRunning((r) => !r)} style={{ flex: 1 }} />
-              {elapsedMs > 0 ? <PillButton label="Finish" kind="ghost" onPress={finishEarly} /> : null}
+              {elapsedMs > 0 ? <PillButton label={elapsedMs >= 60_000 ? `Finish · log ${Math.max(1, Math.round(elapsedMs / 60_000))} min` : 'Finish'} kind="ghost" onPress={finishEarly} /> : null}
               {elapsedMs > 0 ? <IconButton Glyph={UI.Undo} label="Reset timer" onPress={() => reset()} size={48} color={c.text} /> : null}
             </>
           )}
         </Row>
+        {!done && elapsedMs > 0 && elapsedMs < 60_000 ? (
+          <Txt role="caption" tone="tertiary" align="center" style={{ marginTop: 10 }}>
+            Sessions under a minute are not logged — finishing now keeps today as it was.
+          </Txt>
+        ) : null}
       </Card>
 
       <Card>

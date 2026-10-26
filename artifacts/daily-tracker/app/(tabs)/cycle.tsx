@@ -13,6 +13,7 @@ import { Divider, Dot, IconTile, PillButton, Row, SectionHeader } from '@/compon
 import { Screen, ScreenHeader } from '@/components/ui/Screen';
 import { Sheet } from '@/components/ui/Sheet';
 import { Txt } from '@/components/ui/Txt';
+import { SampleDataChip } from '@/components/tracker/SampleDataChip';
 import { useColors } from '@/hooks/useColors';
 import { withAlpha } from '@/src/domain/color/oklch';
 import { cycleAlerts, NOT_CONTRACEPTION, outlierSuggestions } from '@/src/domain/cycle/alerts';
@@ -86,6 +87,7 @@ export default function CycleScreen() {
   return (
     <Screen>
       <ScreenHeader title="Cycle" subtitle={formatDayLong(calendarToday)} />
+      <SampleDataChip />
 
       {prediction ? (
         <Card featured={offer.kind === 'end' && offer.prominent}>

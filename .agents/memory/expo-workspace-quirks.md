@@ -122,3 +122,14 @@ data instead" on onboarding is the cheapest path (it also accepts `window.confir
   `rm -rf android`. `withAppBuildGradle` text edits must be idempotent (prebuild may run mods twice).
 - `expo-file-system` SDK 57 new API: `File.modificationTime` (ms | null), `file.move(dest, { overwrite: true })`
   returns a Promise, `create({ overwrite })` / `write()` are sync.
+
+## pnpm: stale hoisted `@types/react` after changing the workspace overrides (2026-10-26)
+After editing `pnpm-workspace.yaml` (removed the darwin/win32 `'-'` binary overrides) and regenerating the lockfile,
+`pnpm install --frozen-lockfile` left `node_modules/.pnpm/node_modules/@types/` without a `react` symlink although
+`.modules.yaml` listed `@types/react@19.2.18` as hoisted → tsc failed with "Svg cannot be used as a JSX component"
+(react-native-svg's d.ts could not resolve React types). Deleting `.pnpm/node_modules` alone did not help (pnpm
+skipped relinking because `.modules.yaml` said it was current).
+**Fix:** `rm node_modules/.modules.yaml && pnpm install --frozen-lockfile` — relinks everything from the store in ~5 s.
+**How to apply:** any time a hoisted version changes (overrides, catalog bump) and tsc suddenly loses React types,
+check `ls node_modules/.pnpm/node_modules/@types/` before touching tsconfig or adding `.npmrc` hoist patterns.
+Hermes compiler path for bundle checks: `node_modules/.pnpm/hermes-compiler@*/node_modules/hermes-compiler/hermesc/linux64-bin/hermesc`.

@@ -9,7 +9,7 @@ import { gcm } from '@noble/ciphers/aes.js';
 import { bytesToUtf8, utf8ToBytes } from '@noble/ciphers/utils.js';
 import { pbkdf2 } from '@noble/hashes/pbkdf2.js';
 import { sha256 } from '@noble/hashes/sha2.js';
-import { randomBytes } from '@noble/hashes/utils.js';
+import { secureRandomBytes } from './secureRandom';
 import { StorageError } from './store';
 
 export interface EncryptedBackup {
@@ -31,7 +31,14 @@ export interface EncryptedBackup {
 
 /** OWASP suggests 600k for SHA-256; 200k keeps a mid-range phone under ~3 s in pure JS. */
 export const PBKDF2_ITERATIONS = 200_000;
+/** A file asking for more than this is refused: ~30 s of hashing on a phone is a denial of service, not security. */
+export const MAX_PBKDF2_ITERATIONS = 2_000_000;
 export const MIN_PASSWORD_LENGTH = 6;
+/** Largest ciphertext we will decrypt in memory (base64 characters, ≈ 48 MB of data). */
+export const MAX_CIPHERTEXT_CHARS = 64 * 1024 * 1024;
+const SALT_BYTES = 16;
+const IV_BYTES = 12;
+const GCM_TAG_BYTES = 16;
 
 export interface EncryptOptions {
   iterations?: number;
@@ -43,8 +50,8 @@ export interface EncryptOptions {
 export function encryptBackup(plaintext: string, password: string, options: EncryptOptions = {}): EncryptedBackup {
   if (password.length < MIN_PASSWORD_LENGTH) throw new StorageError(`Use at least ${MIN_PASSWORD_LENGTH} characters.`);
   const iterations = options.iterations ?? PBKDF2_ITERATIONS;
-  const salt = options.salt ?? randomBytes(16);
-  const iv = options.iv ?? randomBytes(12);
+  const salt = options.salt ?? secureRandomBytes(16);
+  const iv = options.iv ?? secureRandomBytes(12);
   const key = deriveKey(password, salt, iterations);
   const ciphertext = gcm(key, iv).encrypt(utf8ToBytes(plaintext));
   return {
@@ -63,9 +70,10 @@ export function encryptBackup(plaintext: string, password: string, options: Encr
 
 /** Throws StorageError('Wrong password…') when the tag does not verify (wrong password or a damaged file). */
 export function decryptBackup(file: EncryptedBackup, password: string): string {
-  const key = deriveKey(password, fromBase64(file.salt), file.iterations);
+  const { salt, iv, ciphertext } = checkEnvelope(file);
+  const key = deriveKey(password, salt, file.iterations);
   try {
-    return bytesToUtf8(gcm(key, fromBase64(file.iv)).decrypt(fromBase64(file.ciphertext)));
+    return bytesToUtf8(gcm(key, iv).decrypt(ciphertext));
   } catch {
     throw new StorageError('Wrong password, or the file is damaged.');
   }
@@ -82,11 +90,30 @@ export function isEncryptedBackup(raw: unknown): raw is EncryptedBackup {
     f.kdf === 'PBKDF2-SHA256' &&
     f.cipher === 'AES-256-GCM' &&
     typeof f.iterations === 'number' &&
-    f.iterations >= 1000 &&
+    Number.isInteger(f.iterations) &&
     typeof f.salt === 'string' &&
     typeof f.iv === 'string' &&
-    typeof f.ciphertext === 'string'
+    typeof f.ciphertext === 'string' &&
+    (f.exportedAt === undefined || typeof f.exportedAt === 'string')
   );
+}
+
+/**
+ * Bounds and decodes the envelope before any key derivation runs: the
+ * iteration count, salt / IV lengths and ciphertext size all come from the
+ * file, and a hostile file must not be able to hang the app or exhaust memory.
+ * Throws StorageError with a user-readable message.
+ */
+export function checkEnvelope(file: EncryptedBackup): { salt: Uint8Array; iv: Uint8Array; ciphertext: Uint8Array } {
+  if (!Number.isInteger(file.iterations) || file.iterations < 1000 || file.iterations > MAX_PBKDF2_ITERATIONS) {
+    throw new StorageError('The file is damaged (unusual password settings).');
+  }
+  if (file.ciphertext.length > MAX_CIPHERTEXT_CHARS) throw new StorageError('The file is too large to open on this phone.');
+  const salt = fromBase64(file.salt);
+  const iv = fromBase64(file.iv);
+  const ciphertext = fromBase64(file.ciphertext);
+  if (salt.length !== SALT_BYTES || iv.length !== IV_BYTES || ciphertext.length < GCM_TAG_BYTES) throw new StorageError('The file is damaged (bad header).');
+  return { salt, iv, ciphertext };
 }
 
 function deriveKey(password: string, salt: Uint8Array, iterations: number): Uint8Array {

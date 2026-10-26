@@ -13,8 +13,9 @@
  *
  * When the properties are missing (CI, a fresh laptop) the release build type
  * falls back to the debug keystore exactly as Expo's template does, so
- * `assembleRelease` still works — it just produces an APK you should not ship.
- * Full recipe: docs/BUILD_ANDROID.md.
+ * `assembleRelease` still works — but that keystore is the public one every
+ * Expo project ships with, so the build prints a warning and such an APK must
+ * stay on your own phone. Full recipe: docs/BUILD_ANDROID.md.
  */
 const { withAppBuildGradle } = require('expo/config-plugins');
 
@@ -28,6 +29,8 @@ const RELEASE_CONFIG = `signingConfigs {
                 storePassword DT_RELEASE_STORE_PASSWORD
                 keyAlias DT_RELEASE_KEY_ALIAS
                 keyPassword DT_RELEASE_KEY_PASSWORD
+            } else {
+                logger.warn("WARNING: ${PROP} is not set, so release builds are signed with Expo's PUBLIC debug keystore. Fine for your own phone; never share such an APK. See docs/BUILD_ANDROID.md 'Signing'.")
             }
         }`;
 

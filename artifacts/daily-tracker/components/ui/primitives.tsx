@@ -63,7 +63,7 @@ export function SectionHeader({ title, action, onAction, style }: { title: strin
     <View style={[styles.sectionHeader, style]}>
       <Txt role="title1">{title}</Txt>
       {action && onAction ? (
-        <PressableScale haptic={false} onPress={onAction} accessibilityRole="button" accessibilityLabel={action} style={styles.sectionAction}>
+        <PressableScale haptic={false} onPress={onAction} accessibilityRole="button" accessibilityLabel={action} hitSlop={8} style={styles.sectionAction}>
           <Txt role="callout" tone="green">
             {action}
           </Txt>
@@ -107,7 +107,7 @@ export function Chip({
   );
   if (!onPress) return content;
   return (
-    <PressableScale onPress={onPress} accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={accessibilityLabel ?? label}>
+    <PressableScale onPress={onPress} accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={accessibilityLabel ?? label} hitSlop={6}>
       {content}
     </PressableScale>
   );
@@ -146,6 +146,7 @@ export function PillButton({
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
+      hitSlop={compact ? 4 : 0}
       style={[styles.pill, compact ? styles.pillCompact : null, { backgroundColor: bg, borderColor: kind === 'ghost' ? c.hairline : 'transparent' }, style]}
     >
       {Leading ? <Leading size={18} color={fg} weight="bold" /> : null}
@@ -183,7 +184,8 @@ export function IconButton({
       haptic={haptic}
       accessibilityRole="button"
       accessibilityLabel={label}
-      hitSlop={6}
+      // Touch target of at least 48 dp whatever the drawn size (Material / WCAG 2.5.8).
+      hitSlop={Math.max(6, Math.ceil((48 - size) / 2))}
       style={{
         width: size,
         height: size,

@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
-import { Alert, Platform, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { AmountSheet } from '@/components/tracker/AmountSheet';
 import { HabitRow } from '@/components/tracker/HabitRow';
 import { HighlightCard } from '@/components/tracker/HighlightCard';
 import { NudgeCard } from '@/components/tracker/NudgeCard';
 import { QuickLogSheet } from '@/components/tracker/QuickLogSheet';
+import { SampleDataChip } from '@/components/tracker/SampleDataChip';
 import { SummaryCard } from '@/components/tracker/SummaryCard';
 import { TodayRings } from '@/components/tracker/TodayRings';
 import { Card } from '@/components/ui/Card';
 import { UI } from '@/components/ui/icons';
-import { Chip, Dot, IconButton, PillButton, Row, SectionHeader } from '@/components/ui/primitives';
+import { Dot, IconButton, PillButton, Row, SectionHeader } from '@/components/ui/primitives';
 import { Avatar, Screen, ScreenHeader } from '@/components/ui/Screen';
 import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
@@ -60,18 +61,6 @@ export default function TodayScreen() {
       ? `of ${goal.value} ${goal.unit} · on pace`
       : `of ${goal.value} ${goal.unit} · ${formatVolume(water.catchUpMl, units).value} ${units} would catch you up`;
 
-  const confirmFresh = () => {
-    const go = () => actions.startFresh();
-    if (Platform.OS === 'web') {
-      go();
-      return;
-    }
-    Alert.alert('Start fresh?', 'This removes the sample history and keeps your settings.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Start fresh', style: 'destructive', onPress: go },
-    ]);
-  };
-
   const openSettings = () => router.push('/settings');
 
   return (
@@ -87,12 +76,7 @@ export default function TodayScreen() {
         }
       />
 
-      {s.sampleData ? (
-        <Row gap={8} style={{ marginBottom: 4 }}>
-          <Chip label="Sample data" color={c.gold} selected />
-          <Chip label="Start fresh" onPress={confirmFresh} />
-        </Row>
-      ) : null}
+      <SampleDataChip />
 
       <Card featured>
         <Row gap={16} style={{ alignItems: 'center' }}>
@@ -158,9 +142,7 @@ export default function TodayScreen() {
         timestamp={lastSnack ? formatClock(minutesOfDay(lastSnack.at, zone)) : undefined}
         chart={{ values: snackSeries(state, today, 7), goal: summary.snacksTarget }}
         onPress={() => router.push('/habits')}
-        footer={
-          shield ? <PillButton label="Sugar Shield — squats before something sweet" Leading={UI.Cookie} color={c.gold} kind="ghost" onPress={() => router.push('/shield')} /> : undefined
-        }
+        footer={<PillButton label={shield ? 'Sugar Shield — squats before something sweet' : 'Something sweet coming? Start the Sugar Shield'} Leading={UI.Cookie} color={c.gold} kind="ghost" onPress={() => router.push('/shield')} />}
       />
 
       <SummaryCard

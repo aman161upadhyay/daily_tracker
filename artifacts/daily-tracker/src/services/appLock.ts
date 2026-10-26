@@ -7,6 +7,12 @@
 
 export interface LockCapability {
   available: boolean;
+  /**
+   * 'ready': the phone can authenticate. 'none': no screen lock is set up, so
+   * there is nothing to authenticate against (the gate steps aside). 'error':
+   * the status could not be read — treat as locked and let the user retry.
+   */
+  status: 'ready' | 'none' | 'error';
   /** Why the lock cannot be turned on, for the Settings hint. */
   reason?: string;
   /** A fingerprint / face is enrolled (otherwise the screen-lock PIN/pattern is used). */
@@ -14,10 +20,13 @@ export interface LockCapability {
 }
 
 export async function lockCapability(): Promise<LockCapability> {
-  return { available: false, reason: 'App lock uses the phone’s screen lock; it is not available in the browser preview.', biometric: false };
+  return { available: false, status: 'none', reason: 'App lock uses the phone’s screen lock; it is not available in the browser preview.', biometric: false };
 }
 
 /** Resolves true when the user proved it is them. */
 export async function authenticate(): Promise<boolean> {
   return true;
 }
+
+/** Hide the app's content from screenshots and the recent-apps switcher while the lock is on. */
+export async function setScreenProtection(_enabled: boolean): Promise<void> {}

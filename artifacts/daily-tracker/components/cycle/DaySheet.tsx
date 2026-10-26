@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Platform, StyleSheet, TextInput, View } from 'react-native';
 import { Sheet } from '@/components/ui/Sheet';
 import { Chip, Divider, PillButton, Row } from '@/components/ui/primitives';
 import { Txt } from '@/components/ui/Txt';
@@ -49,10 +49,26 @@ export function DaySheet({ day, today, timeline, birthControl, log, onClose, onS
   const phaseLabel = info ? PHASE_LABELS[displayPhase(info.phase, birthControl)] : undefined;
   const subtitle = [phaseLabel ? `${phaseLabel}${info?.predicted ? ' (predicted)' : ''}` : null, info ? `cycle day ${info.cycleDay}` : null].filter(Boolean).join(' · ');
 
-  const close = () => {
+  const saveDraft = () => {
     const changed = JSON.stringify(draft) !== JSON.stringify(log ?? EMPTY(day));
     if (changed || (log && isEmptyLog(draft))) onSave(draft);
+  };
+  const close = () => {
+    saveDraft();
     onClose();
+  };
+  // Period buttons keep whatever flow / mood / symptoms were already tapped: they save the draft first.
+  const removePeriod = (start: string) => {
+    const go = () => {
+      saveDraft();
+      onRemovePeriod(start);
+      onClose();
+    };
+    if (Platform.OS === 'web') return go();
+    Alert.alert('Remove this period?', `The period that started ${formatDayShort(start)} is taken out of your history. Day notes and symptoms stay.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: go },
+    ]);
   };
 
   const setSymptom = (key: string) => {
@@ -81,10 +97,7 @@ export function DaySheet({ day, today, timeline, birthControl, log, onClose, onS
               label="Remove this period"
               kind="danger"
               compact
-              onPress={() => {
-                onRemovePeriod(period.start);
-                onClose();
-              }}
+              onPress={() => removePeriod(period.start)}
             />
           ) : period ? (
             <Txt role="footnote" tone="secondary">
@@ -98,7 +111,7 @@ export function DaySheet({ day, today, timeline, birthControl, log, onClose, onS
               onPress={() => {
                 const reason = onPeriodStart(day);
                 if (reason) setError(reason);
-                else onClose();
+                else close();
               }}
             />
           )}
@@ -109,7 +122,7 @@ export function DaySheet({ day, today, timeline, birthControl, log, onClose, onS
               compact
               onPress={() => {
                 onPeriodEnd(day);
-                onClose();
+                close();
               }}
             />
           ) : null}

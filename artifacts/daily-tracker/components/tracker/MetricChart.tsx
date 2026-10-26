@@ -8,12 +8,13 @@ import { Txt } from '../ui/Txt';
 
 export type Range = 'D' | 'W' | 'M' | '6M' | 'Y';
 
+/** Labels say what the chart shows: 'D' is the last 7 days, 'W' the last 2 weeks, 'M' the last 30 days. */
 export const RANGE_OPTIONS: { value: Range; label: string }[] = [
-  { value: 'D', label: 'D' },
-  { value: 'W', label: 'W' },
-  { value: 'M', label: 'M' },
+  { value: 'D', label: '7D' },
+  { value: 'W', label: '2W' },
+  { value: 'M', label: '1M' },
   { value: '6M', label: '6M' },
-  { value: 'Y', label: 'Y' },
+  { value: 'Y', label: '1Y' },
 ];
 
 export interface MetricChartProps {
@@ -45,6 +46,13 @@ export function MetricChart({ values, labels, color, goal, kind = 'bars', height
   const fmt = (v: number) => (format ? format(v) : `${formatNumber(v)}${unit ? ` ${unit}` : ''}`);
 
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
+
+  // Screen readers get the numbers the picture shows: the SVG itself is silent.
+  const latest = values.length > 0 ? values[values.length - 1]! : 0;
+  const summary =
+    present.length === 0
+      ? `Chart: nothing recorded in this range${labels.length > 0 ? `, ${labels[0]} to ${labels[labels.length - 1]}` : ''}.`
+      : `Chart, ${labels.length > 0 ? `${labels[0]} to ${labels[labels.length - 1]}` : `${n} ${kind === 'line' ? 'points' : 'bars'}`}: latest ${fmt(latest)}, highest ${fmt(Math.max(...present))}, ${present.length} of ${n} ${kind === 'line' ? 'points' : 'days'} recorded${goal !== undefined ? `, goal ${fmt(goal)}` : ''}.`;
   const gap = n > 40 ? 1 : n > 14 ? 2 : 6;
   const barW = width > 0 ? Math.max(2, (width - gap * (n - 1)) / n) : 0;
 
@@ -58,7 +66,7 @@ export function MetricChart({ values, labels, color, goal, kind = 'bars', height
     .join(' ');
 
   return (
-    <View>
+    <View accessible accessibilityRole="image" accessibilityLabel={summary}>
       <View style={styles.scale}>
         <Txt role="caption" tone="tertiary">
           {goal !== undefined ? `Goal ${fmt(goal)}` : baseline !== undefined && present.length > 0 ? `Min ${fmt(Math.min(...present))}` : ''}

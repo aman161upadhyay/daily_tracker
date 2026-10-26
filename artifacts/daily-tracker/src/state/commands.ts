@@ -7,7 +7,7 @@ import type { EntrySource, Habit, MindKind, NudgeEvent, NudgeEventKind, SnackTri
 import { SNACK_LABELS } from '@/src/domain/models';
 import type { NudgeActionKind } from '@/src/domain/nudges/planner';
 import { SNOOZE_MINUTES } from '@/src/domain/nudges/planner';
-import { addDays } from '@/src/domain/time/trackingDay';
+import { addDays, trackingDayOf } from '@/src/domain/time/trackingDay';
 import type { Action } from './reducer';
 import { habitView } from './selectors';
 import type { TrackerState } from './types';
@@ -61,10 +61,14 @@ export function completeFromNudge(
     const snackTrigger: SnackTrigger = habit.presetId === 'sugar-shield' ? 'SUGAR_SHIELD' : trigger;
     return [{ type: 'LOG_SNACK', snack: { id: ctx.newId(), at, zone, day, type: habit.snackType, reps: meta.defaultReps, seconds: meta.defaultSeconds, trigger: snackTrigger } }];
   }
+  // Steps come from the phone's counter (Health Connect); there is no "natural unit" to log by hand.
+  if (habit.presetId === 'steps') return [];
   const view = habitView(state, habit, day);
-  if (view.todayRatio >= 1) return [];
+  // Today's own value against the per-day target — not the period ratio: for a weekly habit the
+  // week can be "done" while today is not, and a second press must never undo the first.
+  if (view.todayValue >= view.target) return [];
   if (habit.type === 'YES_NO') {
-    return [{ type: 'TOGGLE_ENTRY', entry: { id: ctx.newId(), habitId: habit.id, day, at, zone, value: 1, source } }];
+    return [{ type: 'ADD_ENTRY', entry: { id: ctx.newId(), habitId: habit.id, day, at, zone, value: 1, source } }];
   }
   const remaining = Math.max(1, Math.round(view.target - view.todayValue));
   if (habit.mindKind) {
@@ -105,8 +109,11 @@ export function nudgeResponseActions(state: TrackerState, payload: NudgePayload,
     if (!m) return out;
     const already = state.mind.some((x) => x.kind === m.kind && Math.abs(x.startAt - m.startAt) < 2 * 60_000);
     if (!already) {
+      // The session belongs to the day it ended on, not the day the bell was tapped (it may be
+      // acknowledged the next morning).
       const endAt = m.startAt + m.minutes * 60_000;
-      out.push({ type: 'LOG_MIND', session: { id: ctx.newId(), startAt: m.startAt, endAt, zone: ctx.zone, day: ctx.today, kind: m.kind, minutes: m.minutes } });
+      const day = trackingDayOf(endAt, ctx.zone, state.settings.dayBoundaryHour);
+      out.push({ type: 'LOG_MIND', session: { id: ctx.newId(), startAt: m.startAt, endAt, zone: ctx.zone, day, kind: m.kind, minutes: m.minutes } });
     }
     return out;
   }

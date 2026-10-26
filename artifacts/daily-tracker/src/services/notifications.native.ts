@@ -260,14 +260,51 @@ export async function consumeLaunchResponse(): Promise<NudgeResponse | null> {
   return toResponse(last);
 }
 
-/** Remember that a response was applied; returns false when it was already handled. */
+// The handled-key ledger is read-modify-write; one queue per runtime keeps two
+// responses arriving together (a button press plus the launch response) from
+// both claiming the same key.
+let handledQueue: Promise<unknown> = Promise.resolve();
+
+function withHandledLedger<T>(job: (keys: string[]) => Promise<T> | T): Promise<T> {
+  // `handledQueue` never rejects (see below), so a plain `then` serializes correctly.
+  const run = handledQueue.then(async () => {
+    const raw = await AsyncStorage.getItem(HANDLED_KEY);
+    let keys: string[] = [];
+    try {
+      keys = raw ? (JSON.parse(raw) as string[]) : [];
+    } catch {
+      keys = [];
+    }
+    if (!Array.isArray(keys)) keys = [];
+    const before = JSON.stringify(keys);
+    const out = await job(keys);
+    const after = JSON.stringify(keys.slice(-50));
+    if (after !== before) await AsyncStorage.setItem(HANDLED_KEY, after);
+    return out;
+  });
+  handledQueue = run.catch(() => undefined);
+  return run;
+}
+
+/**
+ * Claim a response before applying it; returns false when it was already
+ * claimed (the same press can reach the headless task and the foreground
+ * listener). A claim whose handling then fails must be released with
+ * `unmarkHandled`, otherwise the press is lost for good.
+ */
 export async function markHandled(key: string): Promise<boolean> {
-  const raw = await AsyncStorage.getItem(HANDLED_KEY);
-  const keys: string[] = raw ? (JSON.parse(raw) as string[]) : [];
-  if (keys.includes(key)) return false;
-  keys.push(key);
-  await AsyncStorage.setItem(HANDLED_KEY, JSON.stringify(keys.slice(-50)));
-  return true;
+  return withHandledLedger((keys) => {
+    if (keys.includes(key)) return false;
+    keys.push(key);
+    return true;
+  });
+}
+
+export async function unmarkHandled(key: string): Promise<void> {
+  await withHandledLedger((keys) => {
+    const i = keys.indexOf(key);
+    if (i >= 0) keys.splice(i, 1);
+  });
 }
 
 export async function scheduleMindEnd(endAtMs: number, minutes: number, kind: MindKind): Promise<void> {

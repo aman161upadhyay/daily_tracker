@@ -259,7 +259,9 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
     }
 
     case 'SET_AUTO_ENTRY': {
-      const rest = state.entries.filter((x) => !(x.habitId === action.habitId && x.day === action.day && x.source === 'AUTO_HC'));
+      // Health Connect owns the day's automatic total: every non-manual row for that day goes, so a
+      // widget or notification write can never be summed with the phone's own count.
+      const rest = state.entries.filter((x) => !(x.habitId === action.habitId && x.day === action.day && x.source !== 'MANUAL'));
       const entries = action.entry ? [...rest, action.entry] : rest;
       return entries.length === state.entries.length && !action.entry ? state : { ...state, entries };
     }

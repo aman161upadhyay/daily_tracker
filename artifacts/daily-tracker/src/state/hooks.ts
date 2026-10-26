@@ -13,9 +13,14 @@ export function useLiveNudge() {
   return useMemo(() => liveNudge(state, today, nowMs, zone), [state, today, nowMs, zone]);
 }
 
+/** Active habits for the Today list: pinned ones first, otherwise in library order. */
 export function useHabitViews(): HabitView[] {
   const { state, today } = useTracker();
-  return useMemo(() => activeHabits(state).map((h) => habitView(state, h, today)), [state, today]);
+  return useMemo(() => {
+    const active = activeHabits(state);
+    const ordered = [...active.filter((h) => h.pinned), ...active.filter((h) => !h.pinned)];
+    return ordered.map((h) => habitView(state, h, today));
+  }, [state, today]);
 }
 
 export function useHabitView(habit: Habit | undefined): HabitView | undefined {

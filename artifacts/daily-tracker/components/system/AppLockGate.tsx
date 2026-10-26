@@ -5,16 +5,23 @@ import { UI } from '@/components/ui/icons';
 import { IconTile, PillButton } from '@/components/ui/primitives';
 import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
-import { authenticate, lockCapability } from '@/src/services/appLock';
+import { authenticate, lockCapability, setScreenProtection } from '@/src/services/appLock';
 import { useTracker } from '@/src/state/TrackerProvider';
 
 /**
  * Covers the app with a lock screen on a cold start and after it has been in
- * the background for `settings.appLock.afterMin` minutes. The gate is purely
- * visual: widgets and notification buttons keep logging while the app is
- * locked (one-tap water is the point of the widget). A phone without any
- * screen lock cannot authenticate, so the gate steps aside instead of
- * trapping the user — the Settings row explains why the lock is off.
+ * the background for `settings.appLock.afterMin` minutes ("immediately" locks
+ * the moment the app leaves the screen). The gate is purely visual: widgets
+ * and notification buttons keep logging while the app is locked (one-tap
+ * water is the point of the widget).
+ *
+ * A phone with no screen lock at all cannot authenticate, so the gate steps
+ * aside instead of trapping the user — the Settings row explains why the lock
+ * is off. A phone whose lock status merely could not be read stays locked and
+ * offers a retry: "could not check" is not "no lock".
+ *
+ * While the lock is on, the window is also marked secure (no screenshots, a
+ * blank recent-apps card), see services/appLock.
  */
 export function AppLockGate() {
   const { state } = useTracker();
@@ -23,6 +30,7 @@ export function AppLockGate() {
   const insets = useSafeAreaInsets();
   const [locked, setLocked] = useState(enabled);
   const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
   const backgroundedAt = useRef<number | null>(null);
   const authenticating = useRef(false);
 
@@ -32,16 +40,26 @@ export function AppLockGate() {
     setBusy(true);
     try {
       const capability = await lockCapability();
-      if (!capability.available) {
+      if (capability.status === 'none') {
         setLocked(false);
         return;
       }
+      if (capability.status === 'error') {
+        setProblem(capability.reason ?? 'The screen lock could not be checked.');
+        return;
+      }
+      setProblem(null);
       if (await authenticate()) setLocked(false);
     } finally {
       authenticating.current = false;
       setBusy(false);
     }
   }, []);
+
+  // Screenshot / app-switcher protection follows the setting.
+  useEffect(() => {
+    void setScreenProtection(enabled);
+  }, [enabled]);
 
   // Re-lock after the configured time away; ignore the transitions the biometric prompt itself causes.
   useEffect(() => {
@@ -53,6 +71,7 @@ export function AppLockGate() {
       if (authenticating.current) return;
       if (next === 'background') {
         backgroundedAt.current = Date.now();
+        if (afterMin === 0) setLocked(true);
       } else if (next === 'active' && backgroundedAt.current !== null) {
         const away = Date.now() - backgroundedAt.current;
         backgroundedAt.current = null;
@@ -63,7 +82,8 @@ export function AppLockGate() {
     return () => sub.remove();
   }, [enabled, afterMin]);
 
-  // Prompt as soon as the lock screen appears.
+  // Prompt as soon as the lock screen appears. Not again on every foreground: the system prompt
+  // itself toggles the app state, and a cancelled prompt must not re-open immediately.
   useEffect(() => {
     if (locked) void unlock();
   }, [locked, unlock]);
@@ -81,8 +101,13 @@ export function AppLockGate() {
           <Txt role="body" tone="secondary" align="center" style={{ marginTop: 6 }}>
             Locked. Widgets and reminders keep working.
           </Txt>
+          {problem ? (
+            <Txt role="footnote" tone="danger" align="center" style={{ marginTop: 16 }}>
+              {`Could not check the phone’s screen lock: ${problem}`}
+            </Txt>
+          ) : null}
         </View>
-        <PillButton label={busy ? 'Unlocking…' : 'Unlock'} Leading={UI.Fingerprint} onPress={() => void unlock()} disabled={busy} style={{ alignSelf: 'stretch', marginHorizontal: 32 }} />
+        <PillButton label={busy ? 'Unlocking…' : problem ? 'Try again' : 'Unlock'} Leading={UI.Fingerprint} onPress={() => void unlock()} disabled={busy} style={{ alignSelf: 'stretch', marginHorizontal: 32 }} />
       </View>
     </Modal>
   );

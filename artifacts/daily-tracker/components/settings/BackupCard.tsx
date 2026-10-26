@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, TextInput, View } from 'react-native';
+import { Platform, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { Card } from '@/components/ui/Card';
 import { UI } from '@/components/ui/icons';
 import { Divider, PillButton, Row } from '@/components/ui/primitives';
@@ -72,7 +72,7 @@ export function BackupCard({ confirm }: { confirm: Confirm }) {
 
   return (
     <Card>
-      <Txt role="body">{s.sampleData ? 'You are looking at sample data.' : 'Everything is stored on this phone only. Export a backup before switching phones or reinstalling.'}</Txt>
+      <Txt role="body">{s.sampleData ? 'You are looking at sample data.' : 'Your data lives on this phone. Export a backup before switching phones or reinstalling.'}</Txt>
       {storageError ? (
         <Txt role="footnote" color={c.danger} style={{ marginTop: 8 }}>
           Saving is failing: {storageError}
@@ -87,6 +87,22 @@ export function BackupCard({ confirm }: { confirm: Confirm }) {
           {transfer.text}
         </Txt>
       ) : null}
+      {Platform.OS === 'android' ? (
+        <>
+          <Divider />
+          <Row style={{ justifyContent: 'space-between', paddingTop: 12 }}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Txt role="title2">Android phone backup</Txt>
+              <Txt role="footnote" tone="secondary">
+                {s.cloudBackup
+                  ? 'If phone backup is on, Android keeps a copy with your Google account so a new phone restores it — only encrypted with your screen lock (Android 9 or newer). Turn off to keep everything on this phone only.'
+                  : 'Off: nothing leaves this phone unless you export a file. Erasing the app or losing the phone loses the data.'}
+              </Txt>
+            </View>
+            <Switch value={s.cloudBackup} onValueChange={(cloudBackup) => actions.updateSettings({ cloudBackup })} trackColor={{ false: c.hairline, true: c.green }} thumbColor={c.text} accessibilityLabel="Android phone backup" />
+          </Row>
+        </>
+      ) : null}
       <Divider />
       <Row gap={8} style={{ marginTop: 12, flexWrap: 'wrap' }}>
         {s.sampleData ? (
@@ -94,7 +110,7 @@ export function BackupCard({ confirm }: { confirm: Confirm }) {
         ) : (
           <>
             <PillButton label="Load sample data" kind="ghost" onPress={() => confirm('Replace your data?', 'This replaces everything you logged with sample history.', 'Replace', actions.loadSample)} />
-            <PillButton label="Erase everything" kind="danger" Leading={UI.Trash} onPress={() => confirm('Erase everything?', 'All habits and logs on this phone are deleted. Settings are kept.', 'Erase', actions.startFresh)} />
+            <PillButton label="Erase everything" kind="danger" Leading={UI.Trash} onPress={() => confirm('Erase everything?', 'Every log and habit on this phone is deleted, along with the phone-backup copy. Your settings and the Water habit stay.', 'Erase', actions.startFresh)} />
           </>
         )}
       </Row>
@@ -198,7 +214,7 @@ function UnlockSheet({ file, onClose, onUnlocked }: { file: EncryptedBackup | nu
   return (
     <Sheet visible={!!file} title="Backup is password-protected" onClose={close}>
       <Txt role="footnote" tone="secondary" style={{ marginBottom: 12 }}>
-        {file ? `Exported ${file.exportedAt.slice(0, 10)}. Enter the password it was saved with.` : ''}
+        {file ? `${typeof file.exportedAt === 'string' && file.exportedAt.length >= 10 ? `Exported ${file.exportedAt.slice(0, 10)}. ` : ''}Enter the password it was saved with.` : ''}
       </Txt>
       <PasswordField value={password} onChange={setPassword} placeholder="Password" onSubmit={unlock} />
       {error ? (

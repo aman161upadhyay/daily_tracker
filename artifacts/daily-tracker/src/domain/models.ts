@@ -264,6 +264,12 @@ export interface Settings {
   theme: ThemePreference;
   /** Biometric / screen-lock gate on open and after `appLock.afterMin` minutes in the background. */
   appLock: AppLockSettings;
+  /**
+   * Let Android's own backup keep a copy of the data (encrypted with the phone's
+   * screen lock, Android 9+) in the user's Google account, so a new phone restores
+   * it. Off = nothing ever leaves the phone unless the user exports a file.
+   */
+  cloudBackup: boolean;
 }
 
 export type ThemePreference = 'dark' | 'light' | 'system';
@@ -297,6 +303,7 @@ export const DEFAULT_SETTINGS: Settings = {
   healthConnectEnabled: false,
   theme: 'dark',
   appLock: { enabled: false, afterMin: 1 },
+  cloudBackup: true,
 };
 
 export const SNACK_LABELS: Record<SnackType, { label: string; defaultReps?: number; defaultSeconds?: number; unit: string }> = {

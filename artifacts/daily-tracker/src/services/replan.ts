@@ -33,14 +33,28 @@ export async function replanHeadless(state: TrackerState, ctx: CommandContext): 
   return applyAll(state, actions, reducer);
 }
 
-/** A headless writer changed the database; the running app must reload before it writes again. */
+/**
+ * Headless writes (notification buttons, widget taps, the background re-plan)
+ * bump a revision number. The running app remembers the revision it last
+ * loaded and reloads when the number moved. A counter, not a flag: a flag
+ * that is read-then-cleared loses the write that lands between the read and
+ * the clear.
+ */
+let revisionQueue: Promise<unknown> = Promise.resolve();
+
 export async function markHeadlessWrite(): Promise<void> {
-  await AsyncStorage.setItem(DIRTY_KEY, String(Date.now()));
+  const bump = async () => {
+    const current = await headlessRevision();
+    await AsyncStorage.setItem(DIRTY_KEY, String(current + 1));
+  };
+  const run = revisionQueue.then(bump, bump);
+  revisionQueue = run.catch(() => undefined);
+  await run;
 }
 
-export async function consumeHeadlessWrite(): Promise<boolean> {
+/** Current revision (0 when nothing was ever written headlessly). */
+export async function headlessRevision(): Promise<number> {
   const v = await AsyncStorage.getItem(DIRTY_KEY);
-  if (!v) return false;
-  await AsyncStorage.removeItem(DIRTY_KEY);
-  return true;
+  const n = v === null ? 0 : Number(v);
+  return Number.isFinite(n) ? n : 0;
 }

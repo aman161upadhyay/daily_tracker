@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, TextInput, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
 import { SNACK_LABELS, type MindKind, type SnackType } from '@/src/domain/models';
@@ -15,9 +16,10 @@ const WATER_ML = [150, 250, 350, 500];
 const MIND_MIN = [5, 10, 13, 20];
 const ML_PER_OZ = 29.5735;
 
-/** Bottom sheet for logging: water amounts, movement snacks, mind sessions. */
+/** Bottom sheet for logging: water amounts, movement snacks, the Sugar Shield, mind sessions. */
 export function QuickLogSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const c = useColors();
+  const router = useRouter();
   const { state, actions } = useTracker();
   const units = state.settings.units;
   const snackTypes = Array.from(new Set(rotationItems(state).map((i) => i.snackType))) as SnackType[];
@@ -74,6 +76,17 @@ export function QuickLogSheet({ visible, onClose }: { visible: boolean; onClose:
             }}
           />
         ))}
+      </Group>
+      <Group title="Before something sweet" color={c.gold}>
+        <Chip
+          label="Sugar Shield · 60 s of squats"
+          color={c.gold}
+          Leading={UI.Cookie}
+          onPress={() => {
+            onClose();
+            router.push('/shield');
+          }}
+        />
       </Group>
       {mindKinds.map((m) => (
         <Group key={m.kind} title={m.label} color={c.cat.mind}>

@@ -92,13 +92,13 @@ function habitTile(state: TrackerState, habit: Habit, today: string): WidgetTile
   const base = { habitId: habit.id, kind: 'habit' as const, name: habit.name, ratio: clamp01(view.todayRatio), done, color };
 
   if (habit.type === 'YES_NO') {
-    const caption = weekly ? `${view.weekDone ?? 0} of ${view.rule.timesPerPeriod} days` : doneToday ? 'Done' : 'Tap to log';
+    const caption = weekly ? `${view.periodDone ?? 0} of ${view.rule.timesPerPeriod} days` : doneToday ? 'Done' : 'Tap to log';
     return { ...base, value: doneToday ? '✓' : '–', caption };
   }
   const unit = habit.snackType ? SNACK_LABELS[habit.snackType].unit : habit.unit;
   const value = doneToday && habit.type !== 'TIMER' && !habit.snackType ? '✓' : formatNumber(view.todayValue);
   const caption = weekly
-    ? `${view.weekDone ?? 0} of ${view.rule.timesPerPeriod} days`
+    ? `${view.periodDone ?? 0} of ${view.rule.timesPerPeriod} days`
     : habit.snackType
       ? `of ${formatNumber(view.target)} ${view.target === 1 ? 'set' : 'sets'}`
       : `of ${formatNumber(view.target)} ${unit}`.trimEnd();

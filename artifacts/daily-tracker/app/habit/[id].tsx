@@ -86,13 +86,13 @@ export default function HabitDetailScreen() {
   const flow = view.adherence >= FLOW_THRESHOLD;
   const weekly = view.rule.cadence !== 'DAILY';
   const todayText = weekly
-    ? `${view.weekDone ?? 0} of ${view.rule.timesPerPeriod}`
+    ? `${view.periodDone ?? 0} of ${view.rule.timesPerPeriod}`
     : habit.type === 'YES_NO'
       ? view.todayRatio >= 1
         ? 'Done'
         : 'Not yet'
       : formatNumber(view.todayValue);
-  const todayUnit = weekly ? 'this week' : habit.type === 'YES_NO' ? 'today' : `of ${formatNumber(view.target)} ${habit.unit} today`;
+  const todayUnit = weekly ? (view.periodLabel ?? 'this period') : habit.type === 'YES_NO' ? 'today' : `of ${formatNumber(view.target)} ${habit.unit} today`;
   const completed14 = view.ratios14.filter((r) => r.ratio >= 1).length;
   const last14 = lastNDays(today, 14);
   const periodNoun = view.rule.cadence === 'DAILY' ? 'day' : view.rule.cadence === 'WEEKLY' ? 'week' : 'month';
@@ -179,7 +179,13 @@ export default function HabitDetailScreen() {
             </Txt>
           </Row>
         </View>
-        {habit.type !== 'TIMER' ? (
+        {habit.presetId === 'sugar-shield' ? (
+          <Row gap={8} style={{ marginTop: 14 }}>
+            <PillButton label="Start Sugar Shield" Leading={UI.Play} onPress={() => router.push('/shield')} style={{ flex: 1 }} />
+            <PillButton label="Log one" kind="ghost" onPress={() => actions.increment(habit)} />
+            <IconButton Glyph={UI.Undo} label={`Undo last ${habit.name} entry`} onPress={() => actions.decrement(habit)} size={48} color={c.text} />
+          </Row>
+        ) : habit.type !== 'TIMER' ? (
           <Row gap={8} style={{ marginTop: 14 }}>
             {habit.type === 'YES_NO' ? (
               <PillButton label={view.todayRatio >= 1 ? 'Undo today' : 'Mark done'} Leading={UI.Check} onPress={() => actions.toggleYesNo(habit)} style={{ flex: 1 }} kind={view.todayRatio >= 1 ? 'ghost' : 'primary'} />
@@ -203,7 +209,11 @@ export default function HabitDetailScreen() {
       <Card>
         <BackfillStrip habit={habit} today={today} target={view.target} valueOf={(d) => habitDayValue(state, habit, d)} periods={view.periods} onPressDay={onBackfill} />
         <Txt role="caption" tone="tertiary" align="center" style={{ marginTop: 12 }}>
-          Forgot to log? Tap a day to fix it.
+          {habit.createdDay >= today
+            ? 'Added today — from tomorrow, tap a day here to fix a missed log.'
+            : habit.createdDay > lastNDays(today, 7)[0]!
+              ? `Forgot to log? Tap a day to fix it. Days before ${formatDayShort(habit.createdDay)}, when this habit was added, stay empty.`
+              : 'Forgot to log? Tap a day to fix it.'}
         </Txt>
       </Card>
 
@@ -301,7 +311,9 @@ export default function HabitDetailScreen() {
         </Row>
         <Divider />
         <Txt role="footnote" tone="tertiary" style={{ marginTop: 10 }}>
-          Nudges show on Today now; notifications with Done / Snooze / Swap arrive in the next milestone.
+          {view.policy && view.policy.kind !== 'NONE'
+            ? 'Reminders arrive as notifications with Done, Snooze and Swap buttons, inside your active hours and daily cap (Settings → Reminders).'
+            : 'This habit has no automatic reminder; a Today nudge still points to it when it is next in line.'}
         </Txt>
       </Card>
 

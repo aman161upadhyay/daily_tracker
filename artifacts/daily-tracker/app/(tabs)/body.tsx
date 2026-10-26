@@ -9,6 +9,7 @@ import { UI } from '@/components/ui/icons';
 import { Divider, IconTile, PillButton, Row, SectionHeader } from '@/components/ui/primitives';
 import { Screen, ScreenHeader } from '@/components/ui/Screen';
 import { Txt } from '@/components/ui/Txt';
+import { SampleDataChip } from '@/components/tracker/SampleDataChip';
 import { useColors } from '@/hooks/useColors';
 import { useHealthConnect } from '@/hooks/useHealthConnect';
 import { exerciseLabel } from '@/src/domain/body/exerciseTypes';
@@ -97,6 +98,7 @@ export default function BodyScreen() {
   return (
     <Screen>
       <ScreenHeader title="Body" subtitle={subtitle} />
+      <SampleDataChip />
 
       <ConnectionCard hc={hc} nowMs={nowMs} zone={zone} sample={state.settings.sampleData && hasData} hasData={hasData} />
 

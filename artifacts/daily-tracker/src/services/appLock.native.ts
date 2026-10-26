@@ -5,19 +5,22 @@
  * anyone out). Works in Expo Go. Never import './appLock' from here.
  */
 import * as LocalAuthentication from 'expo-local-authentication';
+import * as ScreenCapture from 'expo-screen-capture';
 import type { LockCapability } from './appLock';
 
 export type { LockCapability } from './appLock';
+
+const PROTECTION_KEY = 'app-lock';
 
 export async function lockCapability(): Promise<LockCapability> {
   try {
     const level = await LocalAuthentication.getEnrolledLevelAsync();
     if (level === LocalAuthentication.SecurityLevel.NONE) {
-      return { available: false, reason: 'Set up a screen lock (PIN, pattern, fingerprint or face) in the phone’s settings first.', biometric: false };
+      return { available: false, status: 'none', reason: 'Set up a screen lock (PIN, pattern, fingerprint or face) in the phone’s settings first.', biometric: false };
     }
-    return { available: true, biometric: level === LocalAuthentication.SecurityLevel.BIOMETRIC };
+    return { available: true, status: 'ready', biometric: level === LocalAuthentication.SecurityLevel.BIOMETRIC };
   } catch (err) {
-    return { available: false, reason: err instanceof Error ? err.message : 'Screen lock status could not be read.', biometric: false };
+    return { available: false, status: 'error', reason: err instanceof Error ? err.message : 'Screen lock status could not be read.', biometric: false };
   }
 }
 
@@ -32,5 +35,19 @@ export async function authenticate(): Promise<boolean> {
     return result.success;
   } catch {
     return false;
+  }
+}
+
+/**
+ * FLAG_SECURE while the lock is on: no screenshots, no screen recording, and a
+ * blank card in the recent-apps switcher — the lock screen would otherwise
+ * cover the app only after the thumbnail was already taken.
+ */
+export async function setScreenProtection(enabled: boolean): Promise<void> {
+  try {
+    if (enabled) await ScreenCapture.preventScreenCaptureAsync(PROTECTION_KEY);
+    else await ScreenCapture.allowScreenCaptureAsync(PROTECTION_KEY);
+  } catch (err) {
+    console.warn('Screen protection could not be changed', err);
   }
 }

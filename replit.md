@@ -85,18 +85,33 @@ original Kotlin spec being ported (this plan wins where they disagree).
   `app/_layout.tsx` (`ThemeRoot`) into `SchemeContext`; `useColors()` / `useScheme()` read it, nothing else should
   branch on the theme. Light tokens in `constants/colors.ts` are deeper AA inks (fills are alpha tints of them); the
   widget stays dark. `Txt` caps font scaling per role; `useReducedMotion` gates the tweens (not the breathing circle).
-- App lock (M6): `src/services/appLock[.native].ts` (expo-local-authentication, PIN fallback; web = unavailable) and
-  `components/system/AppLockGate.tsx` (a Modal over the stack, visual only — widgets and notification buttons keep
-  writing; phones without a screen lock cannot enable it and never get trapped).
-- Backups (M6): `src/data/backupCrypto.ts` (PBKDF2-SHA256 200k + AES-256-GCM, every parameter in the envelope; opens
-  with standard tools, recipe in `docs/BUILD_ANDROID.md`) behind `transferFormat.ts` `inspectExport` / `unlockExport`;
-  `components/settings/BackupCard.tsx` owns the password sheets. Android Auto Backup: `components/system/BackupSync.tsx`
-  keeps `files/backup/snapshot.json` (plain export, hourly at most, not for sample data, deleted on erase) via
-  `src/services/backup[.native].ts`; `plugins/withBackupRules.js` includes only that folder. Onboarding offers
-  "Welcome back → Restore it" when a snapshot exists.
+- App lock (M6): `src/services/appLock[.native].ts` (expo-local-authentication, PIN fallback; status `ready | none |
+  error`; web = unavailable) and `components/system/AppLockGate.tsx` (a Modal over the stack, visual only — widgets and
+  notification buttons keep writing; `none` steps aside so a phone without a screen lock is never trapped, `error`
+  stays locked with "Try again"; `expo-screen-capture` blocks screenshots while locked; the prompt fires when the gate
+  locks, never on every foreground).
+- Backups (M6): `src/data/backupCrypto.ts` (PBKDF2-SHA256 200k + AES-256-GCM, every parameter in the envelope and
+  bounds-checked by `checkEnvelope` before any key derivation; opens with standard tools, recipe in
+  `docs/BUILD_ANDROID.md`) behind `transferFormat.ts` `inspectExport` / `unlockExport` (64 MB cap);
+  `components/settings/BackupCard.tsx` owns the password sheets. Every import goes through `src/data/validate.ts`
+  (`validateRecords` per list, `sanitizeSettings` key-by-key, data-version check) before it touches the store. Android
+  Auto Backup: `src/data/backupPolicy.ts` decides (`settings.cloudBackup`, on by default; nothing before onboarding,
+  never sample data, the seeded Water habit alone does not count), `components/system/BackupSync.tsx` keeps
+  `files/backup/snapshot.json` (plain export, hourly at most, deleted on erase) via `src/services/backup[.native].ts`;
+  `plugins/withBackupRules.js` writes per-API-level rules (Android 9–11: `xml-v28` with `clientSideEncryption`
+  required; 12+: extraction rules; 8.x: no cloud backup). Onboarding offers "Welcome back → Restore it" when a
+  snapshot exists. Random bytes come from `src/data/secureRandom[.native].ts` (`expo-crypto`).
 - Config plugins live in `plugins/` (`withBackupRules`, `withReleaseSigning` — release key from `DT_RELEASE_*` Gradle
-  properties, debug keystore fallback) and are tested with `expo prebuild --platform android --no-install` + grep,
-  then `android/` is deleted again (it is git-ignored and never committed).
+  properties; without them the build falls back to Expo's public debug keystore and prints a Gradle warning) and are
+  tested with `expo prebuild --platform android --no-install` + grep, then `android/` is deleted again (it is
+  git-ignored and never committed).
+- Headless writers (widget handler, notification tasks) bump a revision counter (`markHeadlessWrite` in
+  `src/services/replan.ts`); the provider reloads when it moves. SQLite is one serialised connection per process. A
+  failed persist shows the red banner and is retried until it flushes.
+- Health Connect owns the Steps total: `SET_AUTO_ENTRY` evicts every non-manual row for the day, and nudges/widget never
+  log steps by hand. Over-cap reads (> 40 pages) are a per-type error, never a silently short number.
+- Hand-over: `docs/RUNNING_CONTEXT.md` (status, method, decision paradigms, journal, council log) and
+  `docs/GET_IT_ON_YOUR_PHONE.md` (plain-language build guide) are kept current with every batch.
 - Icons: Phosphor, imported only through `components/ui/icons.tsx` using
   `require('phosphor-react-native/src/icons/<Name>').<Name>Icon` (the root import would bundle every icon; the
   package only exports `.` and `./src/icons/*`). Add new icons there, never import Phosphor elsewhere.

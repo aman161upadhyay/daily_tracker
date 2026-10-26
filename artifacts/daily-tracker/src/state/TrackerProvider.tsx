@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { createStore } from '@/src/data/createStore';
-import { consumeHeadlessWrite } from '@/src/services/replan';
+import { headlessRevision } from '@/src/services/replan';
 import type { TrackerStore } from '@/src/data/store';
 import type { Cadence, Category, CycleDayLog, CycleReminder, Habit, HabitIcon, HabitRule, HabitType, MindKind, NudgePolicy, Settings, SnackTrigger, SnackType } from '@/src/domain/models';
 import { SNACK_LABELS } from '@/src/domain/models';
@@ -101,6 +101,9 @@ export interface TrackerActions {
 const TrackerContext = createContext<TrackerContextValue | null>(null);
 
 const PLACEHOLDER: TrackerState = buildEmptyState('1970-01-01');
+/** A failed save is retried a few times on its own (a busy database, a brief I/O hiccup) before waiting for the next change. */
+const MAX_SAVE_RETRIES = 5;
+const SAVE_RETRY_MS = 2000;
 
 function describe(err: unknown): string {
   if (err instanceof Error) {
@@ -125,12 +128,62 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => now());
-  const zone = useMemo(() => currentZone(), []);
+  // The phone's zone can change while the app is open (travel); refreshed with the clock.
+  const [zone, setZone] = useState(() => currentZone());
 
   const storeRef = useRef<TrackerStore | null>(null);
-  /** The last state handed to the store; `persist` diffs against it. */
-  const persistedRef = useRef<TrackerState | null>(null);
-  const queueRef = useRef<Promise<void>>(Promise.resolve());
+  /** What the database holds, as far as we know: the base every persist diffs from. */
+  const committedRef = useRef<TrackerState | null>(null);
+  /** The newest state that should end up in the database. */
+  const targetRef = useRef<TrackerState | null>(null);
+  const flushRef = useRef<Promise<void>>(Promise.resolve());
+  const flushingRef = useRef(false);
+  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const failuresRef = useRef(0);
+  /** Headless revision we last loaded (see services/replan). */
+  const seenRevisionRef = useRef<number | null>(null);
+
+  /**
+   * Write everything between the committed state and the newest state, in one
+   * diff per pass. The base only moves once a write succeeded, so a failed
+   * write is retried from the same base by the next pass instead of leaving a
+   * hole between what the screen shows and what the database holds.
+   */
+  const flush = useCallback((): Promise<void> => {
+    if (flushingRef.current) return flushRef.current;
+    const store = storeRef.current;
+    if (!store) return Promise.resolve();
+    flushingRef.current = true;
+    const run = (async () => {
+      try {
+        while (committedRef.current && targetRef.current && targetRef.current !== committedRef.current) {
+          const base = committedRef.current;
+          const target = targetRef.current;
+          try {
+            await store.persist(base, target);
+            committedRef.current = target;
+            failuresRef.current = 0;
+            setStorageError((e) => (e && e.startsWith('Could not save') ? null : e));
+          } catch (err) {
+            failuresRef.current += 1;
+            console.error('Failed to save', err);
+            setStorageError(`Could not save your last change: ${describe(err)}`);
+            if (failuresRef.current <= MAX_SAVE_RETRIES && retryRef.current === null) {
+              retryRef.current = setTimeout(() => {
+                retryRef.current = null;
+                void flush();
+              }, SAVE_RETRY_MS);
+            }
+            break;
+          }
+        }
+      } finally {
+        flushingRef.current = false;
+      }
+    })();
+    flushRef.current = run;
+    return run;
+  }, []);
 
   // Open the store and hydrate. A fresh install starts empty (onboarding takes over).
   useEffect(() => {
@@ -141,11 +194,14 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
         let next = await store.load();
         if (cancelled) return;
         if (!next) {
-          next = buildEmptyState(trackingDayOf(now(), zone));
+          next = buildEmptyState(trackingDayOf(now(), currentZone()));
           await store.replace(next);
         }
+        seenRevisionRef.current = await headlessRevision();
+        if (cancelled) return;
         storeRef.current = store;
-        persistedRef.current = next;
+        committedRef.current = next;
+        targetRef.current = next;
         dispatch({ type: 'HYDRATE', state: next });
       } catch (err) {
         console.error('Storage failed to open', err);
@@ -156,46 +212,55 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
     })();
     return () => {
       cancelled = true;
+      if (retryRef.current !== null) clearTimeout(retryRef.current);
     };
-  }, [zone]);
+  }, []);
 
   // Persist every change after hydration, in order, writing only what changed.
   useEffect(() => {
-    const store = storeRef.current;
-    const prev = persistedRef.current;
-    if (!store || !prev || prev === state) return;
-    persistedRef.current = state;
-    queueRef.current = queueRef.current
-      .then(() => store.persist(prev, state))
-      .catch((err) => {
-        console.error('Failed to save', err);
-        setStorageError(`Could not save your last change: ${describe(err)}`);
-      });
-  }, [state]);
+    if (!storeRef.current || !committedRef.current || state === committedRef.current) return;
+    targetRef.current = state;
+    void flush();
+  }, [state, flush]);
 
   // Clock: refresh every 30 s and whenever the app returns to the foreground.
-  // On foreground, also pick up rows a headless writer (notification button) added while we slept.
+  // On foreground, also pick up rows a headless writer (notification button, widget) added while we slept.
   useEffect(() => {
-    const tick = () => setNowMs(now());
+    const tick = () => {
+      setNowMs(now());
+      const z = currentZone();
+      setZone((old) => (old === z ? old : z));
+    };
     const interval = setInterval(tick, 30_000);
     const sub = AppState.addEventListener('change', (s) => {
       if (s !== 'active') return;
       tick();
       void (async () => {
         const store = storeRef.current;
-        if (!store || !(await consumeHeadlessWrite())) return;
-        await queueRef.current;
-        const fresh = await store.load();
-        if (!fresh) return;
-        persistedRef.current = fresh;
-        dispatch({ type: 'HYDRATE', state: fresh });
+        if (!store || seenRevisionRef.current === null) return;
+        const revision = await headlessRevision();
+        if (revision === seenRevisionRef.current) return;
+        // Our own pending writes first, then read; repeat if the user changed something meanwhile,
+        // so the reloaded state never hides a change that is already in the database.
+        for (let attempt = 0; attempt < 3; attempt++) {
+          await flush();
+          const before = targetRef.current;
+          const fresh = await store.load();
+          if (!fresh) return;
+          if (targetRef.current !== before) continue;
+          seenRevisionRef.current = revision;
+          committedRef.current = fresh;
+          targetRef.current = fresh;
+          dispatch({ type: 'HYDRATE', state: fresh });
+          return;
+        }
       })().catch((err) => console.warn('Reload after background change failed', err));
     });
     return () => {
       clearInterval(interval);
       sub.remove();
     };
-  }, []);
+  }, [flush]);
 
   const boundary = state.settings.dayBoundaryHour;
   const today = useMemo(() => trackingDayOf(nowMs, zone, boundary), [nowMs, zone, boundary]);

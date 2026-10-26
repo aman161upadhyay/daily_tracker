@@ -16,6 +16,7 @@ import { DEFAULT_SETTINGS, type Units } from '@/src/domain/models';
 import { formatClock, formatVolume } from '@/src/domain/time/format';
 import { CATEGORY_LABELS, CATEGORY_ORDER, PRESETS } from '@/src/library/presets';
 import { readSnapshot } from '@/src/services/backup';
+import { NOTIFICATIONS_SUPPORTED, getPermission, requestPermission, type PermissionState } from '@/src/services/notifications';
 import { useTracker } from '@/src/state/TrackerProvider';
 import type { TrackerState } from '@/src/state/types';
 
@@ -36,7 +37,12 @@ export default function OnboardingScreen() {
   const [activeEndMin, setEnd] = useState(DEFAULT_SETTINGS.activeEndMin);
   const [selected, setSelected] = useState<Set<string>>(() => new Set(STARTER_SET));
   const [cycleEnabled, setCycleEnabled] = useState(false);
+  const [perm, setPerm] = useState<PermissionState>('undetermined');
   const [restore, setRestore] = useState<{ state: TrackerState; writtenAt: number | null } | null>(null);
+
+  useEffect(() => {
+    if (NOTIFICATIONS_SUPPORTED) getPermission().then(setPerm).catch(() => {});
+  }, []);
 
   // A snapshot left by Android Auto Backup (or a previous install) means this is a returning user.
   useEffect(() => {
@@ -207,6 +213,32 @@ export default function OnboardingScreen() {
           <Switch value={cycleEnabled} onValueChange={setCycleEnabled} trackColor={{ false: c.hairline, true: c.green }} thumbColor={c.text} accessibilityLabel="Track my cycle" />
         </Row>
       </Step>
+
+      {NOTIFICATIONS_SUPPORTED ? (
+        <Step n={5} title="Reminders" hint="Nudges arrive as notifications with Done, Snooze and Swap buttons, only inside your active hours and never more than a few a day. Optional — the app works without them.">
+          {perm === 'granted' ? (
+            <Row gap={8}>
+              <UI.Check size={18} color={c.greenBright} weight="bold" />
+              <Txt role="body">Notifications allowed. Tune them any time in Settings → Reminders.</Txt>
+            </Row>
+          ) : perm === 'denied' ? (
+            <Txt role="body" tone="secondary">
+              Notifications are off for this app. You can allow them later in Settings → Reminders, which opens the phone's notification settings.
+            </Txt>
+          ) : (
+            <PillButton
+              label="Allow notifications"
+              Leading={UI.Bell}
+              kind="ghost"
+              onPress={() => {
+                requestPermission()
+                  .then(setPerm)
+                  .catch(() => {});
+              }}
+            />
+          )}
+        </Step>
+      ) : null}
 
       <View style={{ gap: 10, marginTop: 8, marginBottom: 24 }}>
         <PillButton label={selected.size > 0 ? `Start with ${selected.size} habit${selected.size === 1 ? '' : 's'}` : 'Start empty'} Leading={UI.Check} onPress={start} />

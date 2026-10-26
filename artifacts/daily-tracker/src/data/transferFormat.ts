@@ -11,8 +11,13 @@
  * informational fields, so a backup can be re-imported with `parseState`.
  */
 import type { TrackerState } from '@/src/state/types';
-import { decryptBackup, encryptBackup, isEncryptedBackup, type EncryptedBackup } from './backupCrypto';
+import { checkEnvelope, decryptBackup, encryptBackup, isEncryptedBackup, type EncryptedBackup } from './backupCrypto';
 import { parseState, StorageError } from './store';
+
+/** Largest file we will parse (characters). A decade of dense logging is a few MB. */
+export const MAX_IMPORT_CHARS = 64 * 1024 * 1024;
+/** Cache sub-directory for files handed to the share sheet (see services/transferCache). */
+export const EXPORT_SCRATCH_DIR = 'exports';
 
 export interface ExportFile extends TrackerState {
   app: 'daily-tracker';
@@ -33,10 +38,18 @@ export function serializeExport(state: TrackerState, now = new Date(), password?
 
 export type InspectedExport = { kind: 'plain'; state: TrackerState } | { kind: 'encrypted'; file: EncryptedBackup };
 
-/** Look at a chosen file: a readable backup, or a locked one that needs its password. */
+/**
+ * Look at a chosen file: a readable backup, or a locked one that needs its
+ * password. A locked file has its header checked here, so a damaged or hostile
+ * envelope is refused before the user is asked to type anything.
+ */
 export function inspectExport(text: string): InspectedExport {
+  if (text.length > MAX_IMPORT_CHARS) throw new StorageError('That file is too large to be a Daily Tracker backup.');
   const raw = parseJson(text);
-  if (isEncryptedBackup(raw)) return { kind: 'encrypted', file: raw };
+  if (isEncryptedBackup(raw)) {
+    checkEnvelope(raw);
+    return { kind: 'encrypted', file: raw };
+  }
   return { kind: 'plain', state: parseState(raw) };
 }
 

@@ -14,7 +14,7 @@ import type { NudgeActionKind } from '@/src/domain/nudges/planner';
 import type { TrackerState } from '@/src/state/types';
 import { performBodySync } from './bodySync';
 import { HEALTH_CONNECT_SUPPORTED } from './healthConnect';
-import { BACKGROUND_REPLAN_TASK, NUDGE_RESPONSE_TASK, markHandled } from './notifications';
+import { BACKGROUND_REPLAN_TASK, NUDGE_RESPONSE_TASK, markHandled, unmarkHandled } from './notifications';
 import { contextFor, markHeadlessWrite, replanHeadless } from './replan';
 import { refreshWidgets } from './widget';
 
@@ -34,16 +34,22 @@ async function handleHeadlessResponse(data: ResponseData): Promise<void> {
   if (!isNudgePayload(payload) || !data.actionIdentifier) return;
   const action = data.actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER ? 'TAP' : (data.actionIdentifier as NudgeActionKind);
   const key = `${data.notification?.request?.identifier ?? payload.nudgeId}|${action}|${data.notification?.date ?? ''}`;
+  // Claim first (the foreground listener may see the same press), release if the write fails,
+  // so a press is never both unapplied and marked as done.
   if (!(await markHandled(key))) return;
-
-  const store = await createStore();
-  const state = await store.load();
-  if (!state) return;
-  const ctx = contextFor(state);
-  const applied = applyAll(state, nudgeResponseActions(state, payload, action, ctx), reducer);
-  const next = await replanHeadless(applied, ctx);
-  await store.persist(state, next);
-  await afterHeadlessWrite(next, ctx);
+  try {
+    const store = await createStore();
+    const state = await store.load();
+    if (!state) return;
+    const ctx = contextFor(state);
+    const applied = applyAll(state, nudgeResponseActions(state, payload, action, ctx), reducer);
+    const next = await replanHeadless(applied, ctx);
+    await store.persist(state, next);
+    await afterHeadlessWrite(next, ctx);
+  } catch (err) {
+    await unmarkHandled(key).catch(() => undefined);
+    throw err;
+  }
 }
 
 TaskManager.defineTask(NUDGE_RESPONSE_TASK, async ({ data, error }) => {

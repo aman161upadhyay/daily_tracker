@@ -88,8 +88,10 @@ You need four things: **Android Studio** (makes Android apps), **Node** (runs th
    java -version  # 17 or 21
    adb version
    ```
-7. **One Windows-only rule:** keep the project in a short folder path such as `C:\dev`
-   (long paths break Android builds). Create it with `mkdir C:\dev` if it does not exist.
+7. **Two Windows-only rules:** keep the project in a short folder path such as `C:\dev`
+   (long paths break Android builds; create it with `mkdir C:\dev` if it does not exist), and
+   run every command in this guide from *PowerShell*, not from Git Bash or the old Command Prompt
+   (`pnpm` needs the Part 1 settings, which only PowerShell picks up).
 
 ### Your phone
 
@@ -135,7 +137,8 @@ Open Terminal (Mac) or PowerShell (Windows). The commands are the same on both u
    If it asks "Continue?" or about overwriting, answer `y`. The `android/` folder it creates is
    disposable — never edit it; this command rebuilds it every time.
 5. **Build and install the app on your phone** (10–20 minutes the first time — it downloads about
-   1 GB of build tools; later builds take a few minutes):
+   1 GB of build tools, including the Android NDK and CMake, by itself; you never install those by
+   hand. Later builds take a few minutes):
    ```bash
    pnpm exec expo run:android --variant release
    ```
@@ -145,7 +148,9 @@ Open Terminal (Mac) or PowerShell (Windows). The commands are the same on both u
 
    The file you just installed is also saved at
    `artifacts/daily-tracker/android/app/build/outputs/apk/release/app-release.apk`. That is the
-   file to send to friends (Part 4).
+   file to send to friends (Part 4) — but read Part 6 first: until you create your own signing
+   key, the build prints a `WARNING: DT_RELEASE_STORE_FILE is not set` line and signs the app with
+   a public test key. Fine for your own phone, not for an APK you hand out.
 
 > **Why `--variant release`?** Without it you get a *debug* build that only runs while the
 > computer feeds it code over the cable. The release build has everything inside it.
@@ -196,8 +201,9 @@ Then try the list in `docs/DEVICE_CHECKLIST.md` if you want to check every featu
    details* → *Install anyway* — the warning only means the app is not from the Play Store.
 4. They then do Part 3 on their own phone.
 
-Later versions install over the old one as long as they come from the same computer (or the same
-signing key — see Part 6). Friends never need to uninstall.
+Later versions install over the old one as long as they are signed with the same key (Part 6).
+Friends never need to uninstall. Hand out APKs only after Part 6 is done: an APK signed with the
+public test key could be "updated" by anyone who builds this project.
 
 ---
 
@@ -222,10 +228,12 @@ that number is part of every milestone.)
 
 ## Part 6 — Your own signing key (recommended once friends use the app)
 
-Android ties an app to the key it was signed with. Right now that is the *debug key* that
-Android Studio created on your computer — fine for your own phone, but if the computer is lost
-or replaced, nobody can update the app on your friends' phones without uninstalling it. A
-proper key, backed up, avoids that. Do this once, before the first APK you hand out, if you can.
+Android ties an app to the key it was signed with. Until you do this part, release builds are
+signed with the *debug key* that ships inside every Expo project — the same public key on
+everyone's computer, which is why the build prints a warning about it. On your own phone that is
+harmless. For friends it is not: anyone who builds this project could install an "update" over
+your app on their phones. A key of your own, backed up, fixes that and also survives a lost or
+replaced computer. Do this once, before the first APK you hand out.
 
 1. Create the key (answer the questions; the passwords are yours to choose and remember):
    ```bash
@@ -262,7 +270,7 @@ proper key, backed up, avoids that. Do this once, before the first APK you hand 
 | `JAVA_HOME is not set` or `Unsupported class file major version` | Wrong or missing Java | Set `JAVA_HOME` to Android Studio's `jbr` folder as in Part 1 step 5. |
 | `adb devices` shows nothing | Phone not visible | Different cable/port, USB debugging on, choose *File transfer* on the phone, tap Allow. |
 | `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | The app on the phone was signed with a different key | Export a backup in the app, uninstall it, install again, import. |
-| `INSTALL_FAILED_VERSION_DOWNGRADE` | The phone has a newer version number | `git pull` to get the latest code, or uninstall first. |
+| `INSTALL_FAILED_VERSION_DOWNGRADE` | The phone has a newer version number | `git pull` to get the latest code. If you really want the older build: in the app, Settings → Your data → Export backup, then uninstall, install, import. |
 | `Could not resolve …` / `Connection timed out` during the build | A download failed | Check the internet (turn off VPN), run the same command again — it continues where it stopped. |
 | `Filename too long` (Windows) | Project folder path too deep | Move the project to `C:\dev\daily_tracker`. |
 | `EPERM` / `EBUSY` / file in use (Windows) | Another program holds a file | Close Android Studio and any Explorer window inside the project; try again. |

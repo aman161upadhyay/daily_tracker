@@ -74,6 +74,18 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   lock-in, no recovery. Release signing reads `DT_RELEASE_*` Gradle properties with a debug-keystore fallback
   so `assembleRelease` always builds; Play Store work is explicitly not done. **Why:** privacy-first health
   data, and the user wants friends to install from a shared APK, not a store.
+- Council-round-1 decisions (2026-10-26 night, user asleep, "no questions" loop): Health Connect *owns* the Steps
+  total — widget/notification never log steps, `SET_AUTO_ENTRY` evicts every non-manual row (manual rows stay);
+  over-cap HC reads are an error, not a truncated number. Android 8.x gets no cloud backup (manual export only),
+  9–11 require `clientSideEncryption`, 12+ extraction rules. Debug-keystore fallback *kept* (first own-phone build
+  must work) but Gradle warns and the guide says "never hand out such an APK". App lock prompts only when the gate
+  locks (re-prompting on every foreground loops after a cancel). Nudge "Done" compares today's raw value to the
+  per-day target (weekly habits were un-loggable once the week was met). UX-08 (Vitamin C default dose) rejected:
+  the value is from the user's Cadence spec. Sugar Shield must be reachable without its habit being added (Today
+  footer, quick-log sheet, habit page). Meditation < 1 min is not logged, and the Finish button says so.
+  `@types/react` single version across the workspace is desired; Mac/Windows installs must get platform binaries
+  (overrides removed) because the user builds the APK on a laptop. **Why:** the user asked for adversarial review
+  and fixes without questions; every disposition is logged in `docs/RUNNING_CONTEXT.md` §6 so it is not re-litigated.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app
