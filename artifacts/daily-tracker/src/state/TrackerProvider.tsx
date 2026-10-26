@@ -9,10 +9,12 @@ import type { CycleDayLog, CycleReminder, Habit, MindKind, MovementSnack, NudgeP
 import { SNACK_LABELS } from '@/src/domain/models';
 import { applyPeriodStart } from '@/src/domain/cycle/timeline';
 import { currentZone, newId, now } from '@/src/domain/time/clock';
+import { resolveClockFormat, type ClockFormat } from '@/src/domain/time/format';
+import { deviceUses24h } from '@/src/services/deviceClock';
 import { calendarDayOf, instantOf, minutesOfDay, trackingDayOf } from '@/src/domain/time/trackingDay';
 import { presetById } from '@/src/library/presets';
 import { dayRecords, findRecord, MAX_RESTORE_RECORDS, type LogName, type LogRecord } from '@/src/domain/habits/records';
-import { mindSessionExists, newHabitAction, presetHabitAction, ruleChangeActions, ruleInForce, targetChangeActions, type HabitDraft, type RuleDraft } from './commands';
+import { mindSessionExists, newHabitAction, presetHabitAction, restorePresetActions, ruleChangeActions, ruleInForce, targetChangeActions, type HabitDraft, type RuleDraft } from './commands';
 import { reducer, type Action } from './reducer';
 import { buildEmptyState, buildSampleState, habitFromPreset } from './seed';
 import { bumpBodyEpoch } from './epochs';
@@ -39,6 +41,8 @@ export interface TrackerContextValue {
   retryLoad(): void;
   nowMs: number;
   zone: string;
+  /** How clock times are written ("9:30 PM" or "21:30"): Settings → Time format, or the phone's switch. */
+  clock: ClockFormat;
   /**
    * Counts the times the whole state was replaced (erase, restore, sample data) in this runtime.
    * Whatever keeps bookkeeping about the previous state — the notification service's delivery
@@ -228,6 +232,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   const [nowMs, setNowMs] = useState(() => now());
   // The phone's zone can change while the app is open (travel); refreshed with the clock.
   const [zone, setZone] = useState(() => currentZone());
+  const [uses24h, setUses24h] = useState(() => deviceUses24h());
 
   const storeRef = useRef<TrackerStore | null>(null);
   const reloadingRef = useRef(false);
@@ -384,6 +389,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
       setNowMs(now());
       const z = currentZone();
       setZone((old) => (old === z ? old : z));
+      setUses24h(deviceUses24h());
     };
     const reload = () => reloadIfHeadlessChanged().catch((err) => console.warn('Reload after background change failed', err));
     const interval = setInterval(() => {
@@ -408,6 +414,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   }, [reloadIfHeadlessChanged]);
 
   const boundary = state.settings.dayBoundaryHour;
+  const clock = resolveClockFormat(state.settings.clockFormat, uses24h);
   const today = useMemo(() => trackingDayOf(nowMs, zone, boundary), [nowMs, zone, boundary]);
   const calendarToday = useMemo(() => calendarDayOf(nowMs, zone), [nowMs, zone]);
   const nowMin = useMemo(() => minutesOfDay(nowMs, zone), [nowMs, zone]);
@@ -571,7 +578,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
         const s = stateRef();
         const existing = s.habits.find((h) => h.presetId === presetId);
         if (existing) {
-          if (existing.archived) dispatch({ type: 'UPDATE_HABIT', id: existing.id, patch: { archived: false } });
+          for (const a of restorePresetActions(s, existing, reminder)) dispatch(a);
           return existing;
         }
         const { day } = stamp();
@@ -728,8 +735,8 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   }, [stamp, zone, boundary, replaceWith]);
 
   const value = useMemo<TrackerContextValue>(
-    () => ({ state, ready, storageError, loadError, retryLoad, nowMs, zone, replaceEpoch, replacePending, replaceSeq, today, calendarToday, nowMin, dispatch, apply, actions, commitPending, committed }),
-    [state, ready, storageError, loadError, retryLoad, nowMs, zone, replaceEpoch, replacePending, replaceSeq, today, calendarToday, nowMin, dispatch, apply, actions, commitPending, committed],
+    () => ({ state, ready, storageError, loadError, retryLoad, nowMs, zone, clock, replaceEpoch, replacePending, replaceSeq, today, calendarToday, nowMin, dispatch, apply, actions, commitPending, committed }),
+    [state, ready, storageError, loadError, retryLoad, nowMs, zone, clock, replaceEpoch, replacePending, replaceSeq, today, calendarToday, nowMin, dispatch, apply, actions, commitPending, committed],
   );
 
   return <TrackerContext.Provider value={value}>{children}</TrackerContext.Provider>;

@@ -157,3 +157,13 @@ Hermes compiler path for bundle checks: `node_modules/.pnpm/hermes-compiler@*/no
   version on web lagged app.json by 15 rounds. `rm -rf /tmp/metro-cache` then restart the workflow. Android
   embeds the config at build time (unaffected). Also: react-native-web 0.21 dropped `accessibilityState`
   (use `aria-*`), and phosphor's testID reads `...-undefined` when no weight is passed (harmless).
+
+## Hot-path parsing and PBKDF2 (round 20)
+- `addDays(day, 1)` is the hot call in every streak/period loop over long histories; it keeps a bounded
+  (8192) next-day cache and the streak loop reuses its cursor. Re-measure with a 730-day fixture under
+  `node --import tsx` (cold `habitView` 11 ms / `nudgePlan` 8.8 ms after the fix) before touching those loops.
+- noble's `pbkdf2Async` (asyncTick 10 ms) is what keeps the export/unlock UI alive at 200k rounds; a
+  `setTimeout` before a sync derivation does not help once the loop runs.
+- expo-localization 57 installs cleanly with `CI=1 pnpm exec expo install`; its config plugin is inert
+  without options (it was added to app.json by the install). `getCalendars()[0].uses24hourClock` is
+  Android's `DateFormat.is24HourFormat`; on web it derives from Intl `hourCycle`.

@@ -26,6 +26,7 @@ import { newId } from '@/src/domain/time/clock';
 import { dayDiff } from '@/src/domain/time/trackingDay';
 import { cycleInsights, cycleReminderFires, cycleTimeline } from '@/src/state/selectors';
 import { useTracker } from '@/src/state/TrackerProvider';
+import { useClockFormat } from '@/src/state/hooks';
 
 /**
  * Opt-in cycle tab: phase ring and prediction, the month calendar with a day
@@ -36,6 +37,7 @@ export default function CycleScreen() {
   const c = useColors();
   const router = useRouter();
   const { state, calendarToday, actions } = useTracker();
+  const clock = useClockFormat();
   const cycle = state.settings.cycle;
   const color = c.cat.cycle;
 
@@ -180,7 +182,7 @@ export default function CycleScreen() {
             {fires.map((f) => (
               <View key={f.reminder.id}>
                 <Divider />
-                <UpcomingRow color={c.gold} title={f.reminder.label} value={formatDayShort(f.day)} detail={`${formatClock(f.minute)} · ${describeReminder(f.reminder)}${f.confirmed ? '' : ' · once the period is logged'}`} />
+                <UpcomingRow color={c.gold} title={f.reminder.label} value={formatDayShort(f.day)} detail={`${formatClock(f.minute, clock)} · ${describeReminder(f.reminder)}${f.confirmed ? '' : ' · once the period is logged'}`} />
               </View>
             ))}
             {cycle.birthControl && cycle.reminders.some((r) => r.enabled && isOvulationBased(r)) ? (
@@ -243,7 +245,7 @@ export default function CycleScreen() {
                 <PressableScale haptic={false} onPress={() => setReminder(r)} accessibilityRole="button" accessibilityLabel={`Edit ${r.label}`} style={{ flex: 1 }}>
                   <Txt role="title2">{r.label}</Txt>
                   <Txt role="footnote" tone="secondary">
-                    {`${describeReminder(r)} · ${formatClock(r.minute)}`}
+                    {`${describeReminder(r)} · ${formatClock(r.minute, clock)}`}
                   </Txt>
                 </PressableScale>
                 <Switch

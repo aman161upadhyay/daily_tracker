@@ -15,6 +15,7 @@ import { formatClock, formatDayLong, formatNumber } from '@/src/domain/time/form
 import { lastNDays, minutesOfDay } from '@/src/domain/time/trackingDay';
 import { useTracker } from '@/src/state/TrackerProvider';
 import { ruleFor } from '@/src/state/selectors';
+import { useClockFormat } from '@/src/state/hooks';
 
 const RANGE_WORDS: Record<Range, string> = { D: 'Last 7 days', W: 'Last 2 weeks', M: 'Last 30 days', '6M': 'Last 6 months', Y: 'Last year' };
 
@@ -24,6 +25,7 @@ export default function BodyMetricScreen() {
   const { metric: param } = useLocalSearchParams<{ metric: string }>();
   const metric: BodyMetric = isBodyMetric(param) ? param : 'steps';
   const { state, today, calendarToday, zone, dispatch } = useTracker();
+  const clock = useClockFormat();
   const [range, setRange] = useState<Range>('W');
   const body = state.body;
   const units = state.settings.units;
@@ -136,7 +138,7 @@ export default function BodyMetricScreen() {
                   <View style={{ flex: 1 }}>
                     <Txt role="body">{day === calendarToday ? 'Last night' : formatDayLong(day)}</Txt>
                     <Txt role="footnote" tone="secondary">
-                      {`${formatClock(sleepClockMin(night!, 'start', zone))} → ${formatClock(sleepClockMin(night!, 'end', zone))}`}
+                      {`${formatClock(sleepClockMin(night!, 'start', zone), clock)} → ${formatClock(sleepClockMin(night!, 'end', zone), clock)}`}
                       {night!.deepMin !== undefined ? ` · deep ${formatSleep(night!.deepMin)}` : ''}
                       {night!.remMin !== undefined ? ` · REM ${formatSleep(night!.remMin)}` : ''}
                     </Txt>
@@ -164,7 +166,7 @@ export default function BodyMetricScreen() {
                     <View style={{ flex: 1 }}>
                       <Txt role="body">{w.day === calendarToday ? 'Today' : formatDayLong(w.day)}</Txt>
                       <Txt role="footnote" tone="secondary">
-                        {formatClock(minutesOfDay(w.at, zone))}
+                        {formatClock(minutesOfDay(w.at, zone), clock)}
                         {originName(w.origin) ? ` · ${originName(w.origin)}` : ''}
                       </Txt>
                     </View>

@@ -17,15 +17,17 @@ import { SampleDataChip } from '@/components/tracker/SampleDataChip';
 import { useColors } from '@/hooks/useColors';
 import type { Category, Habit, NudgePolicy } from '@/src/domain/models';
 import { describePolicy, type PolicyContext } from '@/src/domain/nudges/describePolicy';
-import { CATEGORY_LABELS, CATEGORY_ORDER, presetById, PRESETS, type Preset } from '@/src/library/presets';
-import { useHabitViews } from '@/src/state/hooks';
+import { CATEGORY_LABELS, CATEGORY_ORDER, presetById, presetNudgeText, presetRuleText, PRESETS, type Preset } from '@/src/library/presets';
+import { policyFor } from '@/src/state/selectors';
 import { habitFromPreset } from '@/src/state/seed';
 import { useTracker } from '@/src/state/TrackerProvider';
+import { useClockFormat, useHabitViews } from '@/src/state/hooks';
 
 export default function HabitsScreen() {
   const c = useColors();
   const router = useRouter();
   const { state, actions } = useTracker();
+  const clock = useClockFormat();
   const views = useHabitViews();
   // "/habits?preset=water" opens that preset's Library sheet straight away: the door from a Today
   // card whose habit is gone lands on the thing to add back, not on the top of a long list.
@@ -45,8 +47,11 @@ export default function HabitsScreen() {
   // The preset sheet's reminder: the preset's own schedule until the person opens Change, then the
   // same editor the habit page shows (one editor per concept). Null until a preset is open; reset
   // when another preset opens. On-demand presets (EVENT) keep their trigger and show no editor.
-  const presetContext: PolicyContext | null = preset ? { movement: !!preset.snackType, water: preset.id === 'water', rotationIntervalMin: state.settings.nudgeIntervalMin } : null;
-  const presetDefault: NudgePolicy | null = preset ? habitFromPreset(preset, 'new', '2000-01-01').policy : null;
+  const presetContext: PolicyContext | null = preset ? { movement: !!preset.snackType, water: preset.id === 'water', rotationIntervalMin: state.settings.nudgeIntervalMin, clock } : null;
+  // An archived copy comes back with its history and its own schedule, so the card starts from that
+  // schedule (not the preset's) and Add restores rather than duplicates.
+  const archivedCopy = preset ? state.habits.find((h) => h.presetId === preset.id && h.archived) ?? null : null;
+  const presetDefault: NudgePolicy | null = preset ? (archivedCopy ? policyFor(state, archivedCopy.id) : undefined) ?? habitFromPreset(preset, 'new', '2000-01-01').policy : null;
   const [reminderFor, setReminderFor] = useState<{ presetId: string; draft: PolicyDraft; open: boolean } | null>(null);
   const reminderDraft = preset && presetContext && reminderFor?.presetId === preset.id ? reminderFor.draft : preset && presetContext ? policyDraftFrom(presetDefault ?? undefined, presetContext) : null;
   const reminderOpen = reminderFor?.presetId === preset?.id && !!reminderFor?.open;
@@ -131,7 +136,7 @@ export default function HabitsScreen() {
                     scaleTo={0.985}
                     onPress={() => setPreset(p)}
                     accessibilityRole="button"
-                    accessibilityLabel={`${p.name}: ${p.ruleText}. ${added ? 'Added' : 'Not added'}`}
+                    accessibilityLabel={`${p.name}: ${presetRuleText(p, state.settings.units)}. ${added ? 'Added' : 'Not added'}`}
                     style={styles.presetMain}
                   >
                     <IconTile icon={p.icon} color={c.cat[p.category]} size={40} />
@@ -143,7 +148,7 @@ export default function HabitsScreen() {
                         <EvidencePill grade={p.evidence} />
                       </Row>
                       <Txt role="footnote" tone="secondary" numberOfLines={1}>
-                        {p.ruleText}
+                        {presetRuleText(p, state.settings.units)}
                       </Txt>
                     </View>
                   </PressableScale>
@@ -202,9 +207,9 @@ export default function HabitsScreen() {
             <Row gap={12}>
               <IconTile icon={preset.icon} color={c.cat[preset.category]} size={48} />
               <View style={{ flex: 1 }}>
-                <Txt role="title2">{preset.ruleText}</Txt>
+                <Txt role="title2">{presetRuleText(preset, state.settings.units)}</Txt>
                 <Txt role="footnote" tone="secondary">
-                  {preset.nudgeText}
+                  {presetNudgeText(preset, clock)}
                 </Txt>
               </View>
             </Row>
@@ -229,7 +234,7 @@ export default function HabitsScreen() {
                 {reminderOpen ? <ReminderPolicyForm draft={reminderDraft} onChange={(draft) => setReminderFor({ presetId: preset.id, draft, open: true })} context={presetContext} preview={reminderPreview} /> : null}
                 {!reminderOpen ? (
                   <Txt role="footnote" tone="tertiary">
-                    You can change it any time from the habit's page.
+                    {archivedCopy ? 'You archived this habit earlier; adding it back keeps its history.' : "You can change it any time from the habit's page."}
                   </Txt>
                 ) : null}
               </Card>

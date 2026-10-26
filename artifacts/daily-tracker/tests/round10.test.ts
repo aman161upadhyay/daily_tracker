@@ -242,7 +242,7 @@ describe('sessions: the group a record shares most of itself with', () => {
 });
 
 describe('the reminder editor normalises what it saves', () => {
-  const ctxPlain = { movement: false, water: false, rotationIntervalMin: 60 };
+  const ctxPlain = { movement: false, water: false, rotationIntervalMin: 60, clock: '12h' as const };
   const ctxMove = { ...ctxPlain, movement: true };
   const ctxWater = { ...ctxPlain, water: true };
 
@@ -282,8 +282,9 @@ describe('the reminder editor normalises what it saves', () => {
     assert.equal(clockMinutes('7:30'), null);
     assert.equal(clockString(450), '07:30');
     assert.equal(clockString(1445), '00:05');
-    assert.equal(timesText(['12:30', '08:00', '19:00']), '8:00 AM, 12:30 PM and 7:00 PM');
-    assert.equal(timesText(['bad']), '');
+    assert.equal(timesText(['12:30', '08:00', '19:00'], '12h'), '8:00 AM, 12:30 PM and 7:00 PM');
+    assert.equal(timesText(['12:30', '08:00', '19:00'], '24h'), '08:00, 12:30 and 19:00');
+    assert.equal(timesText(['bad'], '12h'), '');
   });
 });
 

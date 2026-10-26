@@ -7,6 +7,7 @@ import { Card } from '../ui/Card';
 import { UI } from '../ui/icons';
 import { IconButton, IconTile, PillButton, Row } from '../ui/primitives';
 import { Txt } from '../ui/Txt';
+import { useClockFormat } from '@/src/state/hooks';
 
 export interface NudgeCardProps {
   nudge: NextNudge | null;
@@ -24,13 +25,14 @@ export interface NudgeCardProps {
 /** "Next: 10 squats · in 24 min" with Done now / Snooze / Swap. Gold frame while live. */
 export function NudgeCard({ nudge, suggestion, hasRotation, activeStartMin, nowMin, onDone, onSnooze, onSwap, onSettings }: NudgeCardProps) {
   const c = useColors();
+  const clock = useClockFormat();
 
   if (!nudge) {
     const text = !hasRotation
       ? 'Add a movement snack from the Library to get nudges.'
       : nowMin < activeStartMin
-        ? `Movement nudges start at ${formatClock(activeStartMin)}.`
-        : `Movement nudges are done for today. They resume at ${formatClock(activeStartMin)}.`;
+        ? `Movement nudges start at ${formatClock(activeStartMin, clock)}.`
+        : `Movement nudges are done for today. They resume at ${formatClock(activeStartMin, clock)}.`;
     return (
       <Card>
         <Row gap={12}>
@@ -54,7 +56,7 @@ export function NudgeCard({ nudge, suggestion, hasRotation, activeStartMin, nowM
         <IconTile Glyph={UI.Timer} color={c.cat.movement} size={40} />
         <View style={{ flex: 1 }}>
           <Txt role="footnote" tone={live ? 'gold' : 'secondary'}>
-            {live ? 'Due now' : `Next · ${formatIn(nudge.inMin)} at ${formatClock(nudge.dueMin)}`}
+            {live ? 'Due now' : `Next · ${formatIn(nudge.inMin)} at ${formatClock(nudge.dueMin, clock)}`}
           </Txt>
           <Txt role="title2" style={{ marginTop: 2 }}>
             {suggestion ?? nudge.item.label}

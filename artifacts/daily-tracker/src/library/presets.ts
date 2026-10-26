@@ -14,7 +14,9 @@ import type {
   MindKind,
   NudgeKind,
   SnackType,
+  Units,
 } from '../domain/models';
+import { formatClock, formatVolume, parseClockInput, type ClockFormat } from '../domain/time/format';
 
 export interface PresetSource {
   label: string;
@@ -31,7 +33,7 @@ export interface Preset {
   snackType?: SnackType;
   mindKind?: MindKind;
   rule: { cadence: Cadence; timesPerPeriod: number; target: number };
-  /** One line shown under the name ("10 squats · 6×/day"). */
+  /** One line shown under the name ("10 squats · 6×/day"); volumes as `{ml}` tokens, written by `presetText` in the units setting. */
   ruleText: string;
   policy: {
     kind: NudgeKind;
@@ -40,7 +42,9 @@ export interface Preset {
     onlyWhenBehind?: boolean;
     maxPerDay?: number;
   };
+  /** The preset's reminder in words; clock times as `{HH:MM}` tokens, written by `presetText` in the time format. */
   nudgeText: string;
+  /** "Why this matters"; volumes as `{ml}` tokens, written by `presetText` in the units setting. */
   why: string;
   caveat?: string;
   evidence: EvidenceGrade;
@@ -59,11 +63,11 @@ export const PRESETS: Preset[] = [
     unit: 'ml',
     icon: 'drop',
     rule: { cadence: 'DAILY', timesPerPeriod: 1, target: 2000 },
-    ruleText: '2,000 ml a day',
+    ruleText: '{2000} a day',
     policy: { kind: 'INTERVAL', intervalMin: 90, onlyWhenBehind: true, maxPerDay: 8 },
     nudgeText: 'Every 90 min, only when behind pace',
     why:
-      'Adequate intake for adults is about 2,700 ml (women) to 3,700 ml (men) of total water a day, and roughly a fifth of that comes from food — so about 2,000 ml of drinks is a sensible default, not a law.',
+      'Adequate intake for adults is about {2700} (women) to {3700} (men) of total water a day, and roughly a fifth of that comes from food — so about {2000} of drinks is a sensible default, not a law.',
     caveat: 'The “8 × 8 glasses” rule has no scientific basis; benefits of drinking more show up mainly for kidney stones and a few specific situations.',
     evidence: 'Guidance',
     sources: [
@@ -88,7 +92,7 @@ export const PRESETS: Preset[] = [
     rule: { cadence: 'DAILY', timesPerPeriod: 1, target: 3 },
     ruleText: 'A glass before each of 3 meals',
     policy: { kind: 'FIXED', times: ['08:00', '12:30', '19:00'], maxPerDay: 3 },
-    nudgeText: 'At 8:00 AM, 12:30 PM and 7:00 PM',
+    nudgeText: 'At {08:00}, {12:30} and {19:00}',
     why: 'A glass before each meal gets more of the day’s water in early, without having to think about it.',
     evidence: 'Guidance',
     sources: [
@@ -197,7 +201,7 @@ export const PRESETS: Preset[] = [
     rule: { cadence: 'WEEKLY', timesPerPeriod: 3, target: 3 },
     ruleText: '3 quick climbs · 3 days a week',
     policy: { kind: 'FIXED', times: ['10:30', '14:30', '16:30'], maxPerDay: 3 },
-    nudgeText: 'At 10:30 AM, 2:30 PM and 4:30 PM until 3 days are logged this week',
+    nudgeText: 'At {10:30}, {14:30} and {16:30} until 3 days are logged this week',
     why: 'Three quick stair climbs a day, three days a week, improved cardiorespiratory fitness in six weeks.',
     evidence: 'Moderate',
     sources: [{ label: 'Jenkins et al. 2019 (McMaster), Appl Physiol Nutr Metab', url: 'https://pubmed.ncbi.nlm.nih.gov/30649897' }],
@@ -267,7 +271,7 @@ export const PRESETS: Preset[] = [
     rule: { cadence: 'WEEKLY', timesPerPeriod: 2, target: 1 },
     ruleText: '20+ min · twice a week',
     policy: { kind: 'FIXED', times: ['18:00'], maxPerDay: 1 },
-    nudgeText: 'At 6:00 PM until both sessions are logged this week',
+    nudgeText: 'At {18:00} until both sessions are logged this week',
     why: 'The mortality link with strength training peaks around 30–60 minutes a week; later work suggests 90–120 minutes a week may be optimal.',
     evidence: 'Strong',
     sources: [
@@ -288,7 +292,7 @@ export const PRESETS: Preset[] = [
     rule: { cadence: 'DAILY', timesPerPeriod: 1, target: 7500 },
     ruleText: '7,500 a day · fills in from Health Connect',
     policy: { kind: 'FIXED', times: ['19:00'], onlyWhenBehind: true, maxPerDay: 1 },
-    nudgeText: 'Evening check-in at 7:00 PM if under 60% of goal',
+    nudgeText: 'Evening check-in at {19:00} if under 60% of goal',
     why: 'Mortality risk falls steeply up to about 7,000–8,000 steps a day and flattens after; 10,000 was a marketing number.',
     evidence: 'Strong',
     sources: [
@@ -312,7 +316,7 @@ export const PRESETS: Preset[] = [
     rule: { cadence: 'DAILY', timesPerPeriod: 1, target: 13 },
     ruleText: '13 min a day',
     policy: { kind: 'FIXED', times: ['07:30'], maxPerDay: 1 },
-    nudgeText: 'At 7:30 AM',
+    nudgeText: 'At {07:30}',
     why:
       'Eight weeks of 13 minutes a day improved attention, memory and mood in people who had never meditated — four weeks was not enough, so the streak matters.',
     evidence: 'Moderate',
@@ -329,7 +333,7 @@ export const PRESETS: Preset[] = [
     rule: { cadence: 'DAILY', timesPerPeriod: 1, target: 5 },
     ruleText: '5 min of guided breathing a day',
     policy: { kind: 'FIXED', times: ['15:00'], maxPerDay: 1 },
-    nudgeText: 'At 3:00 PM or on demand',
+    nudgeText: 'At {15:00} or on demand',
     why: 'Five minutes of exhale-focused “cyclic sighing” improved mood and lowered breathing rate more than the same time spent on mindfulness.',
     evidence: 'Moderate',
     sources: [
@@ -364,7 +368,7 @@ export const PRESETS: Preset[] = [
     rule: { cadence: 'DAILY', timesPerPeriod: 1, target: 1 },
     ruleText: 'One line a day',
     policy: { kind: 'FIXED', times: ['21:30'], maxPerDay: 1 },
-    nudgeText: 'At 9:30 PM',
+    nudgeText: 'At {21:30}',
     why: 'Small, fast, and it closes the day.',
     evidence: 'Guidance',
     sources: [],
@@ -381,7 +385,7 @@ export const PRESETS: Preset[] = [
     rule: { cadence: 'DAILY', timesPerPeriod: 1, target: 10 },
     ruleText: '10 pages a night',
     policy: { kind: 'FIXED', times: ['21:30'], maxPerDay: 1 },
-    nudgeText: 'At 9:30 PM, before bed',
+    nudgeText: 'At {21:30}, before bed',
     why:
       'In a 991-person online trial, people assigned to read a book in bed were more likely to report better sleep after a week (42% vs 28%) than those told not to. Ten pages a night is also 3,000+ pages a year.',
     evidence: 'Emerging',
@@ -397,7 +401,7 @@ export const PRESETS: Preset[] = [
     rule: { cadence: 'WEEKLY', timesPerPeriod: 5, target: 20 },
     ruleText: '20 pages on 5 days a week (about 100 a week)',
     policy: { kind: 'FIXED', times: ['08:30'], maxPerDay: 1 },
-    nudgeText: 'At 8:30 AM on days you have not read yet',
+    nudgeText: 'At {08:30} on days you have not read yet',
     why:
       'Spacing study over several days beats one long session for remembering what you read. Five short sessions a week turn a dense technical book into a predictable 100 pages.',
     evidence: 'Moderate',
@@ -413,7 +417,7 @@ export const PRESETS: Preset[] = [
     rule: { cadence: 'DAILY', timesPerPeriod: 1, target: 15 },
     ruleText: '15 min a day',
     policy: { kind: 'FIXED', times: ['20:30'], maxPerDay: 1 },
-    nudgeText: 'At 8:30 PM',
+    nudgeText: 'At {20:30}',
     why:
       'A daily slot at a fixed time is the habit-formation finding that replicates: planned "when and where" cues roughly double follow-through on goals. Fifteen minutes is small enough to start on a bad day.',
     evidence: 'Moderate',
@@ -429,7 +433,7 @@ export const PRESETS: Preset[] = [
     rule: { cadence: 'DAILY', timesPerPeriod: 1, target: 20 },
     ruleText: '20 min a day (Claude Code, Replit, Codex…)',
     policy: { kind: 'FIXED', times: ['19:30'], maxPerDay: 1 },
-    nudgeText: 'At 7:30 PM',
+    nudgeText: 'At {19:30}',
     why:
       'New routines took a median of 66 days to feel automatic in the classic diary study, and missing a single day made little difference — so a short daily build beats an occasional long one.',
     evidence: 'Emerging',
@@ -438,6 +442,39 @@ export const PRESETS: Preset[] = [
 ];
 
 export const PRESET_BY_ID: Record<string, Preset> = Object.fromEntries(PRESETS.map((p) => [p.id, p]));
+
+/**
+ * A preset's text with its figures written the way the person reads them: a volume token "{2000}"
+ * is "2,000 ml" or "67.6 oz" by the units setting, a clock token "{19:00}" is "7:00 PM" or "19:00"
+ * by the time format. The figures are stored in millilitres and 24-hour time so a citation or a
+ * schedule reads the same whichever way it is written; nothing in the Library says "ml" to a
+ * person who chose ounces, or "PM" to a phone on the 24-hour clock.
+ */
+export function presetText(text: string, units: Units, clock: ClockFormat = '12h'): string {
+  return text.replace(/\{(\d{1,2}:\d{2}|\d+)\}/g, (match, token: string) => {
+    if (token.includes(':')) {
+      const minute = parseClockInput(token);
+      return minute === null ? match : formatClock(minute, clock);
+    }
+    const f = formatVolume(Number(token), units);
+    return `${f.value} ${f.unit}`;
+  });
+}
+
+/** The preset's reminder in words ("At 7:30 AM" / "At 07:30"), in the time format. */
+export function presetNudgeText(preset: Pick<Preset, 'nudgeText'>, clock: ClockFormat): string {
+  return presetText(preset.nudgeText, 'ml', clock);
+}
+
+/** The line under a preset's name, in the units setting. */
+export function presetRuleText(preset: Pick<Preset, 'ruleText'>, units: Units): string {
+  return presetText(preset.ruleText, units);
+}
+
+/** A preset's "Why this matters", in the units setting. */
+export function presetWhy(preset: Pick<Preset, 'why'>, units: Units): string {
+  return presetText(preset.why, units);
+}
 
 /**
  * The preset with this id, or undefined. For ids that arrive from outside the table — a deep

@@ -95,6 +95,23 @@ export function minutesOfDay(instantMs: number, zone: string): number {
 }
 
 export function addDays(day: string, n: number): string {
+  if (n === 1) {
+    // Every day-by-day walk in the app (streaks, series, heatmaps, calendars) steps by one; the
+    // Date round trip is ~0.5 µs, which adds up to frames over two years of twelve habits. Bounded.
+    const hit = nextDayCache.get(day);
+    if (hit !== undefined) return hit;
+    const next = addDaysUncached(day, 1);
+    if (nextDayCache.size >= NEXT_DAY_CACHE_MAX) nextDayCache.clear();
+    nextDayCache.set(day, next);
+    return next;
+  }
+  return addDaysUncached(day, n);
+}
+
+const NEXT_DAY_CACHE_MAX = 8192;
+const nextDayCache = new Map<string, string>();
+
+function addDaysUncached(day: string, n: number): string {
   const { year, month, day: d } = parseDay(day);
   const t = Date.UTC(year, month - 1, d + n);
   const dt = new Date(t);

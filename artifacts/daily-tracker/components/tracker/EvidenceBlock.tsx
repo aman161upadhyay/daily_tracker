@@ -3,7 +3,8 @@ import { Linking, StyleSheet, View } from 'react-native';
 import { useColors } from '@/hooks/useColors';
 import { withAlpha } from '@/src/domain/color/oklch';
 import type { EvidenceGrade } from '@/src/domain/models';
-import { EVIDENCE_HELP, type Preset } from '@/src/library/presets';
+import { EVIDENCE_HELP, presetWhy, type Preset } from '@/src/library/presets';
+import { useTracker } from '@/src/state/TrackerProvider';
 import { UI } from '../ui/icons';
 import { PressableScale } from '../ui/PressableScale';
 import { Txt } from '../ui/Txt';
@@ -23,6 +24,7 @@ export function EvidencePill({ grade }: { grade: EvidenceGrade }) {
 /** "Why this matters": one honest sentence, the caveat, and tappable sources (the only network use). */
 export function EvidenceBlock({ preset }: { preset: Preset }) {
   const c = useColors();
+  const { state } = useTracker();
   return (
     <View style={{ gap: 10 }}>
       <View style={styles.gradeRow}>
@@ -31,7 +33,7 @@ export function EvidenceBlock({ preset }: { preset: Preset }) {
           {EVIDENCE_HELP[preset.evidence]}
         </Txt>
       </View>
-      <Txt role="body">{preset.why}</Txt>
+      <Txt role="body">{presetWhy(preset, state.settings.units)}</Txt>
       {preset.caveat ? (
         <View style={[styles.caveat, { borderLeftColor: c.gold }]}>
           <Txt role="footnote" tone="secondary">

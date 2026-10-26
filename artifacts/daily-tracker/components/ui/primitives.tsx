@@ -299,7 +299,7 @@ export function Stepper({
           autoCorrect={false}
           returnKeyType="done"
           maxLength={parse ? 10 : 6}
-          placeholder={placeholder ?? (parse ? '9:30 pm' : undefined)}
+          placeholder={placeholder ?? (inputKind === 'time' && format ? format(21 * 60 + 30).toLowerCase() : parse ? '9:30 pm' : undefined)}
           placeholderTextColor={c.textTertiary}
           accessibilityLabel={`${label}${bounds}`}
           style={[TYPE.title2, styles.stepperValue, styles.stepperInput, { color: c.text, borderColor: c.tint }]}

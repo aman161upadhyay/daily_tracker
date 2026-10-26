@@ -5,7 +5,7 @@ first thing to read after `replit.md`. It answers: what exists, why it is the wa
 verified, what happened step by step, and what is still open. Append to the journal; never rewrite
 history.
 
-Last updated: 2026-10-26, autonomous session (council rounds 1–19 fixed; see journal and §6).
+Last updated: 2026-10-26, autonomous session (council rounds 1–20 fixed; see journal and §6).
 
 ---
 
@@ -15,10 +15,10 @@ Last updated: 2026-10-26, autonomous session (council rounds 1–19 fixed; see j
 |---|---|
 | App | Daily Tracker — private Android tracker: habits · water · movement snacks · meditation · opt-in cycle · home-screen widget · configurable nudges · Health Connect import · app lock · encrypted backups |
 | Code | `artifacts/daily-tracker/` — Expo SDK 57, React Native 0.86, TypeScript, Expo Router, expo-sqlite |
-| Version | `app.json` `version 0.23.0`, `versionCode 23`, tag `v0.23` (M6 complete + council rounds 1–19) |
+| Version | `app.json` `version 0.24.0`, `versionCode 24`, tag `v0.24` (M6 complete + council rounds 1–20) |
 | Repo | https://github.com/aman161upadhyay/daily_tracker.git, branch `main`, commits authored as Aman |
 | Milestones | M0 skeleton ✅ · M1 storage/streaks/onboarding ✅ · M2 nudges/notifications ✅ · M3 widget ✅ · M4 Health Connect/Body ✅ · M5 cycle ✅ · M6 theme/lock/backup/signing ✅ (`docs/IMPLEMENTATION_PLAN.md`) |
-| Verified here | type-check (three packages), 455 unit tests (incl. a 75-sequence randomised nudge simulation and a seeded state fuzz), Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks (incl. the Health Connect rationale activity), web walkthroughs by a browser-driving tester |
+| Verified here | type-check (three packages), 475 unit tests (incl. a 75-sequence randomised nudge simulation and a seeded state fuzz), Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks (incl. the Health Connect rationale activity), web walkthroughs by a browser-driving tester |
 | Never run yet | a real Android device. Everything native (widget taps, notification buttons with the app closed, Health Connect, app lock, Auto Backup, signed APK) is coded and reviewed but untested on hardware — `docs/DEVICE_CHECKLIST.md` lists the exact rows |
 | User's next step | `docs/GET_IT_ON_YOUR_PHONE.md` (plain-language build guide) |
 
@@ -548,12 +548,38 @@ contradicts one, write down why.
     so the fast path stays one tap; on-demand presets (EVENT) show no editor and keep their
     trigger whatever is passed. **Why:** the strength / stair presets rang every day until the
     weekly quota was in, and the days could only be chosen after adding — the last creation-time
-    gap in the backlog.
+    gap in the backlog. An archived preset added again comes back with its history and takes the
+    chosen reminder (`restorePresetActions`); untouched, it keeps the schedule it had.
 88. **Nothing is not a highlight.** A summary that would read "0 of the last 7 days" over a week
     with no data — and a previous week with none — is left out; a week that went from something to
     nothing is said plainly ("No water logged in the last 7 days"). Empty states say what is
     missing and what to do, never a fraction over history that does not exist. **Why:** the
     fresh-install journey read "You logged water 0 of the last 7 days" as history on day one.
+89. **The clock format is threaded explicitly, like units.** `formatClock(minute, clock)` takes the
+    format every time; the provider resolves it once (`resolveClockFormat`: Settings → Time format,
+    or the phone's own 24-hour switch read at the platform boundary in `services/deviceClock.ts`,
+    refreshed on every foreground) and `useClockFormat()` hands it to the screens; `PolicyContext`
+    and `nextRingText` carry it so the domain's sentences follow it too. Never a module-level
+    default: tab screens stay mounted and their memoised strings would go stale. **Why:** every
+    time in the app was "9:30 PM" whatever the phone said (locale lens, round 20); the units
+    setting had already shown that an explicit parameter is the only way tsc finds every writer.
+90. **A typed number is read from every keyboard.** `parseDecimalInput` folds Arabic-Indic and
+    Persian digits and marks, treats a space between digit groups as grouping, reads a lone
+    separator before exactly three digits as thousands ("2.000" is 2,000 ml, "1,5" is 1.5) and the
+    last of two kinds as the decimal; a second separator of the same kind is nothing yet (null —
+    the stepper keeps its value) rather than a guess. **Why:** a decimal-comma keyboard's "1,5" read
+    as 15, and "1.250.0" on the way to "1.250.000" made the value jump keystroke by keystroke.
+91. **Key derivation yields.** The export and unlock screens use `encryptBackupAsync` /
+    `decryptBackupAsync` (noble's `pbkdf2Async`, which gives the event loop a turn every few
+    milliseconds); the synchronous forms stay for tests and tools and read the same files. **Why:**
+    200,000 PBKDF2 rounds blocked the JavaScript thread for seconds on a phone — the busy label froze
+    and Cancel queued behind it (performance lens, round 20).
+92. **No figure is written into a string at authoring time.** A preset's texts carry their volumes
+    and clock times as tokens (`{2000}`, `{19:00}`) that `presetText(text, units, clock)` writes in
+    the units setting and the time format; a row's reminder hint comes from the habit's own policy
+    (`shortPolicyText`), never from the preset it was made from. **Why:** the "second week" journey
+    found "2,000 ml a day" and "2,700 ml (women)" under ounces, and Today's rows said "At 7:30 AM"
+    under the 24-hour clock — and said it for a reminder the person had long since changed.
 
 ### How council findings are judged
 - Accept when: evidence is concrete (file:line, reproducible), it violates a paradigm or a user constraint,
@@ -644,6 +670,10 @@ Dates are America/New_York. Commits are on `main`.
 | 2026-10-26 night | **Council round 19** — a diff review of round 18 (no findings), an Android 14 / 15 / 16 release-readiness lens over app.json, the plugins, the local module, the patches and the installed native sources, with a scratch prebuild (no findings; two corrections to the file's own assumptions: the background task is chained one-time work with a 180-minute delay on every target phone, and the 16 KB page-size check belongs in the laptop build), a fresh-install journey by the browser-driving tester (onboarding → presets → a custom habit → logging and undo → every screen with near-empty data → export → Reminders), and a dead-code pass (`tsc --noUnusedLocals --noUnusedParameters` plus an unused-export scan). | — |
 | 2026-10-26 night | **Round-19 fixes and additions:** accessibility state through `aria-*` props everywhere (paradigm 86); a Library preset's reminder shown and editable in its sheet before adding (`presetHabitAction`, paradigm 87); the Mind timer's "Other" length (1–120 min, typed or stepped) and "1 minute" singular; the water highlight left out over two empty weeks (paradigm 88); the New habit type hint as a sentence; the weekly presets' Library copy ("until 3 days are logged this week"); the Stepper's bound buttons; seven unused imports / locals and one dead export removed; BUILD_ANDROID's 16 KB check; version 0.23.0 / versionCode 23 | this commit |
 | 2026-10-26 night | Verification: tsc clean, 455 tests (7 new in `tests/round19.test.ts`: the preset action with and without a chosen reminder, Off, an on-demand preset's trigger kept, a movement preset's rotation, a weekly preset with chosen days ringing on those days only and on every day without), browser e2e of the preset sheet's reminder (Mon / Wed / Fri chosen → the habit page's row and "Next: Wed"), the on-demand preset without an editor, the day letters' checked state, the type hint, no empty-week highlight, a 1-minute meditation to completion, `expo export --platform android` | this commit, tag `v0.23` |
+| 2026-10-26 night | **Council round 20** — three lenses over the round-19 result: a diff review with probes (one finding: an archived preset added again from the Library ignored the sheet's reminder), a locale / internationalisation lens (three findings: typed amounts read on one keyboard only, every clock time written as 12-hour whatever the phone says, an unchecked zone name from the runtime; expo-localization was not installed, headless texts carry no clock times), and a performance lens over the selectors and the backup path with a 730-day fixture (two findings: the streak loop and `addDays` re-parsing the same days, and PBKDF2 blocking the JavaScript thread) — plus the "second week" journey by the browser-driving tester. |
+| 2026-10-26 night | **Round-20 fixes and the time format:** `restorePresetActions` (an archived preset comes back with its history and the chosen reminder, paradigm 87); `parseDecimalInput` folds Arabic-Indic / Persian digits and marks, grouping spaces, thousands dots and decimal commas, and refuses a second same-kind separator (paradigm 90); `currentZone` formats a date with the runtime's zone name before trusting it; `Settings.clockFormat` (Automatic / 12-hour / 24-hour) resolved once in the provider from the phone's switch (`expo-localization` `getCalendars()[0].uses24hourClock`, refreshed on foreground) and threaded as a required `clock` through `formatClock`, `PolicyContext`, `nextRingText`, every stepper's time format and placeholder and the Shield's walk line (paradigm 89); `encryptBackupAsync` / `decryptBackupAsync` behind the export and unlock screens (paradigm 91); the streak loop reuses its cursor and `addDays(day, 1)` keeps a bounded next-day cache (cold `habitView` 22 → 11 ms, `liveNudge` 30 → 8.5 ms, `nudgePlan` 26 → 8.8 ms, `highlights` 15 → 6.8 ms, `cycleInsights` 13 → 6.6 ms on the 730-day fixture). |
+| 2026-10-26 night | **Journey fixes (round 20):** preset texts carry volume and clock tokens written by `presetText` (the Library's "2,000 ml a day" / "2,700 ml (women)" under ounces, "At 7:30 AM" under the 24-hour clock); Today's row hint from the habit's own policy (`shortPolicyText`) instead of the preset's static line (paradigm 92); the water highlight in the units setting; a stair snack is one climb (a logged climb counts one of the day's three); the Reminders card's Next up names the snack of a rotation ring and each part of a merged one; the web file picker is attached to the document while the chooser is open and reads a dismissed chooser as a cancel; the week-start hint says past weeks are re-read. |
+| 2026-10-26 night | Verification: tsc clean, 475 tests (20 new in `tests/round20.test.ts`: the restore with / without a chosen reminder, an active habit, an on-demand preset; every keyboard's numbers and the refusals; the format's resolution, both writings, read-back in both, the policy words and the next-ring line in 24-hour, the setting through a file; the async crypto round trip both ways, a wrong password, the event loop turning during derivation; the preset tokens in both units and both clocks, the live row hint, the oz highlight, the one-climb stair snack), browser e2e twice (see §6 Round 20), `expo export --platform android`; pushed as `v0.24`. |
 
 (Entries for each council round follow below as they happen.)
 
@@ -651,6 +681,35 @@ Dates are America/New_York. Commits are on `main`.
 
 Format per round: lens → findings (severity · title · disposition · commit). Dispositions: **fixed**,
 **rejected** (reason), **deferred** (needs user/phone).
+
+### Round 20 (2026-10-26 night)
+
+Three lenses over the round-19 result — a diff review with probes, a locale / internationalisation lens, and a performance lens over the selectors and the backup path (a generated 730-day state, `node --import tsx` timings cold and warm) — plus the browser-driving tester's "second week" journey over sample data.
+
+**Diff review**
+- ADV19-01 med · an archived Library preset added again from its sheet kept its old schedule: `addPreset` returned the existing habit before the chosen reminder was looked at, while the sheet had said "Add to my habits" under a reminder card that showed the preset's default · **fixed** — `restorePresetActions(state, existing, reminder?)` (un-archive, then `SET_POLICY` re-addressed to the existing habit; EVENT / CYCLE policies keep their trigger); the sheet's card starts from the archived copy's own policy and says "You archived this habit earlier; adding it back keeps its history"; tests.
+- Judged correct: the preset action with every reminder kind; the Mind "Other" stepper's bounds and the singular; the water highlight's guard (an early return there would have skipped the later highlights — a guard is used instead); React Native's `aria-*` → `accessibilityState` mapping on Pressable, including `aria-disabled` on a disabled Pressable.
+
+**Locale / internationalisation**
+- LOC20-1 med · typed amounts were read on one keyboard: a decimal-comma keyboard's "1,5" became 15 and "٢٥٠" nothing · **fixed** — `parseDecimalInput` folds Arabic-Indic / Persian digits and the Arabic decimal and thousands marks, drops a grouping space between digit groups, reads a lone separator before exactly three digits as thousands ("2.000" → 2,000; "12,000 ml" → 12,000) and the last of two kinds as the decimal ("1.850,5" → 1,850.5), and returns null for a second same-kind separator ("1.2.3", "1.250.0" mid-typing) so the stepper keeps its value; paradigm 90; tests. (A first version folded every space to a comma, which broke "12,000 ml" → 12 — only a space between a digit and exactly three digits is grouping.)
+- LOC20-2 med · every clock time in the app was written "9:30 PM" whatever the phone's 24-hour setting (43 call sites of `formatClock`, the Shield alone through `toLocaleTimeString`) · **fixed** — `Settings.clockFormat` (`system` default · `12h` · `24h`; Settings → Time format "Automatic / 12-hour / 24-hour" with the current writing in the hint), the phone's switch read through `expo-localization` (`getCalendars()[0].uses24hourClock` = Android's `DateFormat.is24HourFormat`; the locale's `hourCycle` as the fallback) in `services/deviceClock.ts` at start and on every foreground, `resolveClockFormat` in the provider, `useClockFormat()` for the screens, a required `clock` on `formatClock`, `PolicyContext` and `nextRingText` so tsc found every writer, the time steppers' format and placeholder ("21:30" / "9:30 pm") following it, the Shield's walk line through `formatClock`; paradigm 89; tests. Headless texts (notification bodies, the widget) carry no clock times, so nothing there changed. `expo-localization`'s config plugin was added to app.json by the install; without options it changes nothing on Android.
+- LOC20-3 low · `currentZone` trusted the runtime's zone name; some Android builds return a name (`Etc/Unknown`) that `Intl.DateTimeFormat` then refuses, which every tracking-day formatter would have thrown on · **fixed** — the name is tried in a `DateTimeFormat` before it is accepted; UTC otherwise.
+- Judged correct: no `toLocaleString` / `Intl.NumberFormat` left in the app's own text (volumes and counts are written by `formatVolume` / the stepper formatters); dates are written by the app's own day formatters with English month and weekday names (the app is English-only, by the plan).
+
+**Performance** (730-day generated state: 7 habits, 5,100 water rows, 2,900 entries, 1,460 snacks, 700 mind sessions)
+- PERF20-01 med · `streakFor` re-parsed every day of the history: the period loop called `addDays(day, 1)` per day and `addDays` re-parsed the day string each time (`habitView` 22 ms cold, `liveNudge` 30 ms, `nudgePlan` 26 ms — on a phone's JavaScript thread, three to five times slower, on every tick) · **fixed** — the loop reuses the day after each period's end as the next cursor; `addDays(day, 1)` keeps a bounded (8,192-entry) next-day cache. After: `habitView` 11 ms, `liveNudge` 8.5 ms, `nudgePlan` 8.8 ms, `highlights` 15 → 6.8 ms, `cycleInsights` 13 → 6.6 ms; warm paths unchanged (memoised).
+- PERF20-02 med · the export and the unlock ran 200,000 PBKDF2 rounds synchronously on the JavaScript thread (seconds on a phone: the busy label froze and Cancel queued behind it; the unlock sheet used a `setTimeout` to let the spinner paint, which does not help once the loop starts) · **fixed** — `encryptBackupAsync` / `decryptBackupAsync` on noble's `pbkdf2Async` (yields every 10 ms); `serializeExportAsync` / `unlockExportAsync`; the export builds its text before the file is created; the sync forms stay for tests and read the same files; paradigm 91; tests (incl. a timer that must run during the derivation).
+- Noted, no finding: a full persist of the 730-day state through the node SQLite adapter takes 776 ms (the save queue coalesces and runs off the render path); `heatmapValues` 4.6 ms cold.
+
+**"Second week" journey** (sample data; the browser-driving tester — a weekly rule edit, an older day's water, archive and restore, the week start, ounces, the cycle screens, snooze, reminders off, an encrypted export and import, Erase everything)
+- J20-01 med · with ounces set, the Library said "2,000 ml a day", the water preset's "Why this matters" cited "2,700 ml (women) to 3,700 ml (men)" and the Today highlight read "1,471 ml a day on average" · **fixed** — volume tokens in the preset texts written by `presetText(text, units)` (`presetRuleText`, `presetWhy`); the highlight through `formatVolume`; a test walks every preset under ounces; paradigm 92.
+- J20-02 med (second run) · under the 24-hour clock Today's rows still said "At 7:30 AM", "At 3:00 PM", "At 6:00 PM" — the hint was the preset's static `nudgeText`, which also ignored a changed reminder and said nothing for a custom habit · **fixed** — `shortPolicyText(policy, ctx)` from the habit's own policy ("At 07:30", "At 08:00 +2 on weekdays", "Every 1 h 30 min when behind", "Rotation", "On demand"); the Library sheet's reminder line carries clock tokens (`presetNudgeText`); paradigm 92.
+- J20-03 med (second run) · Stair sprint: one "Log one" wrote "3 stair climbs" in the log but counted 1 of the day's 3 climbs, so the summary stayed "0 of 3 this week" · **fixed** — a stair snack is one climb (`SNACK_LABELS.STAIRS.defaultReps` 1, label "Stair climb"): three logged climbs complete the day, as the preset and the sprint-snack protocol say (three single climbs spread over a day). The earlier sample rows keep their reps; a day counts snacks, not reps, for every movement habit.
+- J20-04 low (second run) · "Import backup" on the web preview opened no chooser for the test harness and left both buttons busy until a reload (a detached `<input type=file>`, `click()`ed and dropped) · **fixed** — the input is appended (hidden) while the chooser is open and removed after; a dismissed chooser with no cancel event is read as a cancel 1.5 s after the window regains focus. Android uses the document picker and was not affected.
+- J20-05 low · Settings → Reminders' Next up said "5:47 PM · Time for a break" for a ring Today's card called "10 push-ups" (the merged title; a rotation's "Movement snack" the same) · **fixed** — a rotation or merged line shows the body ("10 push-ups — push-up snack"; each part of a merged ring).
+- J20-06 low · changing the week start moved Strength's 14-day figures (71 % / 8 → 57 % / 6) and the heatmap's counts · **by design** (weekly quotas re-bucket, round 16) — the setting's hint now says "past weeks included, so a weekly habit's history is re-read too".
+- J20-07 info · About read "0.7.0" on the first run · Metro's cache (J19-06), cleared before the second run, which read 0.24.0; "Erase everything" landing on an empty Today rather than onboarding · **by design** (the copy says settings and Water stay); the water highlight's "50 oz a day on average" is the one-decimal writer dropping ".0" · correct.
+- Judged correct: the weekly rule edit and its history (a "history-visibility gap" for a rule changed mid-week is the week strip's existing re-read, low, not pursued); an older day's water through the day picker; archive → restore; the cycle journey; snooze; reminders off; the encrypted export and import on the first run (second run: see J20-04).
 
 ### Round 19 (2026-10-26 night)
 
@@ -1367,12 +1426,13 @@ Five lenses over the round-6 result, each a fresh read-only session with its own
 ### Deferred features (from the plan)
 - Steps and cycle tiles in the widget; sleep-stages chart; write-back of water/mind sessions to Health Connect (v2).
 - Per-habit notification sounds (deferred in the plan at M2, M3 and M6; still not built). The week-start setting shipped in round 16; reminder set-up inside habit creation in round 17.
-- Preset habits added from the Library start with their preset's reminder; since round 19 the Library sheet shows it with Change before adding (days, times, interval, or off).
+- Preset habits added from the Library start with their preset's reminder; since round 19 the Library sheet shows it with Change before adding (days, times, interval, or off); since round 20 an archived preset added again keeps its history and takes the chosen reminder.
+- Settings → Time format (Automatic / 12-hour / 24-hour) shipped in round 20; the app's dates stay English (month and weekday names) — a translated UI is not planned.
 - An automatic luteal symptom check-in (a cycle reminder anchored "into the luteal phase" stands in).
 - PIPE10-03 — reconstruction of merged reminders scheduled by v0.12 (they are replaced on the first sync after the update).
 
 ### Device verification owed
-- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10, T1–T11, U1–U11, V1–V11, X1–X11, Y1–Y14, Z1–Z13, AA1–AA16, AB1–AB11, AC1–AC8, AD1–AD7, AE1–AE6, AF1–AF5, AG1–AG6, AH1–AH2, AI1–AI3, AJ1–AJ4 have never been run on hardware. First build on the laptop is the next real milestone.
+- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10, T1–T11, U1–U11, V1–V11, X1–X11, Y1–Y14, Z1–Z13, AA1–AA16, AB1–AB11, AC1–AC8, AD1–AD7, AE1–AE6, AF1–AF5, AG1–AG6, AH1–AH2, AI1–AI3, AJ1–AJ4, AK1–AK4 have never been run on hardware. First build on the laptop is the next real milestone.
 - Residual risk carried knowingly: two JavaScript runtimes writing SQLite at once (UPG6-03, row V11). If the device run shows a lost write there, the fix is a database revision compared inside the write transaction.
 - Rows added in round 7: X1–X5 (exact alarms and the offline re-plan — the two library defaults the platform lens read in the sources), X6 (sheets in a short window), X7–X9 (Today without the trio, cycle off / hidden), X10–X11 (long titles, the drink ceiling).
 - Rows added in round 8: Y1–Y3 (snapshot replacement, kept copies, journaled deletes), Y4–Y6 (speculative and birth-control reminders, estimated wording), Y7–Y10 (widget sizes, font scale, notice), Y11–Y14 (drink reconcile, one night across sources, late records and backfill, permission names).
@@ -1386,6 +1446,7 @@ Five lenses over the round-6 result, each a fresh read-only session with its own
 - Rows added in round 17: AH1 (a habit created with a set-times reminder rings at that time on those days, with the app killed), AH2 (a widget tap whose re-plan fails — airplane mode plus a full disk is hard to stage; at least: the tap survives a kill right after it and never shows "could not be saved" once the tile moved).
 - Rows added in round 18: AI1 (a crash-and-recover with reminders off: no alarm comes back), AI2 (a meditation stopped within a second of starting: no bell rings), AI3 (the creation form's Daily maximum follows the time rows).
 - Rows added in round 19: AJ1 (a preset added with chosen days rings on those days only, app killed), AJ2 (a one-minute "Other" meditation's end bell), AJ3 (TalkBack announces checked / selected / disabled on day letters, chips, done rows and past-days cells), AJ4 (About shows the app.json version on the installed build).
+- Rows added in round 20: AK1 (a phone set to 24-hour time writes every time "21:30" under Automatic, and follows the switch when it is flipped in the background), AK2 (an archived preset added again with chosen days rings on those days and keeps its history), AK3 (an encrypted export of a large state keeps the busy label moving and Cancel responsive), AK4 (amounts typed on German and Arabic keyboards); AJ4 now expects 0.24.0.
 - PLAT12-03 (deferred): after a reboot Android drops expired one-shot alarms before Expo's boot receiver runs; the next sync reads them as rung and the daily cap is spent a slot early. A fix needs a Kotlin boot receiver that records the boot instant for the JavaScript side; AC5 measures how often it bites.
 - Rows added in round 10: AA1–AA8 (occurrences, the journal under a lost save, a clock set back, yesterday's tap, exempt rings, missed mornings, night-owl hours, the background re-plan), AA9–AA16 (rest of today, the reminder editor on custom / preset / movement habits, ounces everywhere, Body extrema, freezes by cadence, confirmations).
 - Deferred from round 8: Health Connect change tokens (`getChanges`) as an optimisation over the rolling window; "sharpens after three" copy.

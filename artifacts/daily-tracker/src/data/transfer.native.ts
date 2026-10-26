@@ -11,9 +11,9 @@ import { purgeTransferCache } from '@/src/services/transferCache';
 import type { TrackerState } from '@/src/state/types';
 import { StorageError } from './store';
 import { secureRandomBytes } from './secureRandom';
-import { EXPORT_SCRATCH_DIR, exportFileName, MAX_IMPORT_CHARS, randomFileTag, serializeExport } from './transferFormat';
+import { EXPORT_SCRATCH_DIR, exportFileName, MAX_IMPORT_CHARS, randomFileTag, serializeExportAsync } from './transferFormat';
 
-export { describeImport, exportFileName, inspectExport, parseExport, serializeExport, unlockExport, type ExportFile, type InspectedExport } from './transferFormat';
+export { describeImport, exportFileName, inspectExport, parseExport, serializeExport, unlockExport, unlockExportAsync, type ExportFile, type InspectedExport } from './transferFormat';
 
 /**
  * The file goes to a scratch directory the share sheet can read; older
@@ -23,11 +23,13 @@ export async function exportState(state: TrackerState, password?: string): Promi
   await purgeTransferCache();
   const dir = new Directory(Paths.cache, EXPORT_SCRATCH_DIR);
   if (!dir.exists) dir.create({ intermediates: true });
+  // Encrypted before the file exists, so a failure mid-derivation leaves nothing behind.
+  const text = await serializeExportAsync(state, new Date(), password);
   const file = new File(dir, exportFileName(new Date(), randomFileTag(secureRandomBytes(6))));
   if (file.exists) file.delete();
   try {
     file.create();
-    file.write(serializeExport(state, new Date(), password));
+    file.write(text);
   } catch (err) {
     removeScratchFile(file.uri);
     throw err;

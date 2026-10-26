@@ -79,6 +79,7 @@ export function normalizeSettings(raw: Partial<Settings> | undefined): Settings 
     widgetHabitIds: Array.isArray(base.widgetHabitIds) ? base.widgetHabitIds : [],
     weeklySummary: { ...DEFAULT_SETTINGS.weeklySummary, ...(base.weeklySummary ?? {}) },
     theme: base.theme === 'light' || base.theme === 'system' ? base.theme : 'dark',
+    clockFormat: base.clockFormat === '12h' || base.clockFormat === '24h' ? base.clockFormat : 'system',
     weekStart: base.weekStart === 'sunday' ? 'sunday' : 'monday',
     appLock: { ...DEFAULT_SETTINGS.appLock, ...(base.appLock ?? {}) },
     cycle: {

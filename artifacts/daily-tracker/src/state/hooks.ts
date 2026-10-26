@@ -2,6 +2,12 @@ import { useMemo } from 'react';
 import type { Habit } from '@/src/domain/models';
 import { activeHabits, habitView, highlights, liveNudge, todaySummary, type HabitView } from './selectors';
 import { useTracker } from './TrackerProvider';
+import type { ClockFormat } from '@/src/domain/time/format';
+
+/** "9:30 PM" or "21:30": the format every written time uses (Settings → Time format, or the phone's switch). */
+export function useClockFormat(): ClockFormat {
+  return useTracker().clock;
+}
 
 export function useTodaySummary() {
   const { state, today, nowMs, zone } = useTracker();

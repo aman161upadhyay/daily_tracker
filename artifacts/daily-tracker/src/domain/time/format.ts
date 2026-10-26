@@ -44,13 +44,28 @@ export function formatWeekdayShort(day: string): string {
 }
 
 /** Minutes after midnight → "9:41 AM" */
-export function formatClock(minutesOfDay: number): string {
+/** How a clock time is written: "9:30 PM" or "21:30". Resolved once from the setting and the phone. */
+export type ClockFormat = '12h' | '24h';
+
+/**
+ * The format in force: the explicit setting, or the phone's own 24-hour switch (Android's
+ * "Use 24-hour format", read at the platform boundary) when the setting says "system".
+ */
+export function resolveClockFormat(preference: 'system' | ClockFormat, deviceUses24h: boolean): ClockFormat {
+  if (preference === 'system') return deviceUses24h ? '24h' : '12h';
+  return preference;
+}
+
+/** "9:30 PM" / "12:05 AM", or "21:30" / "00:05" in the 24-hour format. */
+export function formatClock(minutesOfDay: number, clock: ClockFormat): string {
   const m = ((minutesOfDay % 1440) + 1440) % 1440;
   const h24 = Math.floor(m / 60);
   const min = m % 60;
+  const mm = `${min < 10 ? '0' : ''}${min}`;
+  if (clock === '24h') return `${h24 < 10 ? '0' : ''}${h24}:${mm}`;
   const suffix = h24 >= 12 ? 'PM' : 'AM';
   const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
-  return `${h12}:${min < 10 ? '0' : ''}${min} ${suffix}`;
+  return `${h12}:${mm} ${suffix}`;
 }
 
 /**
@@ -138,18 +153,47 @@ export function habitUnit(habit: { presetId?: string; unit: string }, units: 'ml
 }
 
 /**
+ * Digits and separators as other keyboards write them, folded to ASCII: Arabic-Indic (٠–٩) and
+ * Persian (۰–۹) digits, the Arabic decimal (٫) and thousands (٬) marks, the French narrow space
+ * between groups (dropped: a space is never a decimal mark, so "1 850,5" reads as 1850,5). One
+ * place, so every parser reads every keyboard.
+ */
+function asciiDigits(text: string): string {
+  return text
+    .replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[\u06f0-\u06f9]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+    .replace(/\u066b/g, '.')
+    .replace(/\u066c/g, ',')
+    .replace(/(\d)[\u202f\u00a0 ](?=\d{3}(?!\d))/g, '$1');
+}
+
+/**
  * A typed number, however the keyboard wrote it: "64", "8.5", "1,850", "1,5" (a decimal-comma
- * keyboard), "1,850.5". A comma is a thousands separator when it groups exactly three digits with
- * no point in sight — "1,850" is a volume in ml far more often than 1.85 of anything — and a decimal
- * point otherwise. A stray unit word is ignored. Returns null when nothing numeric was typed.
- * Every sheet and stepper parses through here, so the same text means the same number everywhere.
+ * keyboard), "2.000" (a decimal-point keyboard's thousands dot), "1,850.5", "1.850,5", "٢٥٠".
+ * A lone separator that groups exactly three digits is a thousands separator — "1,850" and
+ * "2.000" are volumes in ml far more often than 1.85 or 2.000 of anything — and a decimal mark
+ * otherwise; with both kinds present the last one is the decimal mark. A stray unit word is
+ * ignored. Returns null when nothing numeric was typed. Every sheet and stepper parses through
+ * here, so the same text means the same number everywhere.
  */
 export function parseDecimalInput(text: string): number | null {
-  let t = text.replace(/[^\d.,]/g, '');
+  let t = asciiDigits(text).replace(/[^\d.,]/g, '').replace(/[.,]+$/, '');
   if (!/\d/.test(t)) return null; // "oz", "", "  ": nothing typed yet, keep the current value
-  if (t.includes('.')) t = t.replace(/,/g, '');
-  else if (/^\d{1,3}(,\d{3})+$/.test(t)) t = t.replace(/,/g, '');
-  else t = t.replace(',', '.').replace(/,/g, '');
+  const lastDot = t.lastIndexOf('.');
+  const lastComma = t.lastIndexOf(',');
+  if (lastDot >= 0 && lastComma >= 0) {
+    // Both kinds: the one that comes last is the decimal mark, the other groups thousands.
+    const decimal = lastDot > lastComma ? '.' : ',';
+    t = t.replace(decimal === '.' ? /,/g : /\./g, '').replace(',', '.');
+  } else if (/^\d{1,3}([.,]\d{3})+$/.test(t)) {
+    t = t.replace(/[.,]/g, ''); // "1,850", "2.000", "1.250.000"
+  } else {
+    // One kind of separator, not a thousands grouping: a single decimal mark. Two of them
+    // ("1.2.3", or "1.250.0" on the way to "1.250.000") is nothing yet — the stepper keeps the
+    // current value instead of reading 1.23 and jumping to 1 then 1,250,000 keystroke by keystroke.
+    if ((t.match(/[.,]/g) ?? []).length > 1) return null;
+    t = t.replace(',', '.');
+  }
   const n = Number(t);
   return Number.isFinite(n) ? n : null;
 }

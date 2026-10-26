@@ -11,9 +11,11 @@ import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import { newId, now } from '@/src/domain/time/clock';
 import { SHIELD_EVENT_HABIT_ID } from '@/src/domain/models';
-import { formatMinSec } from '@/src/domain/time/format';
-import { PRESET_BY_ID } from '@/src/library/presets';
+import { formatClock, formatMinSec } from '@/src/domain/time/format';
+import { minutesOfDay } from '@/src/domain/time/trackingDay';
+import { PRESET_BY_ID, presetWhy } from '@/src/library/presets';
 import { getPermission, NOTIFICATIONS_SUPPORTED } from '@/src/services/notifications';
+import { useClockFormat } from '@/src/state/hooks';
 import { useTracker } from '@/src/state/TrackerProvider';
 
 const SQUAT_SECONDS = 60;
@@ -26,7 +28,8 @@ const FOLLOW_UP_MINUTES = 20;
 export default function ShieldScreen() {
   const c = useColors();
   const leave = useBackOrHome();
-  const { state, actions } = useTracker();
+  const { state, actions, zone } = useTracker();
+  const clock = useClockFormat();
   const preset = PRESET_BY_ID['sugar-shield'];
 
   const [running, setRunning] = useState(false);
@@ -155,7 +158,7 @@ export default function ShieldScreen() {
           <Row gap={10} style={{ alignItems: 'center' }}>
             <HabitGlyph icon="walk" size={20} color={c.cat.movement} />
             <Txt role="body" style={{ flex: 1 }}>
-              Walk reminder set for {new Date(pending[0]!.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.
+              Walk reminder set for {formatClock(minutesOfDay(pending[0]!.at, zone), clock)}.
             </Txt>
             <PillButton label="Cancel" kind="ghost" onPress={() => actions.removeEvent(pending[0]!.id)} />
           </Row>
@@ -163,7 +166,7 @@ export default function ShieldScreen() {
       ) : null}
 
       <Card>
-        <Txt role="body">{preset?.why}</Txt>
+        <Txt role="body">{preset ? presetWhy(preset, state.settings.units) : null}</Txt>
         <Txt role="footnote" tone="secondary" style={{ marginTop: 8 }}>
           Evidence: {preset?.evidence}. The squats count towards today's Sugar Shield uses, not the movement-snack rotation.
         </Txt>

@@ -8,7 +8,7 @@ import { Txt } from '@/components/ui/Txt';
 import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
 import { MIN_PASSWORD_LENGTH, type EncryptedBackup } from '@/src/data/backupCrypto';
-import { describeImport, exportState, inspectExport, pickImport, unlockExport } from '@/src/data/transfer';
+import { describeImport, exportState, inspectExport, pickImport, unlockExportAsync } from '@/src/data/transfer';
 import { deleteKeptSnapshots, markCleanupPending, readKeptSnapshots, type Snapshot } from '@/src/services/backup';
 import type { TrackerState } from '@/src/state/types';
 import { useTracker } from '@/src/state/TrackerProvider';
@@ -268,22 +268,20 @@ function UnlockSheet({ file, onClose, onUnlocked }: { file: EncryptedBackup | nu
     setError(null);
     onClose();
   };
-  const unlock = () => {
+  const unlock = async () => {
     if (!file || !password) return;
     setBusy(true);
     setError(null);
-    // Let the sheet repaint with the busy label before the key derivation blocks the JS thread.
-    setTimeout(() => {
-      try {
-        const state = unlockExport(file, password);
-        setPassword('');
-        onUnlocked(state);
-      } catch (err) {
-        setError(message(err));
-      } finally {
-        setBusy(false);
-      }
-    }, 30);
+    // The key derivation yields every few milliseconds, so the busy label paints and Cancel stays live.
+    try {
+      const state = await unlockExportAsync(file, password);
+      setPassword('');
+      onUnlocked(state);
+    } catch (err) {
+      setError(message(err));
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <Sheet visible={!!file} title="Backup is password-protected" onClose={close}>

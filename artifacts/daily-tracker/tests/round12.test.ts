@@ -146,7 +146,7 @@ describe('the press inbox', () => {
 });
 
 describe('the next-ring line', () => {
-  const base = { habitId: 'tea', policy: policy({ habitId: 'tea' }), remindersEnabled: true, today: TODAY, zone: ZONE, doneToday: false, donePeriod: false, periodNoun: 'day' as const };
+  const base = { habitId: 'tea', policy: policy({ habitId: 'tea' }), remindersEnabled: true, today: TODAY, zone: ZONE, clock: '12h' as const, doneToday: false, donePeriod: false, periodNoun: 'day' as const };
 
   it('says today and tomorrow by the calendar, not the tracking day', () => {
     const tomorrow = addDays(TODAY, 1);

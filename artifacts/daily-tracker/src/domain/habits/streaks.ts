@@ -214,13 +214,15 @@ export function evaluateStreak(input: StreakInput): StreakResult {
 
     let available = 0;
     let done = 0;
-    for (let d = start; d <= end; d = addDays(d, 1)) {
+    let d = start;
+    for (; d <= end; d = addDays(d, 1)) {
       if (off.has(d)) continue;
       available++;
       // Each day is judged against the target in force on that day (the same rule the Today
       // card and the charts use), so "3 of 4 this week" never disagrees with the streak.
       if (d <= input.today && input.valueOf(d) >= ruleOn(rules, d).target) done++;
     }
+    const nextPeriodStart = d; // the day after `end`: the loop ran at least once (start <= end)
     // Prorated for the habit's start and days off, and never more than the days the period has (a
     // "31 days a month" rhythm asks for every day of February, not for three days that do not exist).
     const required = periodRequired(rule, end, start, off, weekStart);
@@ -248,7 +250,7 @@ export function evaluateStreak(input: StreakInput): StreakResult {
     }
     if (streak > best) best = streak;
     periods.push({ start, end, cadence: rule.cadence, status, done, required, streakAfter: streak, freezeMonth });
-    cursor = addDays(end, 1);
+    cursor = nextPeriodStart;
   }
 
   const todayRule = ruleOn(rules, input.today);

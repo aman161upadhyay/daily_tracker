@@ -12,7 +12,7 @@
  */
 import { gcm } from '@noble/ciphers/aes.js';
 import { bytesToUtf8, utf8ToBytes } from '@noble/ciphers/utils.js';
-import { pbkdf2 } from '@noble/hashes/pbkdf2.js';
+import { pbkdf2, pbkdf2Async } from '@noble/hashes/pbkdf2.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { secureRandomBytes } from './secureRandom';
 import { StorageError } from './store';
@@ -53,8 +53,26 @@ export interface EncryptOptions {
 }
 
 export function encryptBackup(plaintext: string, password: string, options: EncryptOptions = {}): EncryptedBackup {
+  const { header, salt, iv } = envelopeFor(password, options);
+  return sealWith(deriveKey(password, salt, iterations(options)), header, iv, plaintext);
+}
+
+/**
+ * The same file as `encryptBackup`, with the key derivation yielding to the event loop every few
+ * milliseconds (200,000 rounds block a phone's JS thread for seconds otherwise — the busy label
+ * would freeze and a tap on Cancel would queue behind it). The screens use this one; the sync
+ * form stays for tests and tools.
+ */
+export async function encryptBackupAsync(plaintext: string, password: string, options: EncryptOptions = {}): Promise<EncryptedBackup> {
+  const { header, salt, iv } = envelopeFor(password, options);
+  const key = await deriveKeyAsync(password, salt, iterations(options));
+  return sealWith(key, header, iv, plaintext);
+}
+
+const iterations = (options: EncryptOptions) => options.iterations ?? PBKDF2_ITERATIONS;
+
+function envelopeFor(password: string, options: EncryptOptions): { header: Omit<EncryptedBackup, 'ciphertext'>; salt: Uint8Array; iv: Uint8Array } {
   if (password.length < MIN_PASSWORD_LENGTH) throw new StorageError(`Use at least ${MIN_PASSWORD_LENGTH} characters.`);
-  const iterations = options.iterations ?? PBKDF2_ITERATIONS;
   const salt = options.salt ?? secureRandomBytes(16);
   const iv = options.iv ?? secureRandomBytes(12);
   const header: Omit<EncryptedBackup, 'ciphertext'> = {
@@ -62,13 +80,16 @@ export function encryptBackup(plaintext: string, password: string, options: Encr
     encrypted: true,
     envelope: 2,
     kdf: 'PBKDF2-SHA256',
-    iterations,
+    iterations: iterations(options),
     salt: toBase64(salt),
     cipher: 'AES-256-GCM',
     iv: toBase64(iv),
     exportedAt: (options.now ?? new Date()).toISOString(),
   };
-  const key = deriveKey(password, salt, iterations);
+  return { header, salt, iv };
+}
+
+function sealWith(key: Uint8Array, header: Omit<EncryptedBackup, 'ciphertext'>, iv: Uint8Array, plaintext: string): EncryptedBackup {
   const ciphertext = gcm(key, iv, utf8ToBytes(headerAad(header))).encrypt(utf8ToBytes(plaintext));
   return { ...header, ciphertext: toBase64(ciphertext) };
 }
@@ -85,7 +106,17 @@ export function headerAad(file: Omit<EncryptedBackup, 'ciphertext'>): string {
 /** Throws StorageError('Wrong password…') when the tag does not verify (wrong password, or a damaged / edited file). */
 export function decryptBackup(file: EncryptedBackup, password: string): string {
   const { salt, iv, ciphertext } = checkEnvelope(file);
-  const key = deriveKey(password, salt, file.iterations);
+  return openWith(deriveKey(password, salt, file.iterations), file, iv, ciphertext);
+}
+
+/** `decryptBackup` with a yielding key derivation (see `encryptBackupAsync`). */
+export async function decryptBackupAsync(file: EncryptedBackup, password: string): Promise<string> {
+  const { salt, iv, ciphertext } = checkEnvelope(file);
+  const key = await deriveKeyAsync(password, salt, file.iterations);
+  return openWith(key, file, iv, ciphertext);
+}
+
+function openWith(key: Uint8Array, file: EncryptedBackup, iv: Uint8Array, ciphertext: Uint8Array): string {
   const aad = file.envelope === 2 ? utf8ToBytes(headerAad(file)) : undefined;
   try {
     return bytesToUtf8(gcm(key, iv, aad).decrypt(ciphertext));
@@ -133,6 +164,11 @@ export function checkEnvelope(file: EncryptedBackup): { salt: Uint8Array; iv: Ui
 
 function deriveKey(password: string, salt: Uint8Array, iterations: number): Uint8Array {
   return pbkdf2(sha256, utf8ToBytes(password.normalize('NFKC')), salt, { c: iterations, dkLen: 32 });
+}
+
+/** The same key, yielding to the event loop about every 10 ms so the UI keeps painting. */
+function deriveKeyAsync(password: string, salt: Uint8Array, iterations: number): Promise<Uint8Array> {
+  return pbkdf2Async(sha256, utf8ToBytes(password.normalize('NFKC')), salt, { c: iterations, dkLen: 32, asyncTick: 10 });
 }
 
 // Base64 without Buffer: Hermes, browsers and Node all have btoa/atob; chunked so large files do not blow the call stack.

@@ -11,7 +11,7 @@
  * informational fields, so a backup can be re-imported with `parseState`.
  */
 import type { TrackerState } from '@/src/state/types';
-import { checkEnvelope, decryptBackup, encryptBackup, isEncryptedBackup, type EncryptedBackup } from './backupCrypto';
+import { checkEnvelope, decryptBackup, decryptBackupAsync, encryptBackup, encryptBackupAsync, isEncryptedBackup, type EncryptedBackup } from './backupCrypto';
 import { parseState, StorageError } from './store';
 
 /** Largest file we will parse (characters). A decade of dense logging is a few MB. */
@@ -41,10 +41,21 @@ export function randomFileTag(bytes: Uint8Array): string {
 
 /** The file text: plain JSON, or — with a password — the encrypted envelope around that JSON. */
 export function serializeExport(state: TrackerState, now = new Date(), password?: string): string {
-  const file: ExportFile = { app: 'daily-tracker', exportedAt: now.toISOString(), ...state };
-  const json = JSON.stringify(file, null, 2);
+  const json = plainExportJson(state, now);
   if (!password) return json;
   return JSON.stringify(encryptBackup(json, password, { now }), null, 2);
+}
+
+/** `serializeExport` for the screens: the key derivation yields, so the busy state keeps painting. */
+export async function serializeExportAsync(state: TrackerState, now = new Date(), password?: string): Promise<string> {
+  const json = plainExportJson(state, now);
+  if (!password) return json;
+  return JSON.stringify(await encryptBackupAsync(json, password, { now }), null, 2);
+}
+
+function plainExportJson(state: TrackerState, now: Date): string {
+  const file: ExportFile = { app: 'daily-tracker', exportedAt: now.toISOString(), ...state };
+  return JSON.stringify(file, null, 2);
 }
 
 export type InspectedExport = { kind: 'plain'; state: TrackerState } | { kind: 'encrypted'; file: EncryptedBackup };
@@ -67,6 +78,11 @@ export function inspectExport(text: string): InspectedExport {
 /** Open a password-protected backup. Throws StorageError on a wrong password or damaged file. */
 export function unlockExport(file: EncryptedBackup, password: string): TrackerState {
   return parseState(parseJson(decryptBackup(file, password)));
+}
+
+/** `unlockExport` for the screens (yielding key derivation). */
+export async function unlockExportAsync(file: EncryptedBackup, password: string): Promise<TrackerState> {
+  return parseState(parseJson(await decryptBackupAsync(file, password)));
 }
 
 /** Parse the text of a plain (unencrypted) backup. Throws StorageError with a user-readable message. */

@@ -12,7 +12,7 @@ import { SNOOZE_MINUTES } from '@/src/domain/nudges/planner';
 import { addDays, isCalendarDay, isInstantMs, trackingDayOf, weekStartIndex, weekStartOf } from '@/src/domain/time/trackingDay';
 import type { Action } from './reducer';
 import { habitFromPreset } from './seed';
-import { habitView, latestRule, rotationHabit, ruleFor } from './selectors';
+import { habitView, latestRule, policyFor, rotationHabit, ruleFor } from './selectors';
 import type { TrackerState } from './types';
 
 export interface CommandContext {
@@ -162,6 +162,19 @@ export function presetHabitAction(preset: Preset, id: string, day: string, remin
   const built = habitFromPreset(preset, id, day);
   const policy = reminder && built.policy.kind !== 'EVENT' && built.policy.kind !== 'CYCLE' ? { ...reminder, habitId: id } : built.policy;
   return { type: 'ADD_HABIT', habit: built.habit, rule: built.rule, policy };
+}
+
+/**
+ * An archived preset habit added again from the Library: it comes back with its history, and the
+ * reminder chosen in the sheet (if any) is saved onto it — otherwise it keeps the schedule it had,
+ * paused or not. On-demand / cycle policies keep their trigger whatever was passed.
+ */
+export function restorePresetActions(state: TrackerState, existing: Habit, reminder?: NudgePolicy): Action[] {
+  const out: Action[] = [];
+  if (existing.archived) out.push({ type: 'UPDATE_HABIT', id: existing.id, patch: { archived: false } });
+  const current = policyFor(state, existing.id);
+  if (reminder && current?.kind !== 'EVENT' && current?.kind !== 'CYCLE') out.push({ type: 'SET_POLICY', policy: { ...reminder, habitId: existing.id } });
+  return out;
 }
 
 const sameRule = (a: RuleDraft, b: RuleDraft) => a.cadence === b.cadence && a.timesPerPeriod === b.timesPerPeriod && a.target === b.target && a.freezesPerMonth === b.freezesPerMonth;

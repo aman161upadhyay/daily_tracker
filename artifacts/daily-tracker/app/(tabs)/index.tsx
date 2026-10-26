@@ -22,10 +22,10 @@ import { useColors } from '@/hooks/useColors';
 import type { Habit } from '@/src/domain/models';
 import { formatClock, formatDayLong, formatNumber, formatVolume } from '@/src/domain/time/format';
 import { minutesOfDay } from '@/src/domain/time/trackingDay';
-import { presetById } from '@/src/library/presets';
-import { useHabitViews, useHighlights, useLiveNudge, useTodaySummary } from '@/src/state/hooks';
+import { shortPolicyText } from '@/src/domain/nudges/describePolicy';
+import { useClockFormat, useHabitViews, useHighlights, useLiveNudge, useTodaySummary } from '@/src/state/hooks';
 import { type PinnedCardId } from '@/src/domain/today/pinned';
-import { cycleTimeline, habitDayValue, mindSeries, rotationItems, ruleFor, snackSeries, snackSuggestion, waterSeries } from '@/src/state/selectors';
+import { cycleTimeline, habitDayValue, mindSeries, policyFor, rotationItems, ruleFor, snackSeries, snackSuggestion, waterSeries } from '@/src/state/selectors';
 import { displayPhase, PHASE_LABELS, phaseQualifier } from '@/src/domain/cycle/timeline';
 import { formatDayShort } from '@/src/domain/time/format';
 import { dayDiff } from '@/src/domain/time/trackingDay';
@@ -35,6 +35,7 @@ export default function TodayScreen() {
   const c = useColors();
   const router = useRouter();
   const { state, today, calendarToday, nowMin, zone, actions } = useTracker();
+  const clock = useClockFormat();
   const summary = useTodaySummary();
   const nudge = useLiveNudge();
   const views = useHabitViews();
@@ -111,7 +112,7 @@ export default function TodayScreen() {
         value={logged.value}
         unit={logged.unit}
         detail={waterDetail}
-        timestamp={lastWater ? formatClock(minutesOfDay(lastWater.at, zone)) : undefined}
+        timestamp={lastWater ? formatClock(minutesOfDay(lastWater.at, zone), clock) : undefined}
         chart={{ values: waterSeries(state, today, 7), goal: s.waterGoalMl }}
         onPress={() => {
           // Water logged today without the Water habit (it was archived, or a drink came from the
@@ -138,7 +139,7 @@ export default function TodayScreen() {
         value={String(summary.snacksDone)}
         unit={`of ${summary.snacksTarget}`}
         detail={lastSnack ? `Last: ${snackSuggestion(lastSnack.type)}` : 'None yet today'}
-        timestamp={lastSnack ? formatClock(minutesOfDay(lastSnack.at, zone)) : undefined}
+        timestamp={lastSnack ? formatClock(minutesOfDay(lastSnack.at, zone), clock) : undefined}
         chart={{ values: snackSeries(state, today, 7), goal: summary.snacksTarget }}
         onPress={() => router.push('/habits')}
         footer={<PillButton label={shield ? 'Sugar Shield — squats before something sweet' : 'Something sweet coming? Start the Sugar Shield'} Leading={UI.Cookie} color={c.gold} kind="ghost" onPress={() => router.push('/shield')} />}
@@ -152,7 +153,7 @@ export default function TodayScreen() {
         value={formatNumber(summary.mindMinutes)}
         unit={`of ${formatNumber(summary.mindTarget)} min`}
         detail={lastMind ? (lastMind.kind === 'MEDITATION' ? 'Meditation' : 'Breathing') : 'Open the timer to start'}
-        timestamp={lastMind ? formatClock(minutesOfDay(lastMind.endAt, zone)) : undefined}
+        timestamp={lastMind ? formatClock(minutesOfDay(lastMind.endAt, zone), clock) : undefined}
         chart={{ values: mindSeries(state, today, 7), goal: summary.mindTarget, kind: 'line' }}
         onPress={() => router.push('/mind')}
       />
@@ -248,7 +249,7 @@ export default function TodayScreen() {
             view={v}
             last={i === views.length - 1}
             units={units}
-            nudgeText={presetById(v.habit.presetId)?.nudgeText.split(',')[0]}
+            nudgeText={shortPolicyText(policyFor(state, v.habit.id), { movement: !!v.habit.snackType, water: v.habit.presetId === 'water', rotationIntervalMin: state.settings.nudgeIntervalMin, clock })}
             onPress={() => router.push({ pathname: '/habit/[id]', params: { id: v.habit.id } })}
             onIncrement={() => (needsAmount(v.habit) ? setAmountHabit(v.habit) : actions.increment(v.habit))}
             onDecrement={() => actions.decrement(v.habit)}

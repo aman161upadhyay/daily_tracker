@@ -141,7 +141,7 @@ describe('the policy editor and the reminder card', () => {
   });
 
   it('the next-ring line reads the plan, then explains why there is nothing', () => {
-    const base = { habitId: 'tea', policy: policy({ habitId: 'tea' }), remindersEnabled: true, today: TODAY, zone: ZONE, doneToday: false, donePeriod: false, periodNoun: 'day' as const };
+    const base = { habitId: 'tea', policy: policy({ habitId: 'tea' }), remindersEnabled: true, today: TODAY, zone: ZONE, clock: '12h' as const, doneToday: false, donePeriod: false, periodNoun: 'day' as const };
     const plan = [
       { at: at(TODAY, '19:00'), day: TODAY, habitIds: ['juice', 'tea'] },
       { at: at('2026-10-26', '07:30'), day: '2026-10-26', habitIds: ['tea'] },
@@ -188,7 +188,7 @@ describe('set times on chosen weekdays', () => {
     assert.equal(weekdaysText([0, 2, 4]), 'on Mon, Wed and Fri');
     assert.equal(weekdaysText([3]), 'on Thu');
     assert.equal(weekdaysText(undefined), '');
-    assert.equal(describePolicy(policy({ habitId: 'h', times: ['07:30'], maxPerDay: 1, weekdays: [0, 2, 4] }), { ...ctx, rotationIntervalMin: 60 }), 'At 7:30 AM on Mon, Wed and Fri');
+    assert.equal(describePolicy(policy({ habitId: 'h', times: ['07:30'], maxPerDay: 1, weekdays: [0, 2, 4] }), { ...ctx, rotationIntervalMin: 60, clock: '12h' as const }), 'At 7:30 AM on Mon, Wed and Fri');
   });
 
   it('the backup validator accepts the field and refuses junk in it', () => {
@@ -201,7 +201,7 @@ describe('set times on chosen weekdays', () => {
 
   it('the next-ring line reads the policy when the chosen day is past the plan horizon', () => {
     const friday = policy({ habitId: 'tea', times: ['18:00'], maxPerDay: 1, weekdays: [4] });
-    const base = { habitId: 'tea', policy: friday, remindersEnabled: true, today: TODAY, zone: ZONE, nowMs: at(TODAY, '08:00'), doneToday: false, donePeriod: false, periodNoun: 'day' as const };
+    const base = { habitId: 'tea', policy: friday, remindersEnabled: true, today: TODAY, zone: ZONE, clock: '12h' as const, nowMs: at(TODAY, '08:00'), doneToday: false, donePeriod: false, periodNoun: 'day' as const };
     assert.equal(nextRingText({ ...base, plan: [] }), 'Next: Fri, Oct 30 at 6:00 PM');
     // Within the horizon the plan is the authority: nothing there means nothing rings.
     const tomorrow = policy({ habitId: 'tea', times: ['09:00'], maxPerDay: 1, weekdays: [0] });

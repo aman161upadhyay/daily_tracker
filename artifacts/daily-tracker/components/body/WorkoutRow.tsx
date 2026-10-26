@@ -10,6 +10,7 @@ import { ticksStrength } from '@/src/state/bodyCommands';
 import type { Workout } from '@/src/domain/body/types';
 import { formatClock, formatDayLong } from '@/src/domain/time/format';
 import { minutesOfDay } from '@/src/domain/time/trackingDay';
+import { useClockFormat } from '@/src/state/hooks';
 
 interface Props {
   workout: Workout;
@@ -21,6 +22,7 @@ interface Props {
 /** One imported exercise session with its hide / unhide control. */
 export function WorkoutRow({ workout: w, zone, today, onToggleHidden }: Props) {
   const c = useColors();
+  const clock = useClockFormat();
   const label = exerciseLabel(w.type, w.title);
   const tags: string[] = [];
   if (ticksStrength(w.type, w.minutes)) tags.push('ticks Strength session');
@@ -35,7 +37,7 @@ export function WorkoutRow({ workout: w, zone, today, onToggleHidden }: Props) {
           <Txt role="body" tone="secondary">{` · ${formatSleep(w.minutes)}`}</Txt>
         </Txt>
         <Txt role="footnote" tone="secondary">
-          {`${w.day === today ? 'Today' : formatDayLong(w.day)} · ${formatClock(minutesOfDay(w.startAt, zone))}${tags.length > 0 ? ` · ${tags.join(' · ')}` : ''}`}
+          {`${w.day === today ? 'Today' : formatDayLong(w.day)} · ${formatClock(minutesOfDay(w.startAt, zone), clock)}${tags.length > 0 ? ` · ${tags.join(' · ')}` : ''}`}
         </Txt>
       </View>
       <IconButton Glyph={w.hidden ? UI.Undo : UI.Archive} label={w.hidden ? `Show ${label} again` : `Hide ${label}`} onPress={onToggleHidden} size={36} color={c.textSecondary} />

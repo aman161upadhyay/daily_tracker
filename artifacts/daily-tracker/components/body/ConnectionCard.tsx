@@ -8,14 +8,15 @@ import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import type { HealthConnectUi } from '@/hooks/useHealthConnect';
 import { BODY_RECORD_TYPES, listRecordTypes } from '@/src/domain/body/types';
-import { formatClock, formatDayShort } from '@/src/domain/time/format';
+import { formatClock, formatDayShort, type ClockFormat } from '@/src/domain/time/format';
 import { calendarDayOf, minutesOfDay } from '@/src/domain/time/trackingDay';
+import { useClockFormat } from '@/src/state/hooks';
 
-export function describeLastSync(lastSyncAt: number | undefined, nowMs: number, zone: string): string {
+export function describeLastSync(lastSyncAt: number | undefined, nowMs: number, zone: string, clockFormat: ClockFormat): string {
   if (lastSyncAt === undefined) return 'Not synced yet';
   const day = calendarDayOf(lastSyncAt, zone);
   const today = calendarDayOf(nowMs, zone);
-  const clock = formatClock(minutesOfDay(lastSyncAt, zone));
+  const clock = formatClock(minutesOfDay(lastSyncAt, zone), clockFormat);
   return day === today ? `Synced ${clock}` : `Synced ${formatDayShort(day)} ${clock}`;
 }
 
@@ -35,6 +36,7 @@ interface Props {
  */
 export function ConnectionCard({ hc, nowMs, zone, sample, hasData }: Props) {
   const c = useColors();
+  const clock = useClockFormat();
   const router = useRouter();
   const gold = c.cat.body;
 
@@ -149,7 +151,7 @@ export function ConnectionCard({ hc, nowMs, zone, sample, hasData }: Props) {
         <View style={{ flex: 1 }}>
           <Txt role="title2">Health Connect</Txt>
           <Txt role="footnote" tone="secondary" style={{ marginTop: 2 }}>
-            {`Connected · ${types} of 7 data types · ${describeLastSync(hc.lastSyncAt, nowMs, zone)}`}
+            {`Connected · ${types} of 7 data types · ${describeLastSync(hc.lastSyncAt, nowMs, zone, clock)}`}
           </Txt>
           <Txt role="footnote" tone="tertiary" style={{ marginTop: 2 }}>
             {hc.background ? 'Also syncs in the background every few hours.' : 'Syncs whenever you open the app.'}

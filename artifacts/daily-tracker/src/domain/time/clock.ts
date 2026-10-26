@@ -9,7 +9,11 @@ export function now(): number {
 export function currentZone(): string {
   try {
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    return zone && zone.length > 0 ? zone : 'UTC';
+    if (!zone || zone.length === 0) return 'UTC';
+    // A runtime can hand back a name it cannot itself format with ("Etc/Unknown" on some Android
+    // builds); every tracking-day formatter downstream would throw on it, so it is tried here.
+    new Intl.DateTimeFormat('en-US', { timeZone: zone, hour: 'numeric' }).format(0);
+    return zone;
   } catch {
     return 'UTC';
   }

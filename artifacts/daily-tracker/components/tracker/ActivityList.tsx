@@ -11,6 +11,7 @@ import type { Habit } from '@/src/domain/models';
 import { formatClock, formatDayShort } from '@/src/domain/time/format';
 import { lastNDays, minutesOfDay } from '@/src/domain/time/trackingDay';
 import { useTracker } from '@/src/state/TrackerProvider';
+import { useClockFormat } from '@/src/state/hooks';
 
 export interface ActivityListProps {
   habit: Habit;
@@ -25,6 +26,7 @@ export interface ActivityListProps {
 export function ActivityList({ habit }: ActivityListProps) {
   const c = useColors();
   const { state, today, zone, actions } = useTracker();
+  const clock = useClockFormat();
   const [week, setWeek] = useState(false);
   const units = state.settings.units;
   const days = useMemo(() => (week ? lastNDays(today, 7) : [today]), [week, today]);
@@ -32,7 +34,7 @@ export function ActivityList({ habit }: ActivityListProps) {
   const imported = records.some((r) => !r.removable);
 
   const remove = (r: ActivityRecord) => {
-    const when = r.day === today ? `at ${formatClock(minutesOfDay(r.at, zone))}` : `on ${formatDayShort(r.day)}`;
+    const when = r.day === today ? `at ${formatClock(minutesOfDay(r.at, zone), clock)}` : `on ${formatDayShort(r.day)}`;
     confirmDestructive('Remove this entry?', `${r.amount} ${when} comes off that day's total.`, 'Remove', () => {
       // The exact record comes back on Undo — same id, time and origin — not a new one logged now.
       const gone = actions.removeLog(r.log, r.id);
@@ -69,7 +71,7 @@ export function ActivityList({ habit }: ActivityListProps) {
                     <HabitGlyph icon={habit.icon} size={18} color={c.cat[habit.category]} weight="fill" />
                     <Txt role="body">{r.amount}</Txt>
                     <Txt role="footnote" tone="tertiary" numberOfLines={1} style={{ flexShrink: 1 }}>
-                      {formatClock(minutesOfDay(r.at, zone))}
+                      {formatClock(minutesOfDay(r.at, zone), clock)}
                       {r.via ? ` · ${r.via}` : ''}
                     </Txt>
                   </Row>

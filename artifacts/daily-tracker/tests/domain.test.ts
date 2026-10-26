@@ -149,8 +149,12 @@ describe('cycle prediction', () => {
 
 describe('formatting', () => {
   it('formats clocks, countdowns and volumes', () => {
-    assert.equal(formatClock(9 * 60), '9:00 AM');
-    assert.equal(formatClock(21 * 60 + 5), '9:05 PM');
+    assert.equal(formatClock(9 * 60, '12h'), '9:00 AM');
+    assert.equal(formatClock(21 * 60 + 5, '12h'), '9:05 PM');
+    assert.equal(formatClock(9 * 60, '24h'), '09:00');
+    assert.equal(formatClock(21 * 60 + 5, '24h'), '21:05');
+    assert.equal(formatClock(0, '24h'), '00:00');
+    assert.equal(formatClock(0, '12h'), '12:00 AM');
     assert.equal(formatIn(0), 'now');
     assert.equal(formatIn(24), 'in 24 min');
     assert.equal(formatIn(90), 'in 1 h 30 min');

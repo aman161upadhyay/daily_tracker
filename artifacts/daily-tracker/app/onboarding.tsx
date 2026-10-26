@@ -15,12 +15,13 @@ import { describeImport, inspectExport } from '@/src/data/transfer';
 import { withAlpha } from '@/src/domain/color/oklch';
 import { DEFAULT_SETTINGS, type Units } from '@/src/domain/models';
 import { formatClock, formatVolume, parseClockInput, parseVolumeInput } from '@/src/domain/time/format';
-import { CATEGORY_LABELS, CATEGORY_ORDER, PRESETS } from '@/src/library/presets';
+import { CATEGORY_LABELS, CATEGORY_ORDER, presetRuleText, PRESETS } from '@/src/library/presets';
 import { cancelCleanup, deleteSnapshot, markCleanupPending, readSnapshot, setAsideSnapshot } from '@/src/services/backup';
 import { afterSnapshots } from '@/src/services/snapshotSync';
 import { NOTIFICATIONS_SUPPORTED, getPermission, requestPermission, type PermissionState } from '@/src/services/notifications';
 import { useTracker } from '@/src/state/TrackerProvider';
 import type { TrackerState } from '@/src/state/types';
+import { useClockFormat } from '@/src/state/hooks';
 
 const STARTER_SET = ['water', 'squat-snack', 'walk-break', 'meditate'];
 
@@ -32,6 +33,7 @@ export default function OnboardingScreen() {
   const c = useColors();
   const router = useRouter();
   const { actions } = useTracker();
+  const clock = useClockFormat();
   const [name, setName] = useState('');
   const [units, setUnits] = useState<Units>('ml');
   const [waterGoalMl, setWaterGoalMl] = useState(DEFAULT_SETTINGS.waterGoalMl);
@@ -254,13 +256,13 @@ export default function OnboardingScreen() {
             <Txt role="body" tone="secondary">
               From
             </Txt>
-            <Stepper value={activeStartMin} onChange={(v) => setStart(Math.min(v, activeEndMin - 60))} step={30} min={5 * 60} max={12 * 60} label="start of active hours" format={formatClock} parse={parseClockInput} />
+            <Stepper value={activeStartMin} onChange={(v) => setStart(Math.min(v, activeEndMin - 60))} step={30} min={5 * 60} max={12 * 60} label="start of active hours" format={(m) => formatClock(m, clock)} parse={parseClockInput} />
           </Row>
           <Row style={{ justifyContent: 'space-between' }}>
             <Txt role="body" tone="secondary">
               Until
             </Txt>
-            <Stepper value={activeEndMin} onChange={(v) => setEnd(Math.max(v, activeStartMin + 60))} step={30} min={14 * 60} max={23 * 60 + 30} label="end of active hours" format={formatClock} parse={parseClockInput} />
+            <Stepper value={activeEndMin} onChange={(v) => setEnd(Math.max(v, activeStartMin + 60))} step={30} min={14 * 60} max={23 * 60 + 30} label="end of active hours" format={(m) => formatClock(m, clock)} parse={parseClockInput} />
           </Row>
         </View>
       </Step>
@@ -284,7 +286,7 @@ export default function OnboardingScreen() {
                   onPress={() => toggle(p.id)}
                   accessibilityRole="checkbox"
                   aria-checked={on}
-                  accessibilityLabel={`${p.name}, ${p.ruleText}`}
+                  accessibilityLabel={`${p.name}, ${presetRuleText(p, units)}`}
                   style={styles.presetRow}
                 >
                   <IconTile icon={p.icon} color={c.cat[p.category]} size={40} />
@@ -296,7 +298,7 @@ export default function OnboardingScreen() {
                       <EvidencePill grade={p.evidence} />
                     </Row>
                     <Txt role="footnote" tone="secondary" numberOfLines={1}>
-                      {p.ruleText}
+                      {presetRuleText(p, units)}
                     </Txt>
                   </View>
                   <View style={[styles.check, on ? { backgroundColor: c.green, borderColor: c.green } : { borderColor: c.textTertiary }]}>{on ? <UI.Check size={16} color={c.onGreen} weight="bold" /> : null}</View>

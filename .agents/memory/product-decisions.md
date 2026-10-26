@@ -314,6 +314,21 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   Highlights never show "0 of N" over no history. Movement presets' interval mode reads "Rotation" on
   purpose. The web preview's About version lags app.json (babel inlines the web manifest once; Metro
   cache) — clear /tmp/metro-cache before a web check, never "fix" it in code. Dispositions in §6 Round 19.
+- Round 20 (2026-10-26 night) rules, paradigms 89–91: the clock format is threaded explicitly like
+  units — `formatClock(minute, clock)` with a required `ClockFormat`, resolved once in the provider
+  (`Settings.clockFormat` 'system' | '12h' | '24h'; the phone's switch via expo-localization
+  `getCalendars()[0].uses24hourClock`, refreshed on foreground) and read by screens with
+  `useClockFormat()`; never a module-level default (mounted tab screens would keep stale memoised
+  strings). Typed numbers fold every keyboard (`parseDecimalInput`: Arabic-Indic/Persian digits, a
+  grouping space dropped, a lone separator before exactly three digits = thousands, last of two kinds
+  = decimal, a second same-kind separator = null so the stepper keeps its value). Backup key derivation
+  is async on the screens (`encryptBackupAsync` / `decryptBackupAsync`; the sync forms stay for tests).
+  An archived preset re-added from the Library keeps its history and takes the chosen reminder
+  (`restorePresetActions`). Preset texts carry volumes as `{ml}` tokens written by `presetText(text,
+  units)` so the Library and "Why this matters" never say ml to an ounces user; the water highlight
+  uses the units setting. Weekly-habit history re-reads when the week start changes — by design, said
+  in the setting's hint. Erase keeps settings and the Water habit and lands on an empty Today, not
+  onboarding — by design, the copy says so. Dispositions in §6 Round 20.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app

@@ -9,6 +9,7 @@ import type { BodyState } from '@/src/domain/body/types';
 import { formatClock, formatDayShort, formatNumber } from '@/src/domain/time/format';
 import { lastNDays } from '@/src/domain/time/trackingDay';
 import type { StepsCardView } from '@/src/domain/body/stepsCard';
+import { useClockFormat } from '@/src/state/hooks';
 
 /**
  * The Steps and Sleep summary cards, shared by the Body tab and Today's pinned cards so the
@@ -68,6 +69,7 @@ export function StepsSummaryCard({ view, goal, hasHabit, onPress, onAddHabit }: 
 
 export function SleepSummaryCard({ view, zone, onPress }: { view: SleepCardView & { night: NonNullable<SleepCardView['night']> }; zone: string; onPress: () => void }) {
   const c = useColors();
+  const clock = useClockFormat();
   const { night } = view;
   return (
     <SummaryCard
@@ -78,7 +80,7 @@ export function SleepSummaryCard({ view, zone, onPress }: { view: SleepCardView 
       unit="asleep"
       timestamp={night.isToday ? 'Last night' : `Night to ${formatDayShort(night.day)}`}
       detail={[
-        `${formatClock(sleepClockMin(night.night, 'start', zone))} → ${formatClock(sleepClockMin(night.night, 'end', zone))}`,
+        `${formatClock(sleepClockMin(night.night, 'start', zone), clock)} → ${formatClock(sleepClockMin(night.night, 'end', zone), clock)}`,
         night.night.deepMin !== undefined ? `${formatSleep(night.night.deepMin)} deep` : undefined,
         view.bedSpread !== undefined ? `bedtime ±${view.bedSpread} min` : undefined,
       ]

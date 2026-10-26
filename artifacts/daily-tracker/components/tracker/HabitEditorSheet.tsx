@@ -15,6 +15,7 @@ import { Chip, Divider, IconTile, PillButton, Row, Segmented, Stepper } from '..
 import { PressableScale } from '../ui/PressableScale';
 import { Sheet } from '../ui/Sheet';
 import { Txt } from '../ui/Txt';
+import { useClockFormat } from '@/src/state/hooks';
 
 const TYPE_OPTIONS: { value: HabitType; label: string; hint: string }[] = [
   { value: 'YES_NO', label: 'Yes / no', hint: 'Did it or not' },
@@ -69,6 +70,7 @@ export interface HabitEditorSheetProps {
 export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: HabitEditorSheetProps) {
   const c = useColors();
   const { actions, state } = useTracker();
+  const clock = useClockFormat();
   const units = state.settings.units;
   const [d, setD] = useState<HabitDraft>(() => draftFrom(habit, rule));
   // Set once the person touches the freezes: from then on the cadence stops moving them. (Not
@@ -80,7 +82,7 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
   // The reminder is part of creating a habit (the page's Reminders sheet edits it afterwards). A
   // custom habit is neither the Water preset nor a movement snack, so its choices are set times,
   // an interval, or none.
-  const policyContext: PolicyContext = { movement: false, water: false, rotationIntervalMin: state.settings.nudgeIntervalMin };
+  const policyContext: PolicyContext = { movement: false, water: false, rotationIntervalMin: state.settings.nudgeIntervalMin, clock };
   const [reminder, setReminder] = useState<PolicyDraft>(() => policyDraftFrom(undefined, policyContext));
   const reminderPreview = policyFromPolicyDraft({ habitId: habit?.id ?? 'new' }, reminder, policyContext);
 

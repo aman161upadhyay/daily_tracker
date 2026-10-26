@@ -113,8 +113,8 @@ export function ReminderPolicyForm({ draft: d, onChange, context, preview }: Rem
               <Txt role="body" style={{ flex: 1 }}>
                 {i === 0 ? 'At' : 'and at'}
               </Txt>
-              <Stepper value={clockMinutes(t.hhmm) ?? 9 * 60} onChange={(m) => setTime(t.key, m)} step={15} min={0} max={23 * 60 + 45} format={formatClock} parse={parseClockInput} label={`time ${i + 1}`} />
-              {d.times.length > 1 ? <IconButton Glyph={UI.Trash} label={`Remove ${formatClock(clockMinutes(t.hhmm) ?? 0)}`} onPress={() => set({ times: d.times.filter((x) => x.key !== t.key) })} size={36} color={c.textSecondary} /> : null}
+              <Stepper value={clockMinutes(t.hhmm) ?? 9 * 60} onChange={(m) => setTime(t.key, m)} step={15} min={0} max={23 * 60 + 45} format={(m) => formatClock(m, context.clock)} parse={parseClockInput} label={`time ${i + 1}`} />
+              {d.times.length > 1 ? <IconButton Glyph={UI.Trash} label={`Remove ${formatClock(clockMinutes(t.hhmm) ?? 0, context.clock)}`} onPress={() => set({ times: d.times.filter((x) => x.key !== t.key) })} size={36} color={c.textSecondary} /> : null}
             </Row>
           ))}
           {d.times.length < POLICY_TIMES_MAX ? <PillButton label="Add a time" kind="ghost" compact Leading={UI.Plus} onPress={() => set({ times: [...d.times, row(nextTime(times))] })} /> : null}

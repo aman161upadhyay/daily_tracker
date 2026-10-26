@@ -15,12 +15,13 @@ import { Txt } from '@/components/ui/Txt';
 import { confirmDestructive } from '@/components/ui/confirm';
 import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
-import type { ThemePreference, Units, WeekStart } from '@/src/domain/models';
+import type { ClockFormatPreference, ThemePreference, Units, WeekStart } from '@/src/domain/models';
 import { weekEndIndex } from '@/src/domain/time/trackingDay';
 import { WATER_GOAL_MAX_ML, WATER_GOAL_MIN_ML } from '@/src/data/validate';
 import { formatClock, formatVolume, parseClockInput, parseVolumeInput } from '@/src/domain/time/format';
 import { PINNED_CARD_META } from '@/src/domain/today/pinned';
 import { useTracker } from '@/src/state/TrackerProvider';
+import { useClockFormat } from '@/src/state/hooks';
 
 const INTERVALS = [45, 60, 90, 120];
 const BOUNDARIES = [0, 2, 3, 4, 5];
@@ -29,6 +30,7 @@ const TAP_SIZES = [150, 250, 350, 500];
 export default function SettingsScreen() {
   const c = useColors();
   const { state, actions } = useTracker();
+  const clock = useClockFormat();
   const s = state.settings;
   const [cardsOpen, setCardsOpen] = useState(false);
 
@@ -64,6 +66,18 @@ export default function SettingsScreen() {
             ]}
             value={s.theme}
             onChange={(theme) => actions.updateSettings({ theme })}
+          />
+        </Setting>
+        <Divider />
+        <Setting label="Time format" hint={`Automatic follows the phone's 24-hour setting (${formatClock(21 * 60 + 30, clock)} now)`}>
+          <Segmented<ClockFormatPreference>
+            options={[
+              { value: 'system', label: 'Automatic' },
+              { value: '12h', label: '12-hour' },
+              { value: '24h', label: '24-hour' },
+            ]}
+            value={s.clockFormat}
+            onChange={(clockFormat) => actions.updateSettings({ clockFormat })}
           />
         </Setting>
       </Card>
@@ -115,13 +129,13 @@ export default function SettingsScreen() {
               <Txt role="body" tone="secondary">
                 From
               </Txt>
-              <Stepper value={s.activeStartMin} onChange={(v) => actions.updateSettings({ activeStartMin: Math.min(v, s.activeEndMin - 60) })} step={30} min={5 * 60} max={12 * 60} label="start of active hours" format={formatClock} parse={parseClockInput} />
+              <Stepper value={s.activeStartMin} onChange={(v) => actions.updateSettings({ activeStartMin: Math.min(v, s.activeEndMin - 60) })} step={30} min={5 * 60} max={12 * 60} label="start of active hours" format={(m) => formatClock(m, clock)} parse={parseClockInput} />
             </Row>
             <Row style={{ justifyContent: 'space-between' }}>
               <Txt role="body" tone="secondary">
                 Until
               </Txt>
-              <Stepper value={s.activeEndMin} onChange={(v) => actions.updateSettings({ activeEndMin: Math.max(v, s.activeStartMin + 60) })} step={30} min={14 * 60} max={23 * 60 + 30} label="end of active hours" format={formatClock} parse={parseClockInput} />
+              <Stepper value={s.activeEndMin} onChange={(v) => actions.updateSettings({ activeEndMin: Math.max(v, s.activeStartMin + 60) })} step={30} min={14 * 60} max={23 * 60 + 30} label="end of active hours" format={(m) => formatClock(m, clock)} parse={parseClockInput} />
             </Row>
           </View>
         </Setting>
@@ -160,7 +174,7 @@ export default function SettingsScreen() {
           </Row>
         </Setting>
         <Divider />
-        <Setting label="Week starts on" hint="Weekly targets, the week strips and the calendars count from this day">
+        <Setting label="Week starts on" hint="Weekly targets, the week strips and the calendars count from this day — past weeks included, so a weekly habit's history is re-read too">
           <Segmented<WeekStart>
             options={[
               { value: 'monday', label: 'Monday' },

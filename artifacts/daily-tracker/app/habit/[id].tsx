@@ -25,7 +25,7 @@ import { describePolicy, isPaused, nextRingText, type PolicyContext } from '@/sr
 import { describeRule, formatDayShort, formatHabitValue, formatVolume, formatWeekdayShort, habitAmountText, habitUnit, mlToOz } from '@/src/domain/time/format';
 import { lastNDays } from '@/src/domain/time/trackingDay';
 import { presetById } from '@/src/library/presets';
-import { useHabitView } from '@/src/state/hooks';
+import { useClockFormat, useHabitView } from '@/src/state/hooks';
 import { habitDayValue, habitSeries, heatmapValues, latestRule, nudgePlan, ratiosByDay, ruleFor } from '@/src/state/selectors';
 import { useTracker } from '@/src/state/TrackerProvider';
 
@@ -35,6 +35,7 @@ export default function HabitDetailScreen() {
   const goBack = useBackOrHome();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { state, today, zone, nowMs, actions } = useTracker();
+  const clock = useClockFormat();
   const habit = state.habits.find((h) => h.id === id);
   const view = useHabitView(habit);
   const [range, setRange] = useState<Range>('W');
@@ -110,7 +111,7 @@ export default function HabitDetailScreen() {
   const plural = (n: number) => (n === 1 ? periodNoun : `${periodNoun}s`);
   const isWater = habit.presetId === 'water';
   const units = state.settings.units;
-  const policyContext: PolicyContext = { movement: !!habit.snackType, water: isWater, rotationIntervalMin: state.settings.nudgeIntervalMin };
+  const policyContext: PolicyContext = { movement: !!habit.snackType, water: isWater, rotationIntervalMin: state.settings.nudgeIntervalMin, clock };
   // The Sugar Shield's follow-up is scheduled by its card, not by a cadence; nothing to tune here.
   const policyEditable = view.policy?.kind !== 'EVENT' && view.policy?.kind !== 'CYCLE';
   const paused = isPaused(view.policy);
@@ -120,6 +121,7 @@ export default function HabitDetailScreen() {
     plan: nudgePlan(state, today, nowMs, zone),
     habitId: habit.id,
     policy: view.policy,
+    clock,
     remindersEnabled: state.settings.remindersEnabled,
     today,
     zone,

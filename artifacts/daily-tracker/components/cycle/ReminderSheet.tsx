@@ -9,6 +9,7 @@ import { useColors } from '@/hooks/useColors';
 import { describeReminder } from '@/src/domain/cycle/reminders';
 import type { CyclePhaseKey, CycleReminder } from '@/src/domain/models';
 import { formatClock, parseClockInput } from '@/src/domain/time/format';
+import { useClockFormat } from '@/src/state/hooks';
 
 export interface ReminderSheetProps {
   /** The rule being edited; `null` closes the sheet. A rule with an empty id is new. */
@@ -28,6 +29,7 @@ const PHASES: { value: CyclePhaseKey; label: string }[] = [
 /** Edit one cycle-relative reminder: label, anchor, offset, time, on/off. */
 export function ReminderSheet({ reminder, birthControl, onClose, onSave, onDelete }: ReminderSheetProps) {
   const c = useColors();
+  const clock = useClockFormat();
   const [draft, setDraft] = useState<CycleReminder | null>(reminder);
   useEffect(() => setDraft(reminder), [reminder]);
   if (!reminder || !draft) return null;
@@ -80,7 +82,7 @@ export function ReminderSheet({ reminder, birthControl, onClose, onSave, onDelet
         <View style={{ flex: 1 }}>
           <Txt role="body">Time</Txt>
         </View>
-        <Stepper value={draft.minute} onChange={(minute) => setDraft({ ...draft, minute })} step={30} min={0} max={23 * 60 + 30} format={formatClock} parse={parseClockInput} label="time" />
+        <Stepper value={draft.minute} onChange={(minute) => setDraft({ ...draft, minute })} step={30} min={0} max={23 * 60 + 30} format={(m) => formatClock(m, clock)} parse={parseClockInput} label="time" />
       </Row>
       <Row style={styles.row}>
         <Txt role="body" style={{ flex: 1 }}>

@@ -6,11 +6,12 @@ import { Chip, Divider, PillButton, Row, Stepper } from '@/components/ui/primiti
 import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import type { ScheduledNudge } from '@/src/domain/nudges/planner';
-import { formatClock, parseClockInput, weekdayName } from '@/src/domain/time/format';
+import { formatClock, parseClockInput, weekdayName, type ClockFormat } from '@/src/domain/time/format';
 import { addDays, calendarDayOf, instantOf, minutesOfDay } from '@/src/domain/time/trackingDay';
 import { NOTIFICATIONS_SUPPORTED, exactAlarmsAllowed, getPermission, onSyncHealth, openExactAlarmSettings, openNotificationSettings, requestPermission, syncHealth, type PermissionState, type SyncHealth } from '@/src/services/notifications';
 import { nudgePlan } from '@/src/state/selectors';
 import { useTracker } from '@/src/state/TrackerProvider';
+import { useClockFormat } from '@/src/state/hooks';
 
 /** Notification permission and exact-alarm access, re-read whenever the app comes back from Settings. */
 function useNotificationPermission(): [PermissionState, boolean | null, () => Promise<void>] {
@@ -42,17 +43,21 @@ const OFF_CHOICES: { label: string; hours: number | 'day' | null }[] = [
 ];
 
 /** "Tomorrow" by the calendar, as a person reads a clock (a 1:00 AM ring belongs to the previous tracking day). */
-function describeNudge(n: ScheduledNudge, zone: string, nowMs: number): string {
+function describeNudge(n: ScheduledNudge, zone: string, nowMs: number, clock: ClockFormat): string {
   const ringDay = calendarDayOf(n.at, zone);
   const nowDay = calendarDayOf(nowMs, zone);
   const dayLabel = ringDay === nowDay ? '' : ringDay === addDays(nowDay, 1) ? 'Tomorrow ' : `${ringDay} `;
-  return `${dayLabel}${formatClock(minutesOfDay(n.at, zone))} · ${n.title}`;
+  // A rotation's or a merged notification's title is generic ("Movement snack", "Time for a break");
+  // the body names what it will actually say ("10 push-ups — push-up snack"), as Today's card does.
+  const what = n.kind === 'ROTATION' || n.mergedIds ? n.body : n.title;
+  return `${dayLabel}${formatClock(minutesOfDay(n.at, zone), clock)} · ${what}`;
 }
 
 /** Settings → Reminders: master switch, permissions, off mode, weekly summary and a preview of what is scheduled. */
 export function RemindersCard() {
   const c = useColors();
   const { state, actions, today, nowMs, zone } = useTracker();
+  const clock = useClockFormat();
   const s = state.settings;
   const [perm, exact, refresh] = useNotificationPermission();
   const health = useSyncHealth();
@@ -156,7 +161,7 @@ export function RemindersCard() {
                 <UI.BellSlash size={18} color={c.violet} />
                 <Txt role="body" style={{ flex: 1 }}>
                   Paused until {calendarDayOf(s.offUntil!, zone) === calendarDayOf(nowMs, zone) ? '' : `${calendarDayOf(s.offUntil!, zone)} `}
-                  {formatClock(minutesOfDay(s.offUntil!, zone))}
+                  {formatClock(minutesOfDay(s.offUntil!, zone), clock)}
                 </Txt>
                 <PillButton label="Resume" kind="ghost" onPress={() => actions.updateSettings({ offUntil: undefined })} />
               </Row>
@@ -185,7 +190,7 @@ export function RemindersCard() {
                 <Txt role="body" tone="secondary">
                   At
                 </Txt>
-                <Stepper value={s.weeklySummary.minute} onChange={(minute) => actions.updateSettings({ weeklySummary: { ...s.weeklySummary, minute } })} step={30} min={8 * 60} max={21 * 60} label="weekly summary time" format={formatClock} parse={parseClockInput} />
+                <Stepper value={s.weeklySummary.minute} onChange={(minute) => actions.updateSettings({ weeklySummary: { ...s.weeklySummary, minute } })} step={30} min={8 * 60} max={21 * 60} label="weekly summary time" format={(m) => formatClock(m, clock)} parse={parseClockInput} />
               </Row>
             ) : null}
           </View>
@@ -200,7 +205,7 @@ export function RemindersCard() {
             ) : (
               plan.slice(0, 4).map((n) => (
                 <Txt key={n.id} role="body" tone="secondary">
-                  {describeNudge(n, zone, nowMs)}
+                  {describeNudge(n, zone, nowMs, clock)}
                 </Txt>
               ))
             )}

@@ -3,7 +3,7 @@
  * Pure: the same words describe a preset's default and whatever the person changed it to.
  */
 import type { NudgePolicy } from '../models';
-import { formatClock, formatDayShort, formatWeekdayShort } from '../time/format';
+import { formatClock, formatDayShort, formatWeekdayShort, type ClockFormat } from '../time/format';
 import { addDays, calendarDayOf, instantOf, minutesOfDay, weekdayOf } from '../time/trackingDay';
 
 export interface PolicyContext {
@@ -13,6 +13,8 @@ export interface PolicyContext {
   water: boolean;
   /** Settings → Reminders interval the rotation runs on. */
   rotationIntervalMin: number;
+  /** How the times are written ("7:30 AM" or "07:30"). */
+  clock: ClockFormat;
 }
 
 /** "90 min", "2 h", "1 h 30 min". */
@@ -46,13 +48,13 @@ export function distinctTimeCount(times: readonly string[]): number {
   return new Set(times.map(clockMinutes).filter((m): m is number => m !== null)).size;
 }
 
-/** "7:30 AM", "8:00 AM and 7:00 PM", "8:00 AM, 12:30 PM and 7:00 PM". */
-export function timesText(times: readonly string[]): string {
+/** "7:30 AM", "8:00 AM and 7:00 PM", "8:00 AM, 12:30 PM and 7:00 PM" (or "07:30", "08:00 and 19:00"). */
+export function timesText(times: readonly string[], clock: ClockFormat): string {
   const words = [...times]
     .map(clockMinutes)
     .filter((m): m is number => m !== null)
     .sort((a, b) => a - b)
-    .map(formatClock);
+    .map((m) => formatClock(m, clock));
   if (words.length <= 1) return words[0] ?? '';
   return `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`;
 }
@@ -89,7 +91,7 @@ export function describePolicy(policy: NudgePolicy | undefined, ctx: PolicyConte
       if (times.length === 0) return 'No times set';
       const behind = policy.onlyWhenBehind ? ' when behind' : '';
       const days = weekdaysText(policy.weekdays);
-      return `At ${timesText(times)}${days ? ` ${days}` : ''}${behind}${times.length > policy.maxPerDay && policy.maxPerDay >= 1 ? cap : ''}`;
+      return `At ${timesText(times, ctx.clock)}${days ? ` ${days}` : ''}${behind}${times.length > policy.maxPerDay && policy.maxPerDay >= 1 ? cap : ''}`;
     }
     case 'INTERVAL':
     case 'ROTATION': {
@@ -104,6 +106,36 @@ export function describePolicy(policy: NudgePolicy | undefined, ctx: PolicyConte
       return 'Set in the Cycle tab';
     default:
       return 'No reminder set';
+  }
+}
+
+/**
+ * The reminder in a few words for a row's subline ("At 7:30 AM", "At 8:00 AM +2 on weekdays",
+ * "Every 90 min when behind", "Rotation"), from the habit's own policy — so a changed reminder,
+ * a custom habit and the 24-hour clock all read right. Undefined when there is nothing to say.
+ */
+export function shortPolicyText(policy: NudgePolicy | undefined, ctx: PolicyContext): string | undefined {
+  if (!policy || policy.kind === 'NONE') return undefined;
+  switch (policy.kind) {
+    case 'FIXED': {
+      const minutes = (policy.times ?? []).map(clockMinutes).filter((m): m is number => m !== null);
+      if (minutes.length === 0) return undefined;
+      const distinct = [...new Set(minutes)].sort((a, b) => a - b);
+      const days = weekdaysText(policy.weekdays);
+      const more = distinct.length > 1 ? ` +${distinct.length - 1}` : '';
+      return `At ${formatClock(distinct[0], ctx.clock)}${more}${days ? ` ${days}` : ''}`;
+    }
+    case 'INTERVAL':
+    case 'ROTATION':
+      if (ctx.water) return `Every ${durationText(policy.intervalMin ?? 90)} when behind`;
+      if (ctx.movement) return 'Rotation';
+      return `Every ${durationText(policy.intervalMin ?? 60)}${policy.onlyWhenBehind ? ' when behind' : ''}`;
+    case 'EVENT':
+      return 'On demand';
+    case 'CYCLE':
+      return 'Cycle';
+    default:
+      return undefined;
   }
 }
 
@@ -199,6 +231,7 @@ export function nextRingText(args: {
   remindersEnabled: boolean;
   today: string;
   zone: string;
+  clock: ClockFormat;
   /** The instant the plan was made for; set times past the plan's horizon are read off the policy. */
   nowMs?: number;
   horizonMs?: number;
@@ -221,10 +254,10 @@ export function nextRingText(args: {
     return ringDay === nowDay ? 'today' : ringDay === addDays(nowDay, 1) ? 'tomorrow' : formatWeekdayShort(ringDay);
   };
   if (args.offUntil !== undefined && args.nowMs !== undefined && args.offUntil > args.nowMs) {
-    return `Paused until ${dayWord(args.offUntil, calendarDayOf(args.offUntil, args.zone))} at ${formatClock(minutesOfDay(args.offUntil, args.zone))} (Settings → Reminders).`;
+    return `Paused until ${dayWord(args.offUntil, calendarDayOf(args.offUntil, args.zone))} at ${formatClock(minutesOfDay(args.offUntil, args.zone), args.clock)} (Settings → Reminders).`;
   }
   const next = args.plan.filter((n) => n.habitIds.includes(args.habitId)).sort((a, b) => a.at - b.at)[0];
-  if (next) return `Next: ${dayWord(next.at, next.day)} at ${formatClock(minutesOfDay(next.at, args.zone))}`;
+  if (next) return `Next: ${dayWord(next.at, next.day)} at ${formatClock(minutesOfDay(next.at, args.zone), args.clock)}`;
   // A quota met for the week or month: nothing rings until the next period, whatever the times say.
   if (args.donePeriod && args.periodNoun !== 'day') return `Done for the ${args.periodNoun}: nothing more rings.`;
   // Set times on a chosen weekday can lie past the plan's horizon (a Friday session seen on
@@ -239,7 +272,7 @@ export function nextRingText(args: {
         const minute = clockMinutes(hhmm);
         if (minute === null) continue;
         const at = instantOf(day, minute, args.zone);
-        if (at > horizonEnd) return `Next: ${formatWeekdayShort(day)}, ${formatDayShort(day)} at ${formatClock(minute)}`;
+        if (at > horizonEnd) return `Next: ${formatWeekdayShort(day)}, ${formatDayShort(day)} at ${formatClock(minute, args.clock)}`;
       }
     }
   }

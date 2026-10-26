@@ -17,6 +17,7 @@ import { upcomingReminders, type ReminderFire } from '@/src/domain/cycle/reminde
 import { buildTimeline, cycleLengths, isPeriodOpen, type CycleTimeline } from '@/src/domain/cycle/timeline';
 import { nextNudge, nextRotationItem, type NextNudge, type RotationItem } from '@/src/domain/nudges/nextNudge';
 import { planNudges, type PlanHabit, type PlanInput, type ScheduledNudge } from '@/src/domain/nudges/planner';
+import { formatVolume } from '@/src/domain/time/format';
 import { addDays, calendarDayOf, dayDiff, lastNDays, minutesOfDay, weekStartIndex } from '@/src/domain/time/trackingDay';
 import { waterStatus, type WaterStatus } from '@/src/domain/water/pace';
 import type { TrackerState } from './types';
@@ -542,8 +543,12 @@ export function highlights(state: TrackerState, today: string): Highlight[] {
     });
   }
 
-  // Water: days logged this week and week-over-week change.
+  // Water: days logged this week and week-over-week change, in the units setting.
   const water = waterHabit(state);
+  const volumeText = (ml: number) => {
+    const f = formatVolume(Math.round(ml), state.settings.units);
+    return `${f.value} ${f.unit}`;
+  };
   if (water) {
     const last7 = lastNDays(today, 7);
     const prev7 = lastNDays(addDays(today, -7), 7);
@@ -562,7 +567,7 @@ export function highlights(state: TrackerState, today: string): Highlight[] {
       out.push({
         id: 'water-week',
         title: daysLogged === 0 ? 'No water logged in the last 7 days' : `You logged water ${daysLogged} of the last 7 days`,
-        body: daysLogged === 0 ? `Last week averaged ${Math.round(prevTotal / 7)} ml a day.` : `${Math.round(cur.reduce((a, b) => a + b, 0) / 7)} ml a day on average.${trend}`,
+        body: daysLogged === 0 ? `Last week averaged ${volumeText(prevTotal / 7)} a day.` : `${volumeText(cur.reduce((a, b) => a + b, 0) / 7)} a day on average.${trend}`,
         category: 'hydration',
         series: cur,
         habitId: water.id,

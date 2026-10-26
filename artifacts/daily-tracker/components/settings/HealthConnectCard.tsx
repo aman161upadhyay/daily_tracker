@@ -9,6 +9,7 @@ import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import { useHealthConnect } from '@/hooks/useHealthConnect';
 import { useTracker } from '@/src/state/TrackerProvider';
+import { useClockFormat } from '@/src/state/hooks';
 
 interface Props {
   confirm: (title: string, message: string, label: string, run: () => void) => void;
@@ -19,6 +20,7 @@ export function HealthConnectCard({ confirm }: Props) {
   const c = useColors();
   const router = useRouter();
   const { state, nowMs, zone } = useTracker();
+  const clock = useClockFormat();
   const hc = useHealthConnect();
   const b = state.body;
   const imported = b.steps.length + b.sleep.length + b.heart.length + b.weight.length + b.workouts.length;
@@ -29,7 +31,7 @@ export function HealthConnectCard({ confirm }: Props) {
   else if (hc.status === 'checking') status = 'Checking…';
   else if (hc.status === 'not-installed') status = 'Health Connect is not installed';
   else if (hc.status === 'update-required') status = 'Health Connect needs an update';
-  else if (hc.connected) status = `Connected · ${hc.granted.length} of 7 data types · ${describeLastSync(hc.lastSyncAt, nowMs, zone)}`;
+  else if (hc.connected) status = `Connected · ${hc.granted.length} of 7 data types · ${describeLastSync(hc.lastSyncAt, nowMs, zone, clock)}`;
   else if (hc.enabled) status = 'Connected, but no permissions are granted';
   else status = 'Not connected';
 

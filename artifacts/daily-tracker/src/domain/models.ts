@@ -285,6 +285,8 @@ export interface Settings {
   healthConnectEnabled: boolean;
   /** Colour theme; 'system' follows the phone. Dark is the designed default. */
   theme: ThemePreference;
+  /** "9:30 PM" or "21:30" everywhere a time is written; 'system' follows the phone's setting. */
+  clockFormat: ClockFormatPreference;
   /** Biometric / screen-lock gate on open and after `appLock.afterMin` minutes in the background. */
   appLock: AppLockSettings;
   /**
@@ -296,6 +298,9 @@ export interface Settings {
 }
 
 export type ThemePreference = 'dark' | 'light' | 'system';
+
+/** How clock times are written; 'system' follows the phone's 24-hour setting. */
+export type ClockFormatPreference = 'system' | '12h' | '24h';
 
 export interface AppLockSettings {
   enabled: boolean;
@@ -313,6 +318,7 @@ export const DEFAULT_SETTINGS: Settings = {
   activeEndMin: 21 * 60,
   dayBoundaryHour: 3,
   weekStart: 'monday',
+  clockFormat: 'system',
   nudgeIntervalMin: 60,
   dailyNudgeCap: 10,
   cycleEnabled: false,
@@ -337,6 +343,8 @@ export const SNACK_LABELS: Record<SnackType, { label: string; defaultReps?: numb
   WALK: { label: 'Walk', defaultSeconds: 300, unit: 'sec' },
   STRETCH: { label: 'Stretch', defaultSeconds: 120, unit: 'sec' },
   PUSH_UPS: { label: 'Push-ups', defaultReps: 10, unit: 'reps' },
-  STAIRS: { label: 'Stair climbs', defaultReps: 3, unit: 'climbs' },
+  // One snack is one quick climb (the sprint-snack protocol: three single climbs spread over a day), so
+  // a logged climb counts one towards the Stair sprint's three.
+  STAIRS: { label: 'Stair climb', defaultReps: 1, unit: 'climbs' },
   VIGOROUS_MINUTE: { label: 'Vigorous minute', defaultSeconds: 60, unit: 'sec' },
 };
