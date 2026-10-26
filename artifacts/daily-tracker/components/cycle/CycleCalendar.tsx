@@ -80,7 +80,7 @@ export function CycleCalendar({ month, today, timeline, birthControl, loggedDays
           const { day: num } = parseDay(day);
           const a11y = [parseDay(day).year === parseDay(today).year ? formatDayShort(day) : formatDayLong(day), isToday ? 'today' : '', phase ? PHASE_LABELS[phase] : '', phaseQualifier(info, day, today), loggedDays.has(day) ? 'has a log' : ''].filter(Boolean).join(', ');
           return (
-            <PressableScale key={day} haptic={false} onPress={() => onSelect(day)} accessibilityRole="button" accessibilityLabel={a11y} accessibilityState={{ selected: isSelected }} style={styles.cell}>
+            <PressableScale key={day} haptic={false} onPress={() => onSelect(day)} accessibilityRole="button" accessibilityLabel={a11y} aria-selected={isSelected} style={styles.cell}>
               <View
                 style={[
                   styles.disc,

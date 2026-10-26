@@ -4,12 +4,14 @@
  * React, the OS or the store.
  */
 import type { Cadence, Category, EntrySource, Habit, HabitIcon, HabitRule, HabitType, MindKind, NudgeEvent, NudgeEventKind, NudgePolicy, SnackTrigger, SnackType } from '@/src/domain/models';
+import type { Preset } from '@/src/library/presets';
 import { SNACK_LABELS } from '@/src/domain/models';
 import { MAX_WATER_LOG_ML } from '@/src/data/validate';
 import type { NudgeActionKind } from '@/src/domain/nudges/planner';
 import { SNOOZE_MINUTES } from '@/src/domain/nudges/planner';
 import { addDays, isCalendarDay, isInstantMs, trackingDayOf, weekStartIndex, weekStartOf } from '@/src/domain/time/trackingDay';
 import type { Action } from './reducer';
+import { habitFromPreset } from './seed';
 import { habitView, latestRule, rotationHabit, ruleFor } from './selectors';
 import type { TrackerState } from './types';
 
@@ -148,6 +150,18 @@ export function newHabitAction(draft: HabitDraft, id: string, day: string): Extr
   const policy: NudgePolicy =
     chosen && (chosen.kind === 'FIXED' || chosen.kind === 'INTERVAL') ? { ...chosen, habitId: id, enabled: true } : { habitId: id, kind: 'NONE', onlyWhenBehind: false, maxPerDay: 0, enabled: false };
   return { type: 'ADD_HABIT', habit, rule, policy };
+}
+
+/**
+ * The action that adds a Library preset on `day`: its habit, its rule and either the preset's own
+ * reminder or the one chosen in the Library sheet before adding (`reminder`, re-addressed to the
+ * new habit). An on-demand preset (EVENT) keeps its trigger whatever was passed — the sheet offers
+ * no editor for it, and a plain schedule would silently drop the follow-up it is built on.
+ */
+export function presetHabitAction(preset: Preset, id: string, day: string, reminder?: NudgePolicy): Extract<Action, { type: 'ADD_HABIT' }> {
+  const built = habitFromPreset(preset, id, day);
+  const policy = reminder && built.policy.kind !== 'EVENT' && built.policy.kind !== 'CYCLE' ? { ...reminder, habitId: id } : built.policy;
+  return { type: 'ADD_HABIT', habit: built.habit, rule: built.rule, policy };
 }
 
 const sameRule = (a: RuleDraft, b: RuleDraft) => a.cadence === b.cadence && a.timesPerPeriod === b.timesPerPeriod && a.target === b.target && a.freezesPerMonth === b.freezesPerMonth;

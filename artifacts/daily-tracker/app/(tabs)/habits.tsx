@@ -5,6 +5,7 @@ import { AmountSheet } from '@/components/tracker/AmountSheet';
 import { EvidenceBlock, EvidencePill } from '@/components/tracker/EvidenceBlock';
 import { HabitEditorSheet } from '@/components/tracker/HabitEditorSheet';
 import { HabitRow } from '@/components/tracker/HabitRow';
+import { ReminderPolicyForm, policyDraftFrom, policyFromPolicyDraft, type PolicyDraft } from '@/components/tracker/ReminderPolicyForm';
 import { Card } from '@/components/ui/Card';
 import { UI } from '@/components/ui/icons';
 import { Dot, IconButton, IconTile, PillButton, Row, SectionHeader } from '@/components/ui/primitives';
@@ -14,9 +15,11 @@ import { Sheet } from '@/components/ui/Sheet';
 import { Txt } from '@/components/ui/Txt';
 import { SampleDataChip } from '@/components/tracker/SampleDataChip';
 import { useColors } from '@/hooks/useColors';
-import type { Category, Habit } from '@/src/domain/models';
+import type { Category, Habit, NudgePolicy } from '@/src/domain/models';
+import { describePolicy, type PolicyContext } from '@/src/domain/nudges/describePolicy';
 import { CATEGORY_LABELS, CATEGORY_ORDER, presetById, PRESETS, type Preset } from '@/src/library/presets';
 import { useHabitViews } from '@/src/state/hooks';
+import { habitFromPreset } from '@/src/state/seed';
 import { useTracker } from '@/src/state/TrackerProvider';
 
 export default function HabitsScreen() {
@@ -38,6 +41,18 @@ export default function HabitsScreen() {
   const [amountHabit, setAmountHabit] = useState<Habit | null>(null);
   const needsAmount = (h: Habit) => h.type === 'AMOUNT' || (h.type === 'TIMER' && !h.mindKind);
   const [customOpen, setCustomOpen] = useState(false);
+
+  // The preset sheet's reminder: the preset's own schedule until the person opens Change, then the
+  // same editor the habit page shows (one editor per concept). Null until a preset is open; reset
+  // when another preset opens. On-demand presets (EVENT) keep their trigger and show no editor.
+  const presetContext: PolicyContext | null = preset ? { movement: !!preset.snackType, water: preset.id === 'water', rotationIntervalMin: state.settings.nudgeIntervalMin } : null;
+  const presetDefault: NudgePolicy | null = preset ? habitFromPreset(preset, 'new', '2000-01-01').policy : null;
+  const [reminderFor, setReminderFor] = useState<{ presetId: string; draft: PolicyDraft; open: boolean } | null>(null);
+  const reminderDraft = preset && presetContext && reminderFor?.presetId === preset.id ? reminderFor.draft : preset && presetContext ? policyDraftFrom(presetDefault ?? undefined, presetContext) : null;
+  const reminderOpen = reminderFor?.presetId === preset?.id && !!reminderFor?.open;
+  const reminderEditable = !!presetDefault && presetDefault.kind !== 'EVENT' && presetDefault.kind !== 'CYCLE';
+  const reminderPreview: NudgePolicy | null = preset && presetContext && reminderDraft ? policyFromPolicyDraft({ habitId: 'new' }, reminderDraft, presetContext) : null;
+  const reminderTouched = reminderFor?.presetId === preset?.id;
 
   const grouped = useMemo(() => {
     const byCat = new Map<Category, typeof views>();
@@ -194,6 +209,31 @@ export default function HabitsScreen() {
               </View>
             </Row>
             <EvidenceBlock preset={preset} />
+            {reminderEditable && presetContext && reminderDraft && reminderPreview && !addedIds.has(preset.id) ? (
+              <Card style={{ gap: 8 }}>
+                <Row gap={8} style={{ alignItems: 'flex-start' }}>
+                  <View style={{ flex: 1 }}>
+                    <Txt role="footnote" tone="secondary">
+                      Reminder
+                    </Txt>
+                    <Txt role="body">{describePolicy(reminderPreview, presetContext)}</Txt>
+                  </View>
+                  <PillButton
+                    label={reminderOpen ? 'Done' : 'Change'}
+                    compact
+                    kind="ghost"
+                    onPress={() => setReminderFor({ presetId: preset.id, draft: reminderDraft, open: !reminderOpen })}
+                    accessibilityLabel={reminderOpen ? 'Done changing the reminder' : `Change the reminder for ${preset.name}`}
+                  />
+                </Row>
+                {reminderOpen ? <ReminderPolicyForm draft={reminderDraft} onChange={(draft) => setReminderFor({ presetId: preset.id, draft, open: true })} context={presetContext} preview={reminderPreview} /> : null}
+                {!reminderOpen ? (
+                  <Txt role="footnote" tone="tertiary">
+                    You can change it any time from the habit's page.
+                  </Txt>
+                ) : null}
+              </Card>
+            ) : null}
             {addedIds.has(preset.id) ? (
               <PillButton
                 label="Open habit"
@@ -209,8 +249,9 @@ export default function HabitsScreen() {
                 label="Add to my habits"
                 Leading={UI.Plus}
                 onPress={() => {
-                  const h = actions.addPreset(preset.id);
+                  const h = actions.addPreset(preset.id, reminderTouched && reminderPreview ? reminderPreview : undefined);
                   setPreset(null);
+                  setReminderFor(null);
                   if (h) openHabit(h.id);
                 }}
               />

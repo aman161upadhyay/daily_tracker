@@ -89,7 +89,7 @@ export function HabitRow({ view, onPress, onIncrement, onToggle, onTimer, nudgeT
         <PressableScale
           onPress={onToggle}
           accessibilityRole="checkbox"
-          accessibilityState={{ checked: done }}
+          aria-checked={done}
           accessibilityLabel={done ? `Undo ${habit.name}` : `Mark ${habit.name} done`}
           style={styles.target}
         >

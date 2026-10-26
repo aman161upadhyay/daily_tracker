@@ -86,7 +86,7 @@ export function DayPickerSheet({ visible, onClose, habit, today, ratiosFor, firs
           const n = parseDay(day).day;
           const a11y = [dayLabel(day), isToday ? 'today' : '', !open ? 'not available' : ratio === 0 ? 'nothing logged' : full ? 'goal met' : `${Math.round(ratio * 100)} percent of the goal`].filter(Boolean).join(', ');
           return (
-            <PressableScale key={day} haptic={false} disabled={!open} onPress={() => onPick(day)} accessibilityRole="button" accessibilityLabel={a11y} accessibilityState={{ disabled: !open }} style={styles.cell}>
+            <PressableScale key={day} haptic={false} disabled={!open} onPress={() => onPick(day)} accessibilityRole="button" accessibilityLabel={a11y} aria-disabled={!open} style={styles.cell}>
               <View style={[styles.disc, full ? { backgroundColor: fullFill } : ring, isToday && !full && !ring ? { borderColor: c.green, borderWidth: 2 } : null]}>
                 <Txt role="callout" color={!open ? c.textTertiary : full ? inkOnFull : isToday ? c.green : c.text} align="center">
                   {String(n)}

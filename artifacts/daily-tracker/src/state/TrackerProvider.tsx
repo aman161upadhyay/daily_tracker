@@ -12,7 +12,7 @@ import { currentZone, newId, now } from '@/src/domain/time/clock';
 import { calendarDayOf, instantOf, minutesOfDay, trackingDayOf } from '@/src/domain/time/trackingDay';
 import { presetById } from '@/src/library/presets';
 import { dayRecords, findRecord, MAX_RESTORE_RECORDS, type LogName, type LogRecord } from '@/src/domain/habits/records';
-import { mindSessionExists, newHabitAction, ruleChangeActions, ruleInForce, targetChangeActions, type HabitDraft, type RuleDraft } from './commands';
+import { mindSessionExists, newHabitAction, presetHabitAction, ruleChangeActions, ruleInForce, targetChangeActions, type HabitDraft, type RuleDraft } from './commands';
 import { reducer, type Action } from './reducer';
 import { buildEmptyState, buildSampleState, habitFromPreset } from './seed';
 import { bumpBodyEpoch } from './epochs';
@@ -106,7 +106,8 @@ export interface TrackerActions {
   logSnack(type: SnackType, opts?: { habitId?: string; trigger?: SnackTrigger; reps?: number; seconds?: number }): void;
   /** Log a session; `endAt` is the instant it really ended (a timer that ran out while the phone was locked), now by default. */
   logMind(kind: MindKind, minutes: number, opts?: { endAt?: number }): void;
-  addPreset(presetId: string): Habit | null;
+  /** Add a Library preset (or restore its archived habit). `reminder`, when given, replaces the preset's default reminder (its `habitId` is replaced by the new habit's). */
+  addPreset(presetId: string, reminder?: NudgePolicy): Habit | null;
   createHabit(draft: HabitDraft): Habit;
   /** Edit name/icon/pin and the rule. Rule changes are versioned, never retroactive. */
   saveHabit(habit: Habit, draft: HabitDraft): void;
@@ -564,7 +565,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
         if (mindSessionExists(pendingRef.current, kind, startAt)) return;
         dispatch({ type: 'LOG_MIND', session: { id: newId(), startAt, endAt, zone: z, day: d, kind, minutes } });
       },
-      addPreset(presetId) {
+      addPreset(presetId, reminder) {
         const preset = presetById(presetId);
         if (!preset) return null;
         const s = stateRef();
@@ -574,9 +575,10 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
           return existing;
         }
         const { day } = stamp();
-        const built = habitFromPreset(preset, newId(), day);
-        dispatch({ type: 'ADD_HABIT', ...built });
-        return built.habit;
+        // `reminder`: the one chosen in the Library sheet before adding (the same editor the habit page shows).
+        const action = presetHabitAction(preset, newId(), day, reminder);
+        dispatch(action);
+        return action.habit;
       },
       createHabit(draft) {
         const { day } = stamp();

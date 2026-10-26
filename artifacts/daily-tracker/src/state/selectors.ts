@@ -7,7 +7,6 @@ import {
   adherenceOf,
   percentChange,
   ratioOf,
-  sumValues,
   type DayRatio,
 } from '@/src/domain/habits/progress';
 import { cadenceSegments, evaluateStreak, periodBounds, periodRequired, periodStartOf, segmentStartIn, type CadenceSegment, type PeriodResult } from '@/src/domain/habits/streaks';
@@ -556,14 +555,19 @@ export function highlights(state: TrackerState, today: string): Highlight[] {
       cur.reduce((a, b) => a + b, 0),
     );
     const trend = change === null ? '' : change >= 0 ? ` Up ${change}% on last week.` : ` Down ${Math.abs(change)}% on last week.`;
-    out.push({
-      id: 'water-week',
-      title: `You logged water ${daysLogged} of the last 7 days`,
-      body: `${Math.round(cur.reduce((a, b) => a + b, 0) / 7)} ml a day on average.${trend}`,
-      category: 'hydration',
-      series: cur,
-      habitId: water.id,
-    });
+    // Two empty weeks are not a highlight (a fresh install read "0 of the last 7 days" as history it
+    // did not have); one empty week after a logged one is said plainly.
+    const prevTotal = prev.reduce((a, b) => a + b, 0);
+    if (daysLogged > 0 || prevTotal > 0) {
+      out.push({
+        id: 'water-week',
+        title: daysLogged === 0 ? 'No water logged in the last 7 days' : `You logged water ${daysLogged} of the last 7 days`,
+        body: daysLogged === 0 ? `Last week averaged ${Math.round(prevTotal / 7)} ml a day.` : `${Math.round(cur.reduce((a, b) => a + b, 0) / 7)} ml a day on average.${trend}`,
+        category: 'hydration',
+        series: cur,
+        habitId: water.id,
+      });
+    }
   }
 
   // Habit with the biggest adherence climb over the last week. Both weeks must have been lived

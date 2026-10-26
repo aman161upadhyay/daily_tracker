@@ -130,7 +130,7 @@ export function ReminderPolicyForm({ draft: d, onChange, context, preview }: Rem
                   key={day}
                   onPress={() => toggleDay(day)}
                   accessibilityRole="checkbox"
-                  accessibilityState={{ checked: on }}
+                  aria-checked={on}
                   accessibilityLabel={WEEKDAY_NAMES[day]}
                   hitSlop={4}
                   style={[styles.day, { backgroundColor: on ? c.green : 'transparent', borderColor: on ? c.green : c.hairline }]}

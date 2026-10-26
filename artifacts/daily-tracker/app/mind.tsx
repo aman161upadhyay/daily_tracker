@@ -6,7 +6,7 @@ import { useBackOrHome } from '@/hooks/useBackOrHome';
 import { BreathCircle, phaseAt } from '@/components/tracker/BreathCircle';
 import { Card } from '@/components/ui/Card';
 import { UI } from '@/components/ui/icons';
-import { Chip, IconButton, PillButton, Row, Segmented } from '@/components/ui/primitives';
+import { Chip, IconButton, PillButton, Row, Segmented, Stepper } from '@/components/ui/primitives';
 import { Screen } from '@/components/ui/Screen';
 import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
@@ -18,6 +18,7 @@ import { useTracker } from '@/src/state/TrackerProvider';
 
 const MEDITATION_PRESETS = [5, 10, 13, 20];
 const BREATHING_MINUTES = 5;
+const minutesWord = (n: number) => `${n} minute${n === 1 ? '' : 's'}`;
 
 /** Timer for meditation and the cyclic-sighing breathing guide; logs a session on finish. */
 export default function MindScreen() {
@@ -28,6 +29,8 @@ export default function MindScreen() {
 
   const [kind, setKind] = useState<MindKind>(params.kind === 'BREATHING' ? 'BREATHING' : 'MEDITATION');
   const [minutes, setMinutes] = useState(13);
+  // "Other": any length from a minute up, typed or stepped (the presets are the studied doses).
+  const [custom, setCustom] = useState(false);
   const [running, setRunning] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const startedAt = useRef<number | null>(null);
@@ -239,16 +242,29 @@ export default function MindScreen() {
             {formatMinSec(remainingMs / 1000)}
           </Txt>
           <Txt role="footnote" tone="secondary">
-            {done ? 'Session logged' : running ? 'remaining' : `${Math.round(totalMs / 60_000)} minutes`}
+            {done ? 'Session logged' : running ? 'remaining' : minutesWord(Math.round(totalMs / 60_000))}
           </Txt>
         </View>
 
         {kind === 'MEDITATION' && !running && !done && elapsedMs === 0 ? (
-          <Row gap={8} style={{ marginTop: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
-            {MEDITATION_PRESETS.map((m) => (
-              <Chip key={m} label={`${m} min`} selected={minutes === m} color={c.cat.mind} onPress={() => setMinutes(m)} />
-            ))}
-          </Row>
+          <View style={{ alignItems: 'center', gap: 12 }}>
+            <Row gap={8} style={{ marginTop: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+              {MEDITATION_PRESETS.map((m) => (
+                <Chip
+                  key={m}
+                  label={`${m} min`}
+                  selected={!custom && minutes === m}
+                  color={c.cat.mind}
+                  onPress={() => {
+                    setCustom(false);
+                    setMinutes(m);
+                  }}
+                />
+              ))}
+              <Chip label="Other" selected={custom} color={c.cat.mind} onPress={() => setCustom(true)} accessibilityLabel="Other length" />
+            </Row>
+            {custom ? <Stepper value={minutes} onChange={(m) => setMinutes(Math.max(1, Math.min(120, Math.round(m))))} min={1} max={120} label="minutes" /> : null}
+          </View>
         ) : null}
 
         <Row gap={10} style={{ marginTop: 20, alignSelf: 'stretch' }}>
@@ -263,7 +279,7 @@ export default function MindScreen() {
               {elapsedMs > 0 ? (
                 <PillButton
                   label="Finish"
-                  accessibilityLabel={elapsedMs >= 60_000 ? `Finish and log ${Math.max(1, Math.round(elapsedMs / 60_000))} minutes` : 'Finish without logging'}
+                  accessibilityLabel={elapsedMs >= 60_000 ? `Finish and log ${minutesWord(Math.max(1, Math.round(elapsedMs / 60_000)))}` : 'Finish without logging'}
                   kind="ghost"
                   onPress={finishEarly}
                 />

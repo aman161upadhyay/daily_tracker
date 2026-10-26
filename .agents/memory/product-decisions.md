@@ -307,6 +307,13 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   native file) — see `tests/round18.test.ts`. State fuzz is gating (`tests/stateFuzz.test.ts`,
   `FUZZ_SEQUENCES=300` for the full run). Copy terms kept on purpose: "pace check" (water mode name),
   "streak freeze"; the tester's copy audit is a repeatable lens. Dispositions in §6 Round 18.
+- Round 19 (2026-10-26 night) rules, paradigms 86–88: accessibility state only through `aria-checked` /
+  `aria-selected` / `aria-disabled` (react-native-web 0.21 ignores `accessibilityState`; RN maps the
+  aria props on Android). A Library preset's reminder is shown and editable (collapsed) in its sheet
+  before adding — `presetHabitAction(preset, id, day, reminder?)`; EVENT presets keep their trigger.
+  Highlights never show "0 of N" over no history. Movement presets' interval mode reads "Rotation" on
+  purpose. The web preview's About version lags app.json (babel inlines the web manifest once; Metro
+  cache) — clear /tmp/metro-cache before a web check, never "fix" it in code. Dispositions in §6 Round 19.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app

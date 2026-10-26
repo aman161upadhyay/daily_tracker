@@ -96,6 +96,16 @@ cd artifacts/daily-tracker/android       # Windows PowerShell: cd artifacts\dail
 adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
+**16 KB page-size check (once per dependency change).** Android 15+ phones can run with 16 KB
+memory pages, and Play requires it for new uploads; every native library in the APK must be
+aligned for it. The sources in this dependency set enable the flag (React Native, expo-modules-core,
+expo-sqlite), but only the built APK proves it:
+`$ANDROID_HOME/build-tools/<version>/zipalign -c -P 16 -v 4 app/build/outputs/apk/release/app-release.apk | tail -3`
+must end in `Verification succesful` (sic), and the APK must install and open on a 16 KB emulator
+image (Android Studio → Device Manager → a system image marked "16 KB page size") or on a Pixel
+with Developer options → "Boot with 16 KB page size". A failure names the `.so`; the fix is updating
+that package, not the app.
+
 Without a release key configured (next section) the Expo template signs *release* builds with the
 **debug keystore that ships inside the generated project** (`android/app/debug.keystore` — the same
 public key every Expo project has, not one your machine created). That is fine for a phone you
@@ -175,7 +185,7 @@ the block survives every `--clean` prebuild.
 higher over the existing one and rejects only a lower one (`INSTALL_FAILED_VERSION_DOWNGRADE`).
 This project still raises `expo.android.versionCode` in `app.json` on every release (M3 shipped 3,
 M4 4, M5 5, M6 6, then one per council round: round 3 → 7, round 4 → 8, round 5 → 9, round 6 → 10, round 7 → 11, round 8 → 12, round 9 → 13, round 10 → 14, round 11 → 15)
-so that "which build is this phone on" has one answer; `version` follows the tag (`0.22.0` = `v0.22`).
+so that "which build is this phone on" has one answer; `version` follows the tag (`0.23.0` = `v0.23`).
 `app.json` is the source of truth; when this paragraph and `app.json` disagree, `app.json` is right.
 
 Google Play is deliberately not part of this recipe; `./gradlew bundleRelease` produces the AAB if

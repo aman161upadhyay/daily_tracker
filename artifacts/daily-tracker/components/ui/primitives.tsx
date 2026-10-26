@@ -109,7 +109,7 @@ export function Chip({
   );
   if (!onPress) return content;
   return (
-    <PressableScale onPress={onPress} accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={accessibilityLabel ?? label} hitSlop={6}>
+    <PressableScale onPress={onPress} accessibilityRole="button" aria-selected={selected} accessibilityLabel={accessibilityLabel ?? label} hitSlop={6}>
       {content}
     </PressableScale>
   );
@@ -189,7 +189,7 @@ export function IconButton({
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={disabled ? { disabled: true } : undefined}
+      aria-disabled={disabled ? true : undefined}
       // Touch target of at least 48 dp whatever the drawn size (Material / WCAG 2.5.8).
       hitSlop={Math.max(6, Math.ceil((48 - size) / 2))}
       style={{
@@ -330,7 +330,7 @@ export function Segmented<T extends string>({ options, value, onChange }: { opti
             haptic={false}
             onPress={() => onChange(o.value)}
             accessibilityRole="button"
-            accessibilityState={{ selected }}
+            aria-selected={selected}
             accessibilityLabel={o.label}
             hitSlop={{ top: 8, bottom: 8 }}
             style={[styles.segmentItem, selected ? { backgroundColor: c.surfaceRaised, borderColor: c.hairline } : null]}

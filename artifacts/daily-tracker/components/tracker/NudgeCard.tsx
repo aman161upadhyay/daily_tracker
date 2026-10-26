@@ -14,7 +14,6 @@ export interface NudgeCardProps {
   /** Whether any movement snack is enabled for nudging. */
   hasRotation: boolean;
   activeStartMin: number;
-  activeEndMin: number;
   nowMin: number;
   onDone: () => void;
   onSnooze: () => void;
@@ -23,7 +22,7 @@ export interface NudgeCardProps {
 }
 
 /** "Next: 10 squats · in 24 min" with Done now / Snooze / Swap. Gold frame while live. */
-export function NudgeCard({ nudge, suggestion, hasRotation, activeStartMin, activeEndMin, nowMin, onDone, onSnooze, onSwap, onSettings }: NudgeCardProps) {
+export function NudgeCard({ nudge, suggestion, hasRotation, activeStartMin, nowMin, onDone, onSnooze, onSwap, onSettings }: NudgeCardProps) {
   const c = useColors();
 
   if (!nudge) {

@@ -24,7 +24,7 @@ import { formatClock, formatDayLong, formatNumber, formatVolume } from '@/src/do
 import { minutesOfDay } from '@/src/domain/time/trackingDay';
 import { presetById } from '@/src/library/presets';
 import { useHabitViews, useHighlights, useLiveNudge, useTodaySummary } from '@/src/state/hooks';
-import { PINNED_CARD_META, type PinnedCardId } from '@/src/domain/today/pinned';
+import { type PinnedCardId } from '@/src/domain/today/pinned';
 import { cycleTimeline, habitDayValue, mindSeries, rotationItems, ruleFor, snackSeries, snackSuggestion, waterSeries } from '@/src/state/selectors';
 import { displayPhase, PHASE_LABELS, phaseQualifier } from '@/src/domain/cycle/timeline';
 import { formatDayShort } from '@/src/domain/time/format';
@@ -210,7 +210,6 @@ export default function TodayScreen() {
         hasRotation={rotationItems(state).length > 0}
         suggestion={nudge ? snackSuggestion(nudge.item.snackType) : undefined}
         activeStartMin={s.activeStartMin}
-        activeEndMin={s.activeEndMin}
         nowMin={nowMin}
         onDone={() => nudge && actions.logSnack(nudge.item.snackType, { habitId: nudge.item.habitId, trigger: 'NUDGE' })}
         onSnooze={() => actions.snoozeNudge(10)}

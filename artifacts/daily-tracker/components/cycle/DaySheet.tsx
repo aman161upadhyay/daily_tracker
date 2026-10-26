@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Platform, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Platform, StyleSheet, TextInput } from 'react-native';
 import { Sheet } from '@/components/ui/Sheet';
 import { Chip, Divider, PillButton, Row } from '@/components/ui/primitives';
 import { Txt } from '@/components/ui/Txt';

@@ -74,11 +74,6 @@ export function bestStreak(ratiosAsc: DayRatio[]): number {
   return best;
 }
 
-/** Sum of values over a slice of days (for charts and highlights). */
-export function sumValues(ratios: DayRatio[]): number {
-  return ratios.reduce((acc, r) => acc + r.value, 0);
-}
-
 /** Percentage change between two totals; null when the baseline is zero. */
 export function percentChange(previous: number, current: number): number | null {
   if (previous <= 0) return null;

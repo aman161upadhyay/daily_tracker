@@ -197,7 +197,7 @@ export const PRESETS: Preset[] = [
     rule: { cadence: 'WEEKLY', timesPerPeriod: 3, target: 3 },
     ruleText: '3 quick climbs · 3 days a week',
     policy: { kind: 'FIXED', times: ['10:30', '14:30', '16:30'], maxPerDay: 3 },
-    nudgeText: 'At 10:30 AM, 2:30 PM and 4:30 PM until 3 days are in this week',
+    nudgeText: 'At 10:30 AM, 2:30 PM and 4:30 PM until 3 days are logged this week',
     why: 'Three quick stair climbs a day, three days a week, improved cardiorespiratory fitness in six weeks.',
     evidence: 'Moderate',
     sources: [{ label: 'Jenkins et al. 2019 (McMaster), Appl Physiol Nutr Metab', url: 'https://pubmed.ncbi.nlm.nih.gov/30649897' }],
@@ -267,7 +267,7 @@ export const PRESETS: Preset[] = [
     rule: { cadence: 'WEEKLY', timesPerPeriod: 2, target: 1 },
     ruleText: '20+ min · twice a week',
     policy: { kind: 'FIXED', times: ['18:00'], maxPerDay: 1 },
-    nudgeText: 'At 6:00 PM until both sessions are in this week',
+    nudgeText: 'At 6:00 PM until both sessions are logged this week',
     why: 'The mortality link with strength training peaks around 30–60 minutes a week; later work suggests 90–120 minutes a week may be optimal.',
     evidence: 'Strong',
     sources: [

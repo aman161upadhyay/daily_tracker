@@ -141,8 +141,7 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
               ))}
             </View>
             <Txt role="caption" tone="tertiary" style={{ marginTop: 6 }}>
-              {TYPE_OPTIONS.find((o) => o.value === d.type)?.hint}
-              {' · '}cannot be changed later
+              {TYPE_OPTIONS.find((o) => o.value === d.type)?.hint}. The type can’t be changed once the habit exists.
             </Txt>
           </Field>
         ) : null}
@@ -249,7 +248,7 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
         <Field label="Icon">
           <View style={styles.wrap}>
             {ICON_OPTIONS.map((k) => (
-              <PressableScale key={k} onPress={() => set({ icon: k })} accessibilityRole="button" accessibilityLabel={`Icon ${k}`} accessibilityState={{ selected: d.icon === k }} style={[styles.iconChoice, { borderColor: d.icon === k ? c.green : 'transparent' }]}>
+              <PressableScale key={k} onPress={() => set({ icon: k })} accessibilityRole="button" accessibilityLabel={`Icon ${k}`} aria-selected={d.icon === k} style={[styles.iconChoice, { borderColor: d.icon === k ? c.green : 'transparent' }]}>
                 <IconTile icon={k} color={c.cat[d.category]} size={40} />
               </PressableScale>
             ))}

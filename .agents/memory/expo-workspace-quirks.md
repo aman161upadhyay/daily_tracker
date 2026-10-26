@@ -152,3 +152,8 @@ Hermes compiler path for bundle checks: `node_modules/.pnpm/hermes-compiler@*/no
   scheduler's hidden network constraint was only visible in `BackgroundTaskScheduler.kt`).
 - `CI=1 pnpm exec expo install <pkg>` for new Expo packages (non-interactive); the workflow's Metro picks them up
   without a restart, but `expo export` is the real check.
+- Web preview only: babel-preset-expo inlines `process.env.APP_MANIFEST` (app.json) into expo-constants at the
+  first transform and Metro's transform cache (`/tmp/metro-cache`) keeps it per transform-option key — the About
+  version on web lagged app.json by 15 rounds. `rm -rf /tmp/metro-cache` then restart the workflow. Android
+  embeds the config at build time (unaffected). Also: react-native-web 0.21 dropped `accessibilityState`
+  (use `aria-*`), and phosphor's testID reads `...-undefined` when no weight is passed (harmless).

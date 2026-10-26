@@ -156,7 +156,6 @@ export default function OnboardingScreen() {
     router.replace('/');
   };
 
-  const goal = formatVolume(waterGoalMl, units);
   const groups = CATEGORY_ORDER.map((k) => ({ key: k, items: PRESETS.filter((p) => p.category === k) })).filter((g) => g.items.length > 0);
 
   return (
@@ -284,7 +283,7 @@ export default function OnboardingScreen() {
                   scaleTo={0.985}
                   onPress={() => toggle(p.id)}
                   accessibilityRole="checkbox"
-                  accessibilityState={{ checked: on }}
+                  aria-checked={on}
                   accessibilityLabel={`${p.name}, ${p.ruleText}`}
                   style={styles.presetRow}
                 >
