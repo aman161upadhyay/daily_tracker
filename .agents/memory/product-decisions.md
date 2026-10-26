@@ -372,6 +372,20 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   subagent once reported a dismissed confirm closing the sheet — not reproducible in a scripted Chromium
   run (Playwright at /mnt/pid2/node_modules/playwright-core + the nix chromium 140 binary; scripts in
   /tmp/pw) through six paths; prefer the scripted harness to re-verify a tester FAIL before changing code.
+- Round 24 (2026-10-26 night) rules, paradigms 104–106: a figure names the span it covers
+  (`adherenceSpan`: "Today's progress" under three days, "N-day adherence" to 14; the habit page's "of last N"
+  uses the same span; the water highlight waits for three days and says "of your first N days"). A time
+  promise comes from the planner or not at all: the empty NudgeCard explains (paused until a real moment /
+  before / after active hours / spent day) and never invents a resume time; `pausedUntilText` is the one
+  wording for the global pause (Today + Settings). Copy promises only what the handler does (`ringLabel`
+  lives in the pure widget model: "Done for today." / "Opens the habit."); `shortPolicyText` says
+  "Paused · <schedule>"; one name per thing ("Show first" for the sort switch, "Pinned" for Today's cards,
+  "goal" for water, "Reminder schedule", "How Health Connect works", "Settings → Your data"). The cycle
+  ReminderSheet has the discard guard; the cycle DaySheet keeps saving on close and says so. Scratch
+  under /tmp is wiped between sessions: the Playwright harness (/tmp/pw/lib.mjs + walk*.mjs) and the
+  sample-data storage state are recreated by loading the preview and clicking "Explore with sample data
+  instead" (then `ctx.storageState`). Tests cannot import `src/widget/TrackerWidget.tsx` (react-native);
+  pure helpers belong in `model.ts`.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app
