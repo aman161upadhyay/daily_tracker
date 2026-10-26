@@ -5,6 +5,8 @@
 import { DEFAULT_SETTINGS, type Habit, type HabitEntry, type HabitRule, type MindSession, type MovementSnack, type NudgePolicy, type WaterEntry } from '@/src/domain/models';
 import { addDays, minutesOfDay, wallClock, weekdayOf } from '@/src/domain/time/trackingDay';
 import { PRESET_BY_ID, type Preset } from '@/src/library/presets';
+import { EMPTY_BODY } from '@/src/domain/body/types';
+import { buildSampleBody } from './seedBody';
 import type { TrackerState } from './types';
 
 const HISTORY_DAYS = 140;
@@ -44,6 +46,8 @@ const PROFILES: Profile[] = [
   { presetId: 'wind-down', from: 0.35, to: 0.42, todayFraction: 0 },
   { presetId: 'calf-raises', from: 0.05, to: 0.12, todayFraction: 0 },
   { presetId: 'strength-session', from: 0.8, to: 0.85, todayFraction: 0 },
+  // Filled from the sample Health Connect data below, not from this profile.
+  { presetId: 'steps', from: 0, to: 0, todayFraction: 0 },
 ];
 
 export function habitFromPreset(preset: Preset, id: string, createdDay: string): { habit: Habit; rule: HabitRule; policy: NudgePolicy } {
@@ -115,6 +119,7 @@ export function buildSampleState(today: string, zone: string, nowMs: number): Tr
     habits.push(habit);
     rules.push(rule);
     policies.push(policy);
+    if (preset.id === 'steps') continue;
 
     for (let k = HISTORY_DAYS - 1; k >= 0; k--) {
       const day = addDays(today, -k);
@@ -210,6 +215,10 @@ export function buildSampleState(today: string, zone: string, nowMs: number): Tr
     { start: lastStart, end: addDays(lastStart, 4) },
   ];
 
+  // Sample Health Connect mirrors; the Steps habit is filled from them the way a real sync would.
+  const sampleBody = buildSampleBody({ today, zone, nowMs, nowMin, days: HISTORY_DAYS, rand, at, nextId }, habits.find((h) => h.presetId === 'steps')?.id);
+  entries.push(...sampleBody.entries);
+
   return {
     version: 1,
     habits,
@@ -222,6 +231,7 @@ export function buildSampleState(today: string, zone: string, nowMs: number): Tr
     nudgeEvents: [],
     events: [],
     settings: { ...settings, cycle: { avgCycleDays: 29, periodDays: 5, history } },
+    body: sampleBody.body,
   };
 }
 
@@ -239,7 +249,8 @@ export function buildEmptyState(today: string, keepSettings?: TrackerState['sett
     mind: [],
     nudgeEvents: [],
     events: [],
-    settings: { ...base, sampleData: false, cycle: { ...base.cycle, history: [] } },
+    settings: { ...base, sampleData: false, healthConnectEnabled: false, cycle: { ...base.cycle, history: [] } },
+    body: EMPTY_BODY,
   };
   if (opts.withWater ?? true) {
     const { habit, rule, policy } = habitFromPreset(PRESET_BY_ID.water!, 'h_water', today);

@@ -15,6 +15,7 @@ import { DarkTheme, Stack, ThemeProvider } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { BodySync } from "@/components/system/BodySync";
 import { NudgeScheduler } from "@/components/system/NudgeScheduler";
 import { WidgetSync } from "@/components/system/WidgetSync";
 import { UI } from "@/components/ui/icons";
@@ -103,6 +104,11 @@ function RootLayoutNav() {
           options={{ headerShown: false, gestureEnabled: false }}
         />
         <Stack.Screen name="habit/[id]" options={{ title: "Habit" }} />
+        <Stack.Screen name="body/[metric]" options={{ title: "Body" }} />
+        <Stack.Screen
+          name="body/setup"
+          options={{ title: "Health Connect", presentation: "modal" }}
+        />
         <Stack.Screen
           name="settings"
           options={{ title: "Settings", presentation: "modal" }}
@@ -118,6 +124,7 @@ function RootLayoutNav() {
       </Stack>
       <NudgeScheduler />
       <WidgetSync />
+      <BodySync />
     </View>
   );
 }

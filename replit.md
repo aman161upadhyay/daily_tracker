@@ -48,7 +48,17 @@ original Kotlin spec being ported (this plan wins where they disagree).
 - `constants/colors.ts` + `constants/typography.ts` are the tokens; `hooks/useColors.ts` the theme hook;
   `components/ui/` primitives (`Txt`, `Card`, `PressableScale`, `Screen`, `Sheet`, `icons.tsx`);
   `components/tracker/` the Health-style widgets (rings, summary cards, habit rows, charts, heatmap, evidence).
-- `app/` Expo Router: `(tabs)/{index,habits,body,cycle}`, `habit/[id]`, modals `settings`, `mind` and `shield` (Sugar Shield).
+- `app/` Expo Router: `(tabs)/{index,habits,body,cycle}`, `habit/[id]`, `body/[metric]`, modals `settings`, `mind`, `shield`
+  (Sugar Shield) and `body/setup` (Health Connect sources help).
+- Health Connect (Android dev/release builds only; read-only): `src/services/healthConnect[.native].ts` is the only bridge
+  (lazy `require`; the web/Expo Go stub reports `unsupported`), `src/services/bodySync.ts` the sync (30 days first, then
+  from the day before the last sync, cap 14; per-type errors keep the watermark), `src/domain/body/` the mirrors
+  (`types`, `merge` idempotent upsert, `stats`, `exerciseTypes`), `src/state/bodyCommands.ts` the auto-ticks (steps →
+  Steps habit via `SET_AUTO_ENTRY`, strength/generic workouts ≥ 15 min → Strength session, hydration → water by record
+  id with a ±5 min duplicate check). `hooks/useHealthConnect.ts` + `components/system/BodySync.tsx` drive it from the UI
+  (foreground sync, 2-min gap); the headless 3-hourly task syncs too when background access was granted. Permissions and
+  the `<queries>` entry live in `app.json` (the plugin only adds the rationale intent/alias); "Pause imports" is the
+  `settings.healthConnectEnabled` flag, never `revokeAllPermissions`. Imported workouts are hidden, never deleted.
 - Nudges: `src/domain/nudges/planner.ts` (pure plan) → `src/services/notifications[.native].ts` (OS diff-sync, channels,
   categories) ← `components/system/NudgeScheduler.tsx` (in-app) and `src/services/nudgeTasks[.native].ts` (headless:
   button presses with the app closed, 3-hourly re-plan). Button presses become reducer actions only through

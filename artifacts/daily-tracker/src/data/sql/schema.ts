@@ -113,6 +113,54 @@ export const MIGRATIONS: readonly string[] = [
     body TEXT NOT NULL
   );
   `,
+  // v3 — Health Connect mirrors, and the record id on imported drinks
+  `
+  ALTER TABLE water_entry ADD COLUMN external_id TEXT;
+  CREATE TABLE IF NOT EXISTS step_day (
+    day TEXT PRIMARY KEY NOT NULL,
+    steps INTEGER NOT NULL,
+    origin TEXT
+  );
+  CREATE TABLE IF NOT EXISTS sleep_night (
+    id TEXT PRIMARY KEY NOT NULL,
+    start_at INTEGER NOT NULL,
+    end_at INTEGER NOT NULL,
+    day TEXT NOT NULL,
+    minutes INTEGER NOT NULL,
+    deep_min INTEGER,
+    rem_min INTEGER,
+    light_min INTEGER,
+    awake_min INTEGER,
+    origin TEXT
+  );
+  CREATE INDEX IF NOT EXISTS sleep_night_day ON sleep_night (day);
+  CREATE TABLE IF NOT EXISTS heart_day (
+    day TEXT PRIMARY KEY NOT NULL,
+    resting_bpm INTEGER,
+    min_bpm INTEGER,
+    avg_bpm INTEGER,
+    max_bpm INTEGER
+  );
+  CREATE TABLE IF NOT EXISTS weight_entry (
+    id TEXT PRIMARY KEY NOT NULL,
+    at INTEGER NOT NULL,
+    day TEXT NOT NULL,
+    kg REAL NOT NULL,
+    origin TEXT
+  );
+  CREATE TABLE IF NOT EXISTS workout (
+    id TEXT PRIMARY KEY NOT NULL,
+    start_at INTEGER NOT NULL,
+    end_at INTEGER NOT NULL,
+    day TEXT NOT NULL,
+    type INTEGER NOT NULL,
+    title TEXT,
+    minutes INTEGER NOT NULL,
+    origin TEXT,
+    hidden INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS workout_day ON workout (day);
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

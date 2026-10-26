@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Alert, Platform, StyleSheet, Switch, TextInput, View } from 'react-native';
 import Constants from 'expo-constants';
+import { HealthConnectCard } from '@/components/settings/HealthConnectCard';
 import { RemindersCard } from '@/components/settings/RemindersCard';
 import { WidgetPickerCard } from '@/components/settings/WidgetPickerCard';
 import { Card } from '@/components/ui/Card';
@@ -188,6 +189,9 @@ export default function SettingsScreen() {
           </>
         ) : null}
       </Card>
+
+      <SectionHeader title="Connections" />
+      <HealthConnectCard confirm={confirm} />
 
       <SectionHeader title="Your data" />
       <Card>

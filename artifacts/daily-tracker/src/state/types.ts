@@ -1,3 +1,4 @@
+import type { BodyState } from '@/src/domain/body/types';
 import type {
   Habit,
   HabitEntry,
@@ -25,6 +26,8 @@ export interface TrackerState {
   /** Pending one-off nudges created in-app (Sugar Shield follow-up); pruned once past. */
   events: ScheduledEvent[];
   settings: Settings;
+  /** Health Connect mirrors (steps, sleep, heart, weight, workouts) and the sync status. */
+  body: BodyState;
   /** Epoch ms until which the live nudge is snoozed. */
   nudgeSnoozedUntil?: number;
   /** Manual "Swap" presses advance the rotation for the rest of the day. */

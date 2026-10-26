@@ -109,6 +109,8 @@ export interface WaterEntry {
   day: string;
   ml: number;
   source: EntrySource;
+  /** Health Connect record id for imported drinks, so a re-read never adds them twice. */
+  externalId?: string;
 }
 
 export interface MovementSnack {
@@ -213,6 +215,8 @@ export interface Settings {
   weeklySummary: { enabled: boolean; weekday: number; minute: number };
   /** Habits the home-screen widget shows, in order (first = big tile). Empty = pick automatically. */
   widgetHabitIds: string[];
+  /** The user connected Health Connect; reads happen on every foreground (and in the background when granted). */
+  healthConnectEnabled: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -233,6 +237,7 @@ export const DEFAULT_SETTINGS: Settings = {
   remindersEnabled: true,
   weeklySummary: { enabled: true, weekday: 6, minute: 18 * 60 },
   widgetHabitIds: [],
+  healthConnectEnabled: false,
 };
 
 export const SNACK_LABELS: Record<SnackType, { label: string; defaultReps?: number; defaultSeconds?: number; unit: string }> = {

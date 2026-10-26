@@ -12,6 +12,8 @@ import { reducer } from '@/src/state/reducer';
 import { applyAll, isNudgePayload, nudgeResponseActions, type CommandContext } from '@/src/state/commands';
 import type { NudgeActionKind } from '@/src/domain/nudges/planner';
 import type { TrackerState } from '@/src/state/types';
+import { performBodySync } from './bodySync';
+import { HEALTH_CONNECT_SUPPORTED } from './healthConnect';
 import { BACKGROUND_REPLAN_TASK, NUDGE_RESPONSE_TASK, markHandled } from './notifications';
 import { contextFor, markHeadlessWrite, replanHeadless } from './replan';
 import { refreshWidgets } from './widget';
@@ -61,7 +63,16 @@ TaskManager.defineTask(BACKGROUND_REPLAN_TASK, async () => {
     const state = await store.load();
     if (!state) return BackgroundTask.BackgroundTaskResult.Success;
     const ctx = contextFor(state);
-    const next = await replanHeadless(state, ctx);
+    let next = await replanHeadless(state, ctx);
+    // Pull Health Connect while we are awake anyway, when background reads were granted.
+    if (HEALTH_CONNECT_SUPPORTED && next.settings.healthConnectEnabled && next.body.sync.background) {
+      try {
+        const { actions } = await performBodySync(next, ctx);
+        next = applyAll(next, actions, reducer);
+      } catch (err) {
+        console.warn('Background Health Connect sync failed', err);
+      }
+    }
     if (next !== state) {
       await store.persist(state, next);
       await afterHeadlessWrite(next, ctx);

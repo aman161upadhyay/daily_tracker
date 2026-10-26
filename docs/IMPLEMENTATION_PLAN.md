@@ -204,11 +204,35 @@ beat automatic ones**; streaks are recomputed from raw entries, never stored.
 **Deferred to M4:** a cycle tile ("day N · next period in X days") and a steps tile once Health Connect data exists;
 week-start setting; per-habit notification sounds.
 
-### M4 — Health Connect + Body tab
-- Permissions flow and rationale; reads for steps, sleep, exercise sessions, heart rate, weight, hydration; background-read permission when available.
-- Body tab cards + detail charts (D/W/M/6M/Y); imports de-duplicated; manual-wins rules; auto-ticks (steps goal, workout → strength session habit, hydration → water).
-- Samsung Health / Google Health (Fitbit) / Google Fit set-up help screen ("turn on Health Connect sync in that app").
-**Done when:** steps and sleep from Aman's phone appear without manual entry, and a Samsung Health water log shows up in the water ring once.
+### M4 — Health Connect + Body tab ✅ (v0.4)
+- `react-native-health-connect` 4.1 (Expo autolinking registers the permission delegate; the plugin only adds the
+  rationale intent + `ViewPermissionUsageActivity` alias). Everything else is `app.json`: the eight
+  `android.permission.health.READ_*` entries (the permission sheet lists only manifest-declared types), the
+  `<queries>` entry for `com.google.android.apps.healthdata` via `expo-build-properties`, `minSdkVersion` 26.
+  No `READ_HEALTH_DATA_HISTORY`: the first sync reads 30 days, inside the no-history limit.
+- `src/services/healthConnect[.native].ts` is the only bridge (lazy `require`, web/Expo Go stub reports
+  `unsupported`). Steps and heart rate come from `aggregateGroupByPeriod` per day; sleep, workouts, weight, hydration
+  are paged `readRecords`. `src/services/bodySync.ts`: window rule (30 days first, then from the day before the last
+  sync, cap 14), per-type read errors keep the old watermark; the 3-hourly background task runs the same sync when
+  background reads were granted.
+- `src/domain/body/`: `types.ts` (per-day mirrors: steps/heart/weight by calendar day, sleep by the morning it ended,
+  workouts by tracking day), `merge.ts` (idempotent upsert, hidden flag survives re-reads, heart fields combine),
+  `stats.ts` (last night, bedtime spread, 30-day weight delta, weekly buckets), `exerciseTypes.ts` (HC constants).
+- Auto-ticks in `src/state/bodyCommands.ts`: steps → Steps habit (`SET_AUTO_ENTRY`, replaced never added, a manual total
+  wins and evicts the automatic one), strength/generic workouts ≥ 15 min → Strength session once per day, hydration →
+  water log once by record id unless the same drink was logged here within ±5 min / ±10 ml. `CLEAR_BODY` removes the
+  mirrors and the `AUTO_HC` entries only. SQLite schema v3 (five mirror tables, `water_entry.external_id`).
+- UI: Body tab (`ConnectionCard` per status: unsupported / not installed / update needed / ready / connected · n of 7
+  types · synced hh:mm; metric SummaryCards for Steps (goal from the Steps habit), Sleep, Resting heart rate, Weight,
+  Workouts; sample data labelled), `app/body/[metric]` (D/W/M/6M/Y chart with `format`/`baseline`, stats, recent
+  nights / readings / sessions with hide + Hidden section), `app/body/setup` (Samsung Health / Fitbit / Google Fit /
+  others, what each type becomes, privacy), Settings → Connections (status, Sync now, Permissions, Pause imports,
+  Remove imported data). `versionCode` 4 / `0.4.0`.
+- Tests: 126 (`tests/body.test.ts`: merge idempotency, auto-tick rules, sync window, read models, SQLite v2→v3
+  migration and round-trip). Verified here: typecheck, tests, web preview walkthrough with sample data, Android bundle,
+  `expo prebuild -p android` manifest (permissions, queries, rationale alias). **Needs the phone**
+  (`docs/DEVICE_CHECKLIST.md` H1–H9).
+**Deferred to M5/M6:** steps and cycle widget tiles; sleep stages chart; write-back of water/mind sessions (v2).
 
 ### M5 — Cycle (opt-in) + insights
 - Port `CyclePredictor`, `CycleTimeline` (`periodContaining` is the only period-day rule), alerts, reminder planner, with their tests.
@@ -263,9 +287,11 @@ working while the app is locked (by design, one-tap water).
 
 ### 5.6 Health Connect
 Read-only in v1 (write of hydration/mindfulness sessions is a v2 option). Permission set: Steps,
-SleepSession, ExerciseSession, HeartRate, Weight, Hydration, plus background read. Yesterday is always
-re-read (data arrives late). Imported workouts are de-duplicated by record id; the user can hide,
-not delete, an imported record.
+SleepSession, ExerciseSession, HeartRate, RestingHeartRate, Weight, Hydration, plus background read. Yesterday is
+always re-read (data arrives late). Imported workouts are de-duplicated by record id; the user can hide,
+not delete, an imported record. "Disconnect" is the app-side flag (`settings.healthConnectEnabled`), not
+`revokeAllPermissions` (which the library documents as needing an app restart); permissions are withdrawn in the
+Health Connect app, and the next sync notices and asks to connect again.
 
 ### 5.7 Cycle
 Verbatim port of Cadence's rules: next start = last start + mean of the last ≤ 6 usable cycles

@@ -127,7 +127,7 @@ describe('schema migrations', () => {
     const tables = driver.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as { name: string }[];
     assert.deepEqual(
       tables.map((t) => t.name),
-      ['habit', 'habit_entry', 'habit_rule', 'kv', 'mind_session', 'movement_snack', 'nudge_event', 'nudge_policy', 'scheduled_event', 'water_entry'],
+      ['habit', 'habit_entry', 'habit_rule', 'heart_day', 'kv', 'mind_session', 'movement_snack', 'nudge_event', 'nudge_policy', 'scheduled_event', 'sleep_night', 'step_day', 'water_entry', 'weight_entry', 'workout'],
     );
   });
 

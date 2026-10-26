@@ -2,7 +2,7 @@
   "expo": {
     "name": "Daily Tracker",
     "slug": "daily-tracker",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "daily-tracker",
@@ -16,12 +16,20 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#0D120F"
       },
-      "versionCode": 3,
+      "versionCode": 4,
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.SCHEDULE_EXACT_ALARM",
         "android.permission.RECEIVE_BOOT_COMPLETED",
-        "android.permission.VIBRATE"
+        "android.permission.VIBRATE",
+        "android.permission.health.READ_STEPS",
+        "android.permission.health.READ_SLEEP",
+        "android.permission.health.READ_EXERCISE",
+        "android.permission.health.READ_HEART_RATE",
+        "android.permission.health.READ_RESTING_HEART_RATE",
+        "android.permission.health.READ_WEIGHT",
+        "android.permission.health.READ_HYDRATION",
+        "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"
       ]
     },
     "web": {
@@ -63,6 +71,20 @@
               "previewImage": "./assets/widget/preview.png"
             }
           ]
+        }
+      ],
+      "react-native-health-connect",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26,
+            "manifestQueries": {
+              "package": [
+                "com.google.android.apps.healthdata"
+              ]
+            }
+          }
         }
       ]
     ],

@@ -93,3 +93,19 @@ typed interfaces without an index signature do not satisfy `Record<string, unkno
   `transform={\`rotate(-90 cx cy)\`}` instead.
 - `StyleSheet.absoluteFillObject` is missing from RN 0.86 types; use `absoluteFill`.
 - RN `TextProps` already has `role` (ARIA), so a custom `role` prop needs `Omit<TextProps, 'role'>`.
+
+## Health Connect: manifest comes from app.json, not the plugin
+`react-native-health-connect` 4.x's config plugin only adds the rationale intent filter and the
+`ViewPermissionUsageActivity` alias; the `android.permission.health.READ_*` entries and the `<queries>` package
+(`com.google.android.apps.healthdata`, via `expo-build-properties` `manifestQueries`) must be declared in
+`app.json`, and the permission sheet silently omits any type not in the manifest. Expo autolinking registers the
+permission delegate (the README's MainActivity edit is for bare RN only). The library needs `minSdkVersion` 26
+(SDK 57 default is 24). Steps/heart rate read cleanly through `aggregateGroupByPeriod`; sessions through paged
+`readRecords`. Verify with `CI=1 pnpm exec expo prebuild --platform android --no-install` and grep the manifest,
+then delete `android/`.
+
+## Verifying gated screens in the web preview
+The screenshot tool starts with empty storage, so anything behind onboarding (`settings.onboardingDone`) shows
+the onboarding page. Routes outside `(tabs)` (`/body/setup`, `/body/steps`, `/settings`) have no gate and can be
+screenshotted directly; for the tabs with sample data, one testing-subagent run that taps "Explore with sample
+data instead" on onboarding is the cheapest path (it also accepts `window.confirm` dialogs for destructive buttons).

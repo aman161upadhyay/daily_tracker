@@ -1,3 +1,5 @@
+import { mergeBody } from '@/src/domain/body/merge';
+import { EMPTY_BODY, type BodyBatch, type BodySync } from '@/src/domain/body/types';
 import type { Habit, HabitEntry, HabitRule, MindSession, MovementSnack, NudgeEvent, NudgePolicy, ScheduledEvent, Settings, WaterEntry } from '@/src/domain/models';
 import type { TrackerState } from './types';
 
@@ -32,7 +34,15 @@ export type Action =
   /** Drop one-off events that are already in the past. */
   | { type: 'PRUNE_EVENTS'; beforeMs: number }
   | { type: 'PERIOD_START'; day: string }
-  | { type: 'PERIOD_END'; day: string };
+  | { type: 'PERIOD_END'; day: string }
+  /** Fold a Health Connect read into the body mirrors. */
+  | { type: 'IMPORT_BODY'; batch: BodyBatch }
+  /** Replace the automatic (Health Connect) entries of a habit-day with `entry`, or remove them. */
+  | { type: 'SET_AUTO_ENTRY'; habitId: string; day: string; entry?: HabitEntry }
+  | { type: 'SET_WORKOUT_HIDDEN'; id: string; hidden: boolean }
+  | { type: 'BODY_SYNC'; patch: Partial<BodySync> }
+  /** Forget everything imported from Health Connect (mirrors, automatic entries, imported drinks). */
+  | { type: 'CLEAR_BODY' };
 
 function removeLast<T>(items: T[], match: (x: T) => boolean, order: (x: T) => number): T[] {
   let idx = -1;
@@ -53,8 +63,12 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
     case 'REPLACE':
       return action.state;
 
-    case 'ADD_ENTRY':
-      return { ...state, entries: [...state.entries, action.entry] };
+    case 'ADD_ENTRY': {
+      const e = action.entry;
+      // Manual beats automatic: a hand-logged value replaces what Health Connect filled in for that day.
+      const kept = e.source === 'MANUAL' ? state.entries.filter((x) => !(x.habitId === e.habitId && x.day === e.day && x.source === 'AUTO_HC')) : state.entries;
+      return { ...state, entries: [...kept, e] };
+    }
 
     case 'TOGGLE_ENTRY': {
       const { habitId, day } = action.entry;
@@ -196,6 +210,37 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
       history[history.length - 1] = { ...last, end: action.day };
       return { ...state, settings: { ...state.settings, cycle: { ...state.settings.cycle, history } } };
     }
+
+    case 'IMPORT_BODY': {
+      const body = mergeBody(state.body, action.batch);
+      return body === state.body ? state : { ...state, body };
+    }
+
+    case 'SET_AUTO_ENTRY': {
+      const rest = state.entries.filter((x) => !(x.habitId === action.habitId && x.day === action.day && x.source === 'AUTO_HC'));
+      const entries = action.entry ? [...rest, action.entry] : rest;
+      return entries.length === state.entries.length && !action.entry ? state : { ...state, entries };
+    }
+
+    case 'SET_WORKOUT_HIDDEN':
+      return {
+        ...state,
+        body: { ...state.body, workouts: state.body.workouts.map((w) => (w.id === action.id && w.hidden !== action.hidden ? { ...w, hidden: action.hidden } : w)) },
+      };
+
+    case 'BODY_SYNC': {
+      const merged = { ...state.body.sync, ...action.patch };
+      for (const k of Object.keys(merged) as (keyof BodySync)[]) if (merged[k] === undefined) delete merged[k];
+      return { ...state, body: { ...state.body, sync: merged } };
+    }
+
+    case 'CLEAR_BODY':
+      return {
+        ...state,
+        body: { ...EMPTY_BODY, sync: { granted: [], background: false } },
+        entries: state.entries.filter((e) => e.source !== 'AUTO_HC'),
+        water: state.water.filter((w) => w.source !== 'AUTO_HC'),
+      };
 
     default:
       return state;

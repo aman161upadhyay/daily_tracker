@@ -11,7 +11,7 @@ The workspace `.git` tracks `origin/main` of the user's repo (`aman161upadhyay/d
 assumed a private repo would need connector credentials, but the proxy already covers it.
 
 **How to apply:** `git add -A && git commit -m "<step>" && git push` (never force-push `main`); tag
-milestones `v0.<n>` and push the tag (v0.1 = M1, v0.2 = M2). `.gitignore` excludes `.conversation/`,
+milestones `v0.<n>` and push the tag (v0.1 = M1 … v0.4 = M4). `.gitignore` excludes `.conversation/`,
 `attached_assets/` and `.agents/*` except `.agents/memory/`.
 
 **Author identity (user request, 2026-10-25):** commits are made "using my name, Aman" — repo-local

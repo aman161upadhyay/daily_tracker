@@ -7,6 +7,7 @@
  * clobbering a whole-state blob. Web and tests use a JSON blob
  * (`jsonStore.ts`) because expo-sqlite on web needs wasm + COOP/COEP headers.
  */
+import { normalizeBody } from '@/src/domain/body/merge';
 import { DEFAULT_SETTINGS, type Settings } from '@/src/domain/models';
 import type { TrackerState } from '@/src/state/types';
 
@@ -64,6 +65,7 @@ export function parseState(raw: unknown): TrackerState {
     nudgeEvents: Array.isArray(s.nudgeEvents) ? s.nudgeEvents : [],
     events: Array.isArray(s.events) ? s.events : [],
     settings: normalizeSettings(s.settings),
+    body: normalizeBody(s.body),
     ...(s.nudgeSnoozedUntil !== undefined ? { nudgeSnoozedUntil: s.nudgeSnoozedUntil } : {}),
     ...(s.nudgeSwap !== undefined ? { nudgeSwap: s.nudgeSwap } : {}),
   };

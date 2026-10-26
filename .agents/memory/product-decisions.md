@@ -40,6 +40,16 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   AUTO_WIDGET / trigger WIDGET): water adds one tap size, snacks add a set, count/timer habits log the day's
   remainder, yes/no never double-logs. Name tap deep-links to the habit; background opens the app. Cycle and
   steps tiles wait for M4 data. **Why:** a widget that can silently log twice is worse than one that does less.
+- Health Connect decisions (2026-10-26, M4): read-only; steps/heart/weight keyed by calendar day, sleep by the
+  morning it ended, workouts/hydration by tracking day. Manual beats automatic: a typed steps total evicts the
+  automatic entry and later syncs leave it alone; strength or generic (type 0) workouts ≥ 15 min tick Strength
+  session once per day; imported drinks are matched by record id and skipped when a manual/widget drink sits
+  within ±5 min and ±10 ml. Imported workouts are hidden, never deleted (hidden survives re-reads). "Pause
+  imports" is an app-side flag, not `revokeAllPermissions` (library says that needs an app restart); the user
+  withdraws permissions in the Health Connect app and the next sync notices. First sync 30 days (so no
+  READ_HEALTH_DATA_HISTORY permission), later syncs from the day before the last sync, cap 14, and a partly
+  failed read keeps the old watermark. Sample data is the only place body numbers can be synthetic, and the
+  Body tab labels it. Deferred: steps/cycle widget tiles, sleep stages chart, write-back (v2).
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app

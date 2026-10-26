@@ -3,6 +3,8 @@
  * `persist` writes only the rows that changed between two states (items are
  * immutable, so identity tells us what changed).
  */
+import { normalizeBody } from '@/src/domain/body/merge';
+import type { BodySync, HeartDay, SleepNight, StepDay, WeightEntry, Workout } from '@/src/domain/body/types';
 import type { Habit, HabitEntry, HabitRule, MindSession, MovementSnack, NudgeEvent, NudgePolicy, ScheduledEvent } from '@/src/domain/models';
 import type { WaterEntry } from '@/src/domain/models';
 import type { TrackerState } from '@/src/state/types';
@@ -13,6 +15,7 @@ import { migrate } from './schema';
 const KV_SETTINGS = 'settings';
 const KV_SNOOZE = 'nudgeSnoozedUntil';
 const KV_SWAP = 'nudgeSwap';
+const KV_BODY_SYNC = 'bodySync';
 
 type Row = Record<string, SqlValue>;
 
@@ -122,18 +125,20 @@ const ENTRY: Table<HabitEntry> = {
 
 const WATER: Table<WaterEntry> = {
   name: 'water_entry',
-  columns: ['id', 'at', 'zone', 'day', 'ml', 'source'],
+  columns: ['id', 'at', 'zone', 'day', 'ml', 'source', 'external_id'],
   keyColumns: ['id'],
   key: (w) => w.id,
-  toRow: (w) => [w.id, w.at, w.zone, w.day, w.ml, w.source],
-  fromRow: (r) => ({
-    id: str(r, 'id'),
-    at: num(r, 'at'),
-    zone: str(r, 'zone'),
-    day: str(r, 'day'),
-    ml: num(r, 'ml'),
-    source: str(r, 'source') as WaterEntry['source'],
-  }),
+  toRow: (w) => [w.id, w.at, w.zone, w.day, w.ml, w.source, opt(w.externalId)],
+  fromRow: (r) =>
+    compact<WaterEntry>({
+      id: str(r, 'id'),
+      at: num(r, 'at'),
+      zone: str(r, 'zone'),
+      day: str(r, 'day'),
+      ml: num(r, 'ml'),
+      source: str(r, 'source') as WaterEntry['source'],
+      externalId: optStr(r, 'external_id'),
+    }),
   orderBy: 'at, rowid',
 };
 
@@ -213,6 +218,82 @@ const EVENT: Table<ScheduledEvent> = {
   orderBy: 'at, rowid',
 };
 
+const STEP_DAY: Table<StepDay> = {
+  name: 'step_day',
+  columns: ['day', 'steps', 'origin'],
+  keyColumns: ['day'],
+  key: (s) => s.day,
+  toRow: (s) => [s.day, s.steps, opt(s.origin)],
+  fromRow: (r) => compact<StepDay>({ day: str(r, 'day'), steps: num(r, 'steps'), origin: optStr(r, 'origin') }),
+  orderBy: 'day',
+};
+
+const SLEEP_NIGHT: Table<SleepNight> = {
+  name: 'sleep_night',
+  columns: ['id', 'start_at', 'end_at', 'day', 'minutes', 'deep_min', 'rem_min', 'light_min', 'awake_min', 'origin'],
+  keyColumns: ['id'],
+  key: (s) => s.id,
+  toRow: (s) => [s.id, s.startAt, s.endAt, s.day, s.minutes, opt(s.deepMin), opt(s.remMin), opt(s.lightMin), opt(s.awakeMin), opt(s.origin)],
+  fromRow: (r) =>
+    compact<SleepNight>({
+      id: str(r, 'id'),
+      startAt: num(r, 'start_at'),
+      endAt: num(r, 'end_at'),
+      day: str(r, 'day'),
+      minutes: num(r, 'minutes'),
+      deepMin: optNum(r, 'deep_min'),
+      remMin: optNum(r, 'rem_min'),
+      lightMin: optNum(r, 'light_min'),
+      awakeMin: optNum(r, 'awake_min'),
+      origin: optStr(r, 'origin'),
+    }),
+  orderBy: 'start_at, rowid',
+};
+
+const HEART_DAY: Table<HeartDay> = {
+  name: 'heart_day',
+  columns: ['day', 'resting_bpm', 'min_bpm', 'avg_bpm', 'max_bpm'],
+  keyColumns: ['day'],
+  key: (h) => h.day,
+  toRow: (h) => [h.day, opt(h.restingBpm), opt(h.minBpm), opt(h.avgBpm), opt(h.maxBpm)],
+  fromRow: (r) =>
+    compact<HeartDay>({ day: str(r, 'day'), restingBpm: optNum(r, 'resting_bpm'), minBpm: optNum(r, 'min_bpm'), avgBpm: optNum(r, 'avg_bpm'), maxBpm: optNum(r, 'max_bpm') }),
+  orderBy: 'day',
+};
+
+const WEIGHT: Table<WeightEntry> = {
+  name: 'weight_entry',
+  columns: ['id', 'at', 'day', 'kg', 'origin'],
+  keyColumns: ['id'],
+  key: (w) => w.id,
+  toRow: (w) => [w.id, w.at, w.day, w.kg, opt(w.origin)],
+  fromRow: (r) => compact<WeightEntry>({ id: str(r, 'id'), at: num(r, 'at'), day: str(r, 'day'), kg: num(r, 'kg'), origin: optStr(r, 'origin') }),
+  orderBy: 'at, rowid',
+};
+
+const WORKOUT: Table<Workout> = {
+  name: 'workout',
+  columns: ['id', 'start_at', 'end_at', 'day', 'type', 'title', 'minutes', 'origin', 'hidden'],
+  keyColumns: ['id'],
+  key: (w) => w.id,
+  toRow: (w) => [w.id, w.startAt, w.endAt, w.day, w.type, opt(w.title), w.minutes, opt(w.origin), bool(w.hidden)],
+  fromRow: (r) =>
+    compact<Workout>({
+      id: str(r, 'id'),
+      startAt: num(r, 'start_at'),
+      endAt: num(r, 'end_at'),
+      day: str(r, 'day'),
+      type: num(r, 'type'),
+      title: optStr(r, 'title'),
+      minutes: num(r, 'minutes'),
+      origin: optStr(r, 'origin'),
+      hidden: num(r, 'hidden') === 1,
+    }),
+  orderBy: 'start_at, rowid',
+};
+
+const ALL_TABLES = [HABIT, RULE, POLICY, ENTRY, WATER, SNACK, MIND, NUDGE_EVENT, EVENT, STEP_DAY, SLEEP_NIGHT, HEART_DAY, WEIGHT, WORKOUT] as const;
+
 function upsertSql<T>(t: Table<T>): string {
   const placeholders = t.columns.map(() => '?').join(', ');
   const updates = t.columns.filter((c) => !t.keyColumns.includes(c)).map((c) => `${c} = excluded.${c}`);
@@ -244,7 +325,7 @@ export class SqliteStore implements TrackerStore {
     const kv = await this.readKv();
     const settingsJson = kv.get(KV_SETTINGS);
     if (settingsJson === undefined) return null;
-    const [habits, rules, policies, entries, water, snacks, mind, nudgeEvents, events] = await Promise.all([
+    const [habits, rules, policies, entries, water, snacks, mind, nudgeEvents, events, steps, sleep, heart, weight, workouts] = await Promise.all([
       this.readAll(HABIT),
       this.readAll(RULE),
       this.readAll(POLICY),
@@ -254,9 +335,16 @@ export class SqliteStore implements TrackerStore {
       this.readAll(MIND),
       this.readAll(NUDGE_EVENT),
       this.readAll(EVENT),
+      this.readAll(STEP_DAY),
+      this.readAll(SLEEP_NIGHT),
+      this.readAll(HEART_DAY),
+      this.readAll(WEIGHT),
+      this.readAll(WORKOUT),
     ]);
     const snooze = kv.get(KV_SNOOZE);
     const swap = kv.get(KV_SWAP);
+    const bodySyncJson = kv.get(KV_BODY_SYNC);
+    const sync: BodySync | undefined = bodySyncJson === undefined ? undefined : (JSON.parse(bodySyncJson) as BodySync);
     return compact<TrackerState>({
       version: 1,
       habits,
@@ -269,6 +357,7 @@ export class SqliteStore implements TrackerStore {
       nudgeEvents,
       events,
       settings: normalizeSettings(JSON.parse(settingsJson)),
+      body: normalizeBody({ steps, sleep, heart, weight, workouts, sync }),
       nudgeSnoozedUntil: snooze === undefined ? undefined : Number(snooze),
       nudgeSwap: swap === undefined ? undefined : (JSON.parse(swap) as TrackerState['nudgeSwap']),
     });
@@ -286,6 +375,12 @@ export class SqliteStore implements TrackerStore {
       await this.sync(MIND, prev.mind, next.mind);
       await this.sync(NUDGE_EVENT, prev.nudgeEvents, next.nudgeEvents);
       await this.sync(EVENT, prev.events, next.events);
+      await this.sync(STEP_DAY, prev.body.steps, next.body.steps);
+      await this.sync(SLEEP_NIGHT, prev.body.sleep, next.body.sleep);
+      await this.sync(HEART_DAY, prev.body.heart, next.body.heart);
+      await this.sync(WEIGHT, prev.body.weight, next.body.weight);
+      await this.sync(WORKOUT, prev.body.workouts, next.body.workouts);
+      if (prev.body.sync !== next.body.sync) await this.writeKv(KV_BODY_SYNC, JSON.stringify(next.body.sync));
       if (prev.settings !== next.settings) await this.writeKv(KV_SETTINGS, JSON.stringify(next.settings));
       if (prev.nudgeSnoozedUntil !== next.nudgeSnoozedUntil) await this.writeKv(KV_SNOOZE, next.nudgeSnoozedUntil === undefined ? null : String(next.nudgeSnoozedUntil));
       if (prev.nudgeSwap !== next.nudgeSwap) await this.writeKv(KV_SWAP, next.nudgeSwap === undefined ? null : JSON.stringify(next.nudgeSwap));
@@ -294,7 +389,7 @@ export class SqliteStore implements TrackerStore {
 
   async replace(state: TrackerState): Promise<void> {
     await this.db.withTransactionAsync(async () => {
-      for (const t of [HABIT, RULE, POLICY, ENTRY, WATER, SNACK, MIND, NUDGE_EVENT, EVENT]) await this.db.execAsync(`DELETE FROM ${t.name}`);
+      for (const t of ALL_TABLES) await this.db.execAsync(`DELETE FROM ${t.name}`);
       await this.db.execAsync('DELETE FROM kv');
       await this.insertAll(HABIT, state.habits);
       await this.insertAll(RULE, state.rules);
@@ -305,6 +400,12 @@ export class SqliteStore implements TrackerStore {
       await this.insertAll(MIND, state.mind);
       await this.insertAll(NUDGE_EVENT, state.nudgeEvents);
       await this.insertAll(EVENT, state.events);
+      await this.insertAll(STEP_DAY, state.body.steps);
+      await this.insertAll(SLEEP_NIGHT, state.body.sleep);
+      await this.insertAll(HEART_DAY, state.body.heart);
+      await this.insertAll(WEIGHT, state.body.weight);
+      await this.insertAll(WORKOUT, state.body.workouts);
+      await this.writeKv(KV_BODY_SYNC, JSON.stringify(state.body.sync));
       await this.writeKv(KV_SETTINGS, JSON.stringify(state.settings));
       await this.writeKv(KV_SNOOZE, state.nudgeSnoozedUntil === undefined ? null : String(state.nudgeSnoozedUntil));
       await this.writeKv(KV_SWAP, state.nudgeSwap === undefined ? null : JSON.stringify(state.nudgeSwap));

@@ -54,11 +54,23 @@ count/timer habit, "done" for a yes/no habit); tap the name = open that habit; t
 | W7 | Day rollover & reboot | Leave it overnight (3 am boundary); reboot the phone | Morning: zeros again by the next periodic update (≤ 30 min after 3 am) or immediately after opening the app; after reboot: current values, not an empty card |
 | W8 | Yes/no habit | Choose a yes/no habit in Settings; tap its ring twice | First tap: ring full, "✓", caption "Done"; second tap: nothing changes (no double log) |
 
-## H — Health Connect (M4, placeholder)
+## H — Health Connect (M4)
+
+Before starting: install or update Health Connect (built in on Android 14+; Play Store on 9–13) and turn on
+"sync with Health Connect" inside Samsung Health / Fitbit / Google Fit, then wait for one sync. Add the Steps habit
+from the Library so the auto-fill has somewhere to land.
 
 | # | Scenario | Steps | Expect |
 |---|---|---|---|
-| H1 | Permission | Body tab → Connect | Health Connect permission screen; steps/sleep/heart cards fill in after approval |
+| H1 | Status card | Open the Body tab before installing Health Connect (older Android) / after installing | "Not installed" card with Install → Play Store; after install and "I installed it", the card becomes "Ready to connect" |
+| H2 | Permissions | Body tab → Connect | Health Connect's own sheet lists exactly the eight types (steps, sleep, exercise, heart rate, resting heart rate, weight, hydration, background). The "privacy policy" link opens the app (rationale intent, no crash). Allow all |
+| H3 | First sync | Right after allowing | Card reads "Connected · 7 of 7 data types · Synced hh:mm"; Steps/Sleep/Resting HR/Weight/Workouts cards show the phone's real numbers for the last 30 days (compare with the source app). Empty types show "Nothing in Health Connect yet", not zero |
+| H4 | Steps auto-fill | Today / Habits → Steps | Today's total equals the Body tab value; the entry is marked automatic. Type a total by hand → it replaces the automatic one; Sync now does not bring the automatic one back |
+| H5 | Workout tick | Log a strength workout of ≥ 15 min in the source app, wait for it to reach Health Connect, Sync now | Strength session is ticked once for that day; a walk does not tick it. Hide the session on the Workouts page → it stays hidden after another Sync now |
+| H6 | Water import | Log 300 ml in Samsung Health; Sync now | One 300 ml entry appears in the water log (source Health Connect). Log the same amount in both apps within 5 min → only one entry |
+| H7 | Partial permissions | Health Connect app → Daily Tracker → turn off Sleep; Sync now | Card says "6 of 7"; the Sleep card shows the last imported nights but no new ones; no error for the other types. Turn everything off → the app says access was removed and offers Connect again |
+| H8 | Background | Allow background access; leave the phone overnight with the app closed | Morning: last-night sleep and the step count are already there when the app opens (Synced time earlier than the open). If not, note whether battery optimisation is on for the app |
+| H9 | Remove and reconnect | Settings → Connections → Remove imported data (accept) | Body tab empty again, automatic steps/strength/water entries gone, manual ones kept; Connect again re-reads 30 days without duplicates |
 
 ## Recording results
 

@@ -24,17 +24,25 @@ export interface MetricChartProps {
   kind?: 'bars' | 'line';
   height?: number;
   unit?: string;
+  /** Scale labels ("Max 7h 20m" instead of "Max 440 min"). */
+  format?: (v: number) => string;
+  /** Lower edge of the scale for line charts (weight, heart rate); zero values are gaps, not points. */
+  baseline?: number;
 }
 
 /** Bars for daily totals, a line for long-range trends; dashed gold goal line at 60%. */
-export function MetricChart({ values, labels, color, goal, kind = 'bars', height = 180, unit }: MetricChartProps) {
+export function MetricChart({ values, labels, color, goal, kind = 'bars', height = 180, unit, format, baseline }: MetricChartProps) {
   const c = useColors();
   const [width, setWidth] = useState(0);
-  const max = Math.max(goal ?? 0, ...values, 1) * 1.08;
+  const present = values.filter((v) => v > 0);
+  const base = baseline ?? 0;
+  const top = Math.max(goal ?? 0, ...present, base + 1);
+  const max = base + (top - base) * 1.08;
   const n = values.length;
   const pad = { top: 8, bottom: 4 };
   const plotH = height - pad.top - pad.bottom;
-  const y = (v: number) => pad.top + plotH - (v / max) * plotH;
+  const y = (v: number) => pad.top + plotH - ((v - base) / (max - base)) * plotH;
+  const fmt = (v: number) => (format ? format(v) : `${formatNumber(v)}${unit ? ` ${unit}` : ''}`);
 
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
   const gap = n > 40 ? 1 : n > 14 ? 2 : 6;
@@ -42,19 +50,21 @@ export function MetricChart({ values, labels, color, goal, kind = 'bars', height
 
   const points = values
     .map((v, i) => {
+      if (kind === 'line' && v <= 0) return null;
       const x = n === 1 ? width / 2 : (i / (n - 1)) * width;
       return `${x.toFixed(1)},${y(v).toFixed(1)}`;
     })
+    .filter((p): p is string => p !== null)
     .join(' ');
 
   return (
     <View>
       <View style={styles.scale}>
         <Txt role="caption" tone="tertiary">
-          {goal !== undefined ? `Goal ${formatNumber(goal)}${unit ? ` ${unit}` : ''}` : ''}
+          {goal !== undefined ? `Goal ${fmt(goal)}` : baseline !== undefined && present.length > 0 ? `Min ${fmt(Math.min(...present))}` : ''}
         </Txt>
         <Txt role="caption" tone="tertiary">
-          {`Max ${formatNumber(Math.max(...values, 0))}${unit ? ` ${unit}` : ''}`}
+          {`Max ${fmt(Math.max(...values, 0))}`}
         </Txt>
       </View>
       <View onLayout={onLayout} style={{ height }}>
@@ -65,7 +75,7 @@ export function MetricChart({ values, labels, color, goal, kind = 'bars', height
             ))}
             {kind === 'bars'
               ? values.map((v, i) => {
-                  const h = Math.max(2, (v / max) * plotH);
+                  const h = Math.max(2, ((v - base) / (max - base)) * plotH);
                   return (
                     <Rect
                       key={i}

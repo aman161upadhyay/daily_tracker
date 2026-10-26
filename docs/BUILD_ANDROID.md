@@ -1,7 +1,7 @@
 # Building the Android app on the laptop
 
 Replit runs the web preview and Expo Go; it cannot run the Android SDK. Anything native — the
-home-screen widget, notification buttons with the app closed, Health Connect later — needs a
+home-screen widget, notification buttons with the app closed, Health Connect — needs a
 build made on a machine with Android Studio. This is that recipe. It takes about 15 minutes the
 first time and 2–3 minutes after that.
 
@@ -80,13 +80,21 @@ as a small config plugin or re-apply it after each `--clean` prebuild. Back the 
 Switching from debug-key builds to the new key means uninstalling once (data is lost — export
 first from Settings → Your data).
 
-Every later install must raise `expo.android.versionCode` in `app.json` (M3 shipped 3).
+Every later install must raise `expo.android.versionCode` in `app.json` (M3 shipped 3, M4 ships 4).
 
 ## After installing: the device checklist
 
-Run `docs/DEVICE_CHECKLIST.md`. Widget rows W1–W6 are new in M3; N6 ("Done with the app swiped
-away") and N17 are worth re-running because the headless tasks are now registered from the entry
-file (`index.js`), which is what runs when Android starts the app without a screen.
+Run `docs/DEVICE_CHECKLIST.md`. Widget rows W1–W8 are from M3; Health Connect rows H1–H9 are new
+in M4. N6 ("Done with the app swiped away") and N17 are worth re-running because the headless
+tasks are registered from the entry file (`index.js`), which is what runs when Android starts the
+app without a screen.
+
+Health Connect notes: the phone needs the Health Connect app (built into Android 14+; on Android
+9–13 install it from the Play Store — the Body tab offers the link) and `minSdkVersion` is now 26,
+so Android 8.0 is the floor. The permission sheet only lists the data types declared in the
+manifest (`app.json` → `android.permissions`); if a type is missing there, it is silently absent
+from the sheet rather than denied. A debug build on an Android 14+ phone sometimes needs one
+reboot before Health Connect shows the app in its list.
 
 ## When something fails
 
@@ -99,3 +107,5 @@ file (`index.js`), which is what runs when Android starts the app without a scre
 | Widget shows "Open Daily Tracker…" | Fresh install with no habits yet: finish onboarding, then the widget redraws. |
 | Red screen `AndroidWidget could not be found` | Only possible in Expo Go. Expo Go has no widget module; use the dev build. |
 | App opens to a white screen after Ctrl-C on Metro | Debug builds need Metro. Start `pnpm exec expo start` again, or install the release variant. |
+| Body tab says "Not installed" on Android 14+ | Health Connect is disabled in system settings: Settings → Apps → Health Connect → enable, or the manifest `<queries>` entry is missing (run prebuild with `--clean`). |
+| Permission sheet is empty or crashes back | The build predates M4's manifest permissions, or the Health Connect app is outdated — update it from the Play Store. |
