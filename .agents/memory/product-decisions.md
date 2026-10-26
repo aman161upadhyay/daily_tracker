@@ -386,6 +386,16 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   sample-data storage state are recreated by loading the preview and clicking "Explore with sample data
   instead" (then `ctx.storageState`). Tests cannot import `src/widget/TrackerWidget.tsx` (react-native);
   pure helpers belong in `model.ts`.
+- Round 25 (2026-10-26 night) rules, paradigms 107–109: a control and its description derive from one
+  fact (`WidgetTile.logs` from the tap handler's rule drives both the ring's click action — log vs open
+  the habit — and `ringLabel`); a comparison names two lived spans ("on last week" only once the habit
+  existed through last week, gated on `createdDay`); every background promise has a visible failure with
+  Retry where possible (`backupHealth` → Your data, `protectionState` → App lock card,
+  `SyncHealth.background` → Reminders notices naming Expo Go as normal; the widget draws `committed()`
+  while a save has failed and a `WidgetFallback` when its tree throws; the mind bell's cancel retries 3×
+  then is reported on screen / as a toast). `ringsCentre` names what the person tracks — "Start empty"
+  archives Water, so it is never owed "2,000 ml to go"; the nudge card is shown only with movement habits.
+  Headless snapshot failures stay console-only on purpose (the next foreground attempt reports).
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app
