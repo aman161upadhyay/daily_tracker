@@ -11,7 +11,7 @@
 import { inspectExport, serializeExport } from '@/src/data/transfer';
 import { shouldSnapshot } from '@/src/data/backupPolicy';
 import type { TrackerState } from '@/src/state/types';
-import { readSnapshot, setAsideSnapshot, snapshotWrittenAt, writeSnapshot } from './backup';
+import { readSnapshot, setAsideSnapshot, snapshotStamp, snapshotWrittenAt, writeSnapshot } from './backup';
 
 /** A snapshot at most this often. */
 export const SNAPSHOT_MIN_AGE_MS = 60 * 60 * 1000;
@@ -44,8 +44,8 @@ export function committedSource(view: SnapshotView): () => TrackerState | null {
 }
 
 let queue: Promise<unknown> = Promise.resolve();
-/** Write time of the snapshot this process last wrote, or checked and found readable. */
-let knownWrittenAt: number | null = null;
+/** Stamp (write time and size) of the snapshot this process last wrote, or checked and found readable. */
+let knownStamp: string | null = null;
 
 /**
  * Write a snapshot when the policy says so and the last one is old enough.
@@ -64,10 +64,11 @@ export function maybeSnapshot(source: () => TrackerState | null, nowMs = Date.no
     const writtenAt = await snapshotWrittenAt();
     if (writtenAt !== null && nowMs - writtenAt < SNAPSHOT_MIN_AGE_MS) return false;
     // A file this process wrote or already read fine is not parsed again (two years of records
-    // cost ~125 ms of main-thread parsing on a phone); one with another write time is unknown.
-    if (writtenAt !== null && writtenAt !== knownWrittenAt) await keepUnreadable();
+    // cost ~125 ms of main-thread parsing on a phone); one with another stamp — a different write
+    // time or size, so other bytes — is unknown and is read before anything overwrites it.
+    if (writtenAt !== null && (knownStamp === null || (await snapshotStamp()) !== knownStamp)) await keepUnreadable();
     await writeSnapshot(serializeExport(state));
-    knownWrittenAt = await snapshotWrittenAt();
+    knownStamp = await snapshotStamp();
     return true;
   };
   const run = queue.then(job, job);
@@ -85,10 +86,10 @@ export async function keepUnreadable(): Promise<boolean> {
   if (!existing) return false;
   try {
     inspectExport(existing.text);
-    knownWrittenAt = await snapshotWrittenAt();
+    knownStamp = await snapshotStamp();
     return false;
   } catch {
-    knownWrittenAt = null;
+    knownStamp = null;
     return setAsideSnapshot();
   }
 }

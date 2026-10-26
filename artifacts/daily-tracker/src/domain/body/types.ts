@@ -19,8 +19,16 @@ export interface SleepNight {
   id: string;
   startAt: number;
   endAt: number;
-  /** Calendar day the session ended on (the morning after). */
+  /** Calendar day the session ended on (the morning after), where the person woke (see `endOffsetMin`). */
   day: string;
+  /**
+   * UTC offsets in minutes the night was slept at (the recording app's, else the phone's at import):
+   * bedtime and the morning read in them, so a trip across zones later neither moves old nights to
+   * other calendar squares nor makes steady bedtimes look irregular. Absent on nights imported
+   * before this field existed; those read in the phone's zone of the moment, as they always did.
+   */
+  startOffsetMin?: number;
+  endOffsetMin?: number;
   /** Time asleep in minutes: the session minus awake stages when stages exist. */
   minutes: number;
   deepMin?: number;

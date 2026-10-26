@@ -274,6 +274,18 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   over the slices the planner reads (body is not one); Today builds cards on demand; `maybeSnapshot`
   remembers the write time of a file it wrote/verified and skips `keepUnreadable` for it. Perf figures
   left as known: cold cycleInsights ~44 ms phone, plan per tick ~15 ms. Dispositions in §6 Round 15.
+- Round 16 (2026-10-26 night) rules, paradigms 70–76: week start is a trailing numeric parameter
+  (Monday 0 default, Sunday 6 via `weekStartIndex`) — stored weekday encoding never changes, only
+  bounds/order; the weekly summary follows the week's last day and its hint must read the configured
+  day (a hard-coded "Sundays" was caught by browser e2e). Undo keeps manual-beats-AUTO_HC. Snapshot
+  shortcut identity = mtime+size (no digest). Today-card anchors by real minutes (DST fold). Planner
+  budgets/rotation move only on kept candidates (`push` returns a boolean). Sleep nights carry
+  start/end UTC offsets (bridge passes `startZoneOffset`/`endZoneOffset` for sleep though its TS
+  types omit them); a reread with the same times keeps the first placing; schema v7. Widget headless
+  tap: persist first, re-plan second (library timeout 30 s reported as success); a tap inbox was
+  rejected — taps have no dedupe key, a replayed drink double-counts. Expo web HMR can leave a stale
+  module ("ReferenceError: <new import> is not defined") after adding imports — restart the workflow
+  before a browser e2e. Dispositions in §6 Round 16.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app

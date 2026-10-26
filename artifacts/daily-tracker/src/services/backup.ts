@@ -24,6 +24,11 @@ export async function snapshotWrittenAt(): Promise<number | null> {
   return null;
 }
 
+/** Write time and size of the current snapshot as one string, or null when there is none. */
+export async function snapshotStamp(): Promise<string | null> {
+  return null;
+}
+
 export async function writeSnapshot(_text: string): Promise<void> {}
 
 export async function deleteSnapshot(): Promise<void> {}

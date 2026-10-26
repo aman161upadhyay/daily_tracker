@@ -2,6 +2,11 @@ import { parseDay } from './trackingDay';
 
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const WEEKDAYS_LONG = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+/** The weekday's name for a `weekdayOf` index (Monday = 0 … Sunday = 6); out-of-range values read as Sunday. */
+export function weekdayName(index: number): string {
+  return WEEKDAYS_LONG[((Math.trunc(index) % 7) + 7) % 7] ?? 'Sunday';
+}
 const WEEKDAYS_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export function formatNumber(n: number): string {

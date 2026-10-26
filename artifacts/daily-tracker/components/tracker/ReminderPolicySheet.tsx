@@ -21,6 +21,8 @@ import {
   type PolicyMode,
 } from '@/src/domain/nudges/describePolicy';
 import { formatClock, parseClockInput } from '@/src/domain/time/format';
+import { weekStartIndex } from '@/src/domain/time/trackingDay';
+import { useTracker } from '@/src/state/TrackerProvider';
 import { UI } from '../ui/icons';
 import { Divider, IconButton, PillButton, Row, Segmented, Stepper } from '../ui/primitives';
 import { Sheet } from '../ui/Sheet';
@@ -83,6 +85,9 @@ function nextTime(times: string[]): string {
  */
 export function ReminderPolicySheet({ visible, onClose, habit, policy, context, onSave }: ReminderPolicySheetProps) {
   const c = useColors();
+  // The day boxes run from the person's first day of the week; the stored numbers stay Monday = 0.
+  const weekStart = weekStartIndex(useTracker().state.settings.weekStart);
+  const weekdayOrder = Array.from({ length: 7 }, (_, i) => (i + weekStart) % 7);
   const [d, setD] = useState<Draft>(() => draftFrom(policy, context));
   useEffect(() => {
     if (visible) setD(draftFrom(policy, context));
@@ -120,7 +125,8 @@ export function ReminderPolicySheet({ visible, onClose, habit, policy, context, 
             On
           </Txt>
           <View style={styles.days} accessibilityLabel="Days of the week">
-            {WEEKDAY_LETTERS.map((letter, day) => {
+            {weekdayOrder.map((day) => {
+              const letter = WEEKDAY_LETTERS[day];
               const on = d.weekdays.includes(day);
               return (
                 <Pressable

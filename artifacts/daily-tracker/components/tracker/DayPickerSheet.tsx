@@ -9,10 +9,11 @@ import { useColors } from '@/hooks/useColors';
 import { inkFor, readableFill, withAlpha } from '@/src/domain/color/oklch';
 import type { Habit } from '@/src/domain/models';
 import { formatDayLong, formatDayShort } from '@/src/domain/time/format';
-import { monthCells, monthOf, monthTitle, shiftMonth } from '@/src/domain/time/month';
+import { monthCells, monthOf, monthTitle, shiftMonth, weekdayLetters } from '@/src/domain/time/month';
+import { weekStartIndex } from '@/src/domain/time/trackingDay';
+import { useTracker } from '@/src/state/TrackerProvider';
 import { parseDay } from '@/src/domain/time/trackingDay';
 
-const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 export interface DayPickerSheetProps {
   visible: boolean;
@@ -38,7 +39,9 @@ export interface DayPickerSheetProps {
 export function DayPickerSheet({ visible, onClose, habit, today, ratiosFor, firstDay, onPick }: DayPickerSheetProps) {
   const c = useColors();
   const [month, setMonth] = useState(() => monthOf(today));
-  const cells = useMemo(() => monthCells(month), [month]);
+  const weekStart = weekStartIndex(useTracker().state.settings.weekStart);
+  const cells = useMemo(() => monthCells(month, weekStart), [month, weekStart]);
+  const weekdays = useMemo(() => weekdayLetters(weekStart), [weekStart]);
   const values = useMemo(() => ratiosFor(cells.filter((d): d is string => d !== null && d <= today && d >= firstDay)), [cells, ratiosFor, today, firstDay]);
   const color = c.cat[habit.category];
   // A full day is a solid disc; the number on it takes whichever ink reads better, and the disc
@@ -65,7 +68,7 @@ export function DayPickerSheet({ visible, onClose, habit, today, ratiosFor, firs
         <IconButton Glyph={UI.Caret} label="Next month" onPress={() => setMonth((m) => shiftMonth(m, 1))} size={36} color={month < thisMonth ? c.text : c.textTertiary} disabled={month >= thisMonth} />
       </Row>
       <View style={styles.weekRow}>
-        {WEEKDAYS.map((w, i) => (
+        {weekdays.map((w, i) => (
           <Txt key={`${w}-${i}`} role="caption" tone="tertiary" align="center" style={styles.weekday}>
             {w}
           </Txt>

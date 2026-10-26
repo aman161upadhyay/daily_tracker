@@ -187,7 +187,21 @@ const MIND: Shape = { id, startAt: instant, endAt: instant, zone: str, day, kind
 const NUDGE_EVENT: Shape = { id, nudgeId: str, habitIds: listOf(str, 100), at: instant, zone: str, day: str, kind: oneOf(NUDGE_EVENT_KINDS), untilMs: optional(instant), via: optional(str) };
 const SCHEDULED_EVENT: Shape = { id, habitId: str, at: instant, zone: str, day: str, title: str, body: str };
 const STEP_DAY: Shape = { day, steps: nonNeg, origin: optional(str) };
-const SLEEP_NIGHT: Shape = { id, startAt: instant, endAt: instant, day, minutes: nonNeg, deepMin: optional(nonNeg), remMin: optional(nonNeg), lightMin: optional(nonNeg), awakeMin: optional(nonNeg), origin: optional(str) };
+const offsetMin = numRange(-18 * 60, 18 * 60, true);
+const SLEEP_NIGHT: Shape = {
+  id,
+  startAt: instant,
+  endAt: instant,
+  day,
+  minutes: nonNeg,
+  deepMin: optional(nonNeg),
+  remMin: optional(nonNeg),
+  lightMin: optional(nonNeg),
+  awakeMin: optional(nonNeg),
+  origin: optional(str),
+  startOffsetMin: optional(offsetMin),
+  endOffsetMin: optional(offsetMin),
+};
 const HEART_DAY: Shape = { day, restingBpm: optional(nonNeg), minBpm: optional(nonNeg), avgBpm: optional(nonNeg), maxBpm: optional(nonNeg) };
 const WEIGHT: Shape = { id, at: instant, day, kg: nonNeg, origin: optional(str) };
 const WORKOUT: Shape = { id, startAt: instant, endAt: instant, day, type: num, title: optional(str), minutes: nonNeg, origin: optional(str), hidden: optional(bool) };

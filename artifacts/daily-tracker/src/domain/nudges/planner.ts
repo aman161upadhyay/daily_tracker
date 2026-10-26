@@ -251,12 +251,14 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
   const placeable = (at: number) => at >= earliest && at <= horizonEnd;
   // Ids are per wall-clock minute. On the night DST ends the clock shows one hour twice, so two
   // elapsed-hour slots can share a minute; the first keeps the id, the second is dropped (one
-  // reminder fewer on a 25-hour day, never two notifications fighting over one identifier).
+  // reminder fewer on a 25-hour day, never two notifications fighting over one identifier). A
+  // dropped candidate spends nothing: budgets and the rotation move only on what was kept.
   const seen = new Set<string>();
-  const push = (c: Candidate) => {
-    if (!placeable(c.at) || seen.has(c.id)) return;
+  const push = (c: Candidate): boolean => {
+    if (!placeable(c.at) || seen.has(c.id)) return false;
     seen.add(c.id);
     candidates.push(c);
+    return true;
   };
   const boundary = input.boundaryHour ?? DEFAULT_BOUNDARY_HOUR;
   /** The tracking day a clock time belongs to: progress, budgets and the cap are all kept by it. */
@@ -356,9 +358,7 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
           }
         }
         if (!item) continue; // every budget spent for this slot's day; a later day's slots start afresh
-        ordinal += 1;
-        perHabit.set(item.id, (perHabit.get(item.id) ?? 0) + 1);
-        push({
+        const kept = push({
           id,
           at: when,
           day: slotDay,
@@ -372,6 +372,9 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
           snackType: item.snackType,
           counted: true,
         });
+        if (!kept) continue;
+        ordinal += 1;
+        perHabit.set(item.id, (perHabit.get(item.id) ?? 0) + 1);
       }
     }
 
@@ -400,8 +403,7 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
         // for it. A window that crosses the day boundary spends two days' budgets, not one twice over.
         const perHabit = budgetFor(dayOf(at));
         if ((perHabit.get(h.id) ?? 0) >= h.policy.maxPerDay) continue;
-        perHabit.set(h.id, (perHabit.get(h.id) ?? 0) + 1);
-        push({
+        const kept = push({
           id,
           at: when,
           day: dayOf(at),
@@ -414,6 +416,7 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
           actions: ['DONE', 'SNOOZE'],
           counted: true,
         });
+        if (kept) perHabit.set(h.id, (perHabit.get(h.id) ?? 0) + 1);
       }
     }
 
@@ -435,8 +438,7 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
         if (!placeable(when)) continue;
         const perHabit = budgetFor(dayOf(at));
         if ((perHabit.get(h.id) ?? 0) >= h.policy.maxPerDay) continue;
-        perHabit.set(h.id, (perHabit.get(h.id) ?? 0) + 1);
-        push({
+        const kept = push({
           id,
           at: when,
           day: dayOf(at),
@@ -450,6 +452,7 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
           snackType: h.snackType,
           counted: true,
         });
+        if (kept) perHabit.set(h.id, (perHabit.get(h.id) ?? 0) + 1);
       }
     }
 

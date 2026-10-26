@@ -249,10 +249,10 @@ const STEP_DAY: Table<StepDay> = {
 
 const SLEEP_NIGHT: Table<SleepNight> = {
   name: 'sleep_night',
-  columns: ['id', 'start_at', 'end_at', 'day', 'minutes', 'deep_min', 'rem_min', 'light_min', 'awake_min', 'origin'],
+  columns: ['id', 'start_at', 'end_at', 'day', 'minutes', 'deep_min', 'rem_min', 'light_min', 'awake_min', 'origin', 'start_offset_min', 'end_offset_min'],
   keyColumns: ['id'],
   key: (s) => s.id,
-  toRow: (s) => [s.id, s.startAt, s.endAt, s.day, s.minutes, opt(s.deepMin), opt(s.remMin), opt(s.lightMin), opt(s.awakeMin), opt(s.origin)],
+  toRow: (s) => [s.id, s.startAt, s.endAt, s.day, s.minutes, opt(s.deepMin), opt(s.remMin), opt(s.lightMin), opt(s.awakeMin), opt(s.origin), opt(s.startOffsetMin), opt(s.endOffsetMin)],
   fromRow: (r) =>
     compact<SleepNight>({
       id: str(r, 'id'),
@@ -265,6 +265,8 @@ const SLEEP_NIGHT: Table<SleepNight> = {
       lightMin: optNum(r, 'light_min'),
       awakeMin: optNum(r, 'awake_min'),
       origin: optStr(r, 'origin'),
+      startOffsetMin: optNum(r, 'start_offset_min'),
+      endOffsetMin: optNum(r, 'end_offset_min'),
     }),
   orderBy: 'start_at, rowid',
 };

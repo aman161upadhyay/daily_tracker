@@ -124,9 +124,22 @@ export function weekdayOf(day: string): number {
   return (js + 6) % 7;
 }
 
-/** Monday of the week containing `day`. */
-export function weekStartOf(day: string): string {
-  return addDays(day, -weekdayOf(day));
+/** The person's first day of the week (Settings → Day & cycle). Monday is the default; most of the US counts from Sunday. */
+export type WeekStart = 'monday' | 'sunday';
+
+/** Index of the week's first day in `weekdayOf` terms: Monday = 0, Sunday = 6. */
+export function weekStartIndex(start: WeekStart | undefined): number {
+  return start === 'sunday' ? 6 : 0;
+}
+
+/** Index of the week's last day: Sunday for Monday-first weeks, Saturday for Sunday-first. */
+export function weekEndIndex(start: WeekStart | undefined): number {
+  return (weekStartIndex(start) + 6) % 7;
+}
+
+/** First day of the week containing `day`; `start` is the week's first weekday (`weekStartIndex`), Monday by default. */
+export function weekStartOf(day: string, start = 0): string {
+  return addDays(day, -((weekdayOf(day) - start + 7) % 7));
 }
 
 /**

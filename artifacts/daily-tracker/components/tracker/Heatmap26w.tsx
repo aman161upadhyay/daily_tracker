@@ -4,12 +4,17 @@ import { useColors } from '@/hooks/useColors';
 import { adherenceColor } from '@/src/domain/adherence/adherenceScale';
 import { withAlpha } from '@/src/domain/color/oklch';
 import { formatDayShort } from '@/src/domain/time/format';
-import { addDays, weekStartOf } from '@/src/domain/time/trackingDay';
+import { weekdayLetters } from '@/src/domain/time/month';
+import { addDays, weekStartIndex, weekStartOf } from '@/src/domain/time/trackingDay';
+import { useTracker } from '@/src/state/TrackerProvider';
 import { Txt } from '../ui/Txt';
 
 const WEEKS = 26;
 const GAP = 3;
-const DAY_LABELS = ['M', '', 'W', '', 'F', '', 'S'];
+/** Row labels: every other weekday, from the week's first day (M·W·F·S for Monday weeks, S·T·T·S for Sunday weeks). */
+function dayLabels(weekStart: number): string[] {
+  return weekdayLetters(weekStart).map((l, i) => (i % 2 === 0 ? l : ''));
+}
 
 export interface Heatmap26wProps {
   /** day → ratio in [0, 1]; missing days render as empty. */
@@ -25,15 +30,17 @@ export function Heatmap26w({ values, today, createdDay }: Heatmap26wProps) {
   const labelWidth = 16;
   const cell = width > 0 ? Math.floor((width - labelWidth - (WEEKS - 1) * GAP) / WEEKS) : 10;
 
+  const weekStart = weekStartIndex(useTracker().state.settings.weekStart);
+  const labels = useMemo(() => dayLabels(weekStart), [weekStart]);
   const weeks = useMemo(() => {
-    const thisWeek = weekStartOf(today);
+    const thisWeek = weekStartOf(today, weekStart);
     const out: string[][] = [];
     for (let w = WEEKS - 1; w >= 0; w--) {
       const start = addDays(thisWeek, -7 * w);
       out.push(Array.from({ length: 7 }, (_, i) => addDays(start, i)));
     }
     return out;
-  }, [today]);
+  }, [today, weekStart]);
 
   const firstDay = weeks[0]![0]!;
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
@@ -70,7 +77,7 @@ export function Heatmap26w({ values, today, createdDay }: Heatmap26wProps) {
     <View onLayout={onLayout} accessibilityRole="image" accessibilityLabel={summary}>
       <View style={{ flexDirection: 'row', gap: GAP }}>
         <View style={{ width: labelWidth, gap: GAP }}>
-          {DAY_LABELS.map((l, i) => (
+          {labels.map((l, i) => (
             <View key={i} style={{ height: cell, justifyContent: 'center' }}>
               <Txt role="caption" tone="tertiary" style={{ fontSize: 10, lineHeight: 12 }}>
                 {l}

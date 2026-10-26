@@ -97,6 +97,10 @@ export function ToastHost({ replaceEpoch }: { replaceEpoch: number }) {
     }
   }, [replaceEpoch]);
 
+  // The host leaves with its provider (an error boundary falling back and starting over): a toast
+  // whose Undo would dispatch into that retired provider must not be waiting for the next one.
+  useEffect(() => () => hideToast(), []);
+
   // Fade in, announce, time out. A new toast restarts the clock; the timer is keyed on its seq.
   useEffect(() => {
     if (!current) {

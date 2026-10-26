@@ -15,7 +15,8 @@ import { Txt } from '@/components/ui/Txt';
 import { confirmDestructive } from '@/components/ui/confirm';
 import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
-import type { ThemePreference, Units } from '@/src/domain/models';
+import type { ThemePreference, Units, WeekStart } from '@/src/domain/models';
+import { weekEndIndex } from '@/src/domain/time/trackingDay';
 import { WATER_GOAL_MAX_ML, WATER_GOAL_MIN_ML } from '@/src/data/validate';
 import { formatClock, formatVolume, parseClockInput, parseVolumeInput } from '@/src/domain/time/format';
 import { PINNED_CARD_META } from '@/src/domain/today/pinned';
@@ -157,6 +158,20 @@ export default function SettingsScreen() {
               <Chip key={h} label={h === 0 ? 'Midnight' : `${h} am`} selected={s.dayBoundaryHour === h} onPress={() => actions.updateSettings({ dayBoundaryHour: h })} />
             ))}
           </Row>
+        </Setting>
+        <Divider />
+        <Setting label="Week starts on" hint="Weekly targets, the week strips and the calendars count from this day">
+          <Segmented<WeekStart>
+            options={[
+              { value: 'monday', label: 'Monday' },
+              { value: 'sunday', label: 'Sunday' },
+            ]}
+            value={s.weekStart}
+            onChange={(weekStart) =>
+              // "Your week" is sent on the week's last evening, so it follows the choice (Sunday → Saturday).
+              actions.updateSettings({ weekStart, weeklySummary: { ...s.weeklySummary, weekday: weekEndIndex(weekStart) } })
+            }
+          />
         </Setting>
         <Divider />
         <Row style={{ justifyContent: 'space-between', paddingVertical: 12 }}>

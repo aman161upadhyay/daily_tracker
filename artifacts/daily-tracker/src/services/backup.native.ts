@@ -89,6 +89,18 @@ export async function snapshotWrittenAt(): Promise<number | null> {
 }
 
 /**
+ * What tells one snapshot file from another without reading it: write time and size together. A
+ * file with different bytes and the same stamp is not something an ordinary write produces, so a
+ * stamp this process saw is proof enough that the bytes are the ones it validated.
+ */
+export async function snapshotStamp(): Promise<string | null> {
+  await recoverSnapshot();
+  const file = snapshotFile();
+  if (!file.exists) return null;
+  return `${file.modificationTime ?? 0}:${file.size ?? -1}`;
+}
+
+/**
  * Writes to a temp file first (in a sibling directory the backup rules do not include), renames
  * it to `snapshot.next.json` inside the backup directory, then moves that over `snapshot.json`.
  * A crash mid-write leaves a torn file only where nothing backs it up; a crash mid-replace

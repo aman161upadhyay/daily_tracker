@@ -18,7 +18,7 @@ import { averageOf, countedWorkouts, formatSleep, latestResting, latestWeight, o
 import type { BodyRecordType } from '@/src/domain/body/types';
 import type { HabitIcon } from '@/src/domain/models';
 import { formatDayShort, formatNumber } from '@/src/domain/time/format';
-import { lastNDays } from '@/src/domain/time/trackingDay';
+import { lastNDays, weekStartIndex } from '@/src/domain/time/trackingDay';
 import { useTracker } from '@/src/state/TrackerProvider';
 import { ruleFor } from '@/src/state/selectors';
 
@@ -74,7 +74,7 @@ export default function BodyScreen() {
       heartAvg7: averageOf(seriesOf(heart, days7)),
       weightLatest: latestWeight(body),
       weight30: seriesOf(weight, days30),
-      week: workoutsThisWeek(body, today),
+      week: workoutsThisWeek(body, today, weekStartIndex(state.settings.weekStart)),
       lastWorkout: [...countedWorkouts(body)].sort((a, b) => b.startAt - a.startAt)[0],
       workouts7: seriesOf(workouts, days7),
       present: {
@@ -85,7 +85,7 @@ export default function BodyScreen() {
         workouts: body.workouts.length > 0,
       } as Record<BodyMetric, boolean>,
     };
-  }, [body, calendarToday, today, zone, days7, days14, days30]);
+  }, [body, calendarToday, today, zone, days7, days14, days30, state.settings.weekStart]);
 
   const visible = BODY_METRICS.filter((m) => view.present[m] || (hc.connected && GRANT_FOR[m].some((t) => hc.granted.includes(t))));
   // Connected, but a permission was left off: say so, instead of a metric that silently never appears.

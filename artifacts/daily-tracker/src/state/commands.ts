@@ -8,7 +8,7 @@ import { SNACK_LABELS } from '@/src/domain/models';
 import { MAX_WATER_LOG_ML } from '@/src/data/validate';
 import type { NudgeActionKind } from '@/src/domain/nudges/planner';
 import { SNOOZE_MINUTES } from '@/src/domain/nudges/planner';
-import { addDays, isCalendarDay, isInstantMs, trackingDayOf, weekStartOf } from '@/src/domain/time/trackingDay';
+import { addDays, isCalendarDay, isInstantMs, trackingDayOf, weekStartIndex, weekStartOf } from '@/src/domain/time/trackingDay';
 import type { Action } from './reducer';
 import { habitView, latestRule, rotationHabit, ruleFor } from './selectors';
 import type { TrackerState } from './types';
@@ -95,9 +95,9 @@ export function mindSessionExists(state: TrackerState, kind: MindKind, startAt: 
 }
 
 /** First day of the period after the one containing `day`, for cadence changes. */
-export function nextPeriodStart(cadence: Cadence, day: string): string {
+export function nextPeriodStart(cadence: Cadence, day: string, weekStart = 0): string {
   if (cadence === 'DAILY') return addDays(day, 1);
-  if (cadence === 'WEEKLY') return addDays(weekStartOf(day), 7);
+  if (cadence === 'WEEKLY') return addDays(weekStartOf(day, weekStart), 7);
   const [y, m] = day.split('-').map(Number);
   const next = new Date(Date.UTC(y!, m!, 1));
   return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-01`;
@@ -130,7 +130,7 @@ export function ruleChangeActions(state: TrackerState, habit: Pick<Habit, 'id'>,
     if (pending) out.push({ type: 'REMOVE_RULE', habitId: habit.id, effectiveFrom: pending.effectiveFrom });
     return out;
   }
-  return [{ type: 'SET_RULE', rule: { ...rule, effectiveFrom: pending ? pending.effectiveFrom : nextPeriodStart(today.cadence, day) } }];
+  return [{ type: 'SET_RULE', rule: { ...rule, effectiveFrom: pending ? pending.effectiveFrom : nextPeriodStart(today.cadence, day, weekStartIndex(state.settings.weekStart)) } }];
 }
 
 /**

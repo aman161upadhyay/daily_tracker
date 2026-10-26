@@ -10,7 +10,7 @@ import { Screen } from '@/components/ui/Screen';
 import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import { isWalk } from '@/src/domain/body/exerciseTypes';
-import { bedtimeSpreadMin, distinctWorkouts, formatSleep, nightEndingOn, originName } from '@/src/domain/body/stats';
+import { bedtimeSpreadMin, distinctWorkouts, formatSleep, nightEndingOn, originName, sleepClockMin } from '@/src/domain/body/stats';
 import { formatClock, formatDayLong, formatNumber } from '@/src/domain/time/format';
 import { lastNDays, minutesOfDay } from '@/src/domain/time/trackingDay';
 import { useTracker } from '@/src/state/TrackerProvider';
@@ -136,7 +136,7 @@ export default function BodyMetricScreen() {
                   <View style={{ flex: 1 }}>
                     <Txt role="body">{day === calendarToday ? 'Last night' : formatDayLong(day)}</Txt>
                     <Txt role="footnote" tone="secondary">
-                      {`${formatClock(minutesOfDay(night!.startAt, zone))} → ${formatClock(minutesOfDay(night!.endAt, zone))}`}
+                      {`${formatClock(sleepClockMin(night!, 'start', zone))} → ${formatClock(sleepClockMin(night!, 'end', zone))}`}
                       {night!.deepMin !== undefined ? ` · deep ${formatSleep(night!.deepMin)}` : ''}
                       {night!.remMin !== undefined ? ` · REM ${formatSleep(night!.remMin)}` : ''}
                     </Txt>

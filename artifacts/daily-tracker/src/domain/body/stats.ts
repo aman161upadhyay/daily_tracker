@@ -3,6 +3,27 @@
  * Pure: days in, numbers out.
  */
 import { addDays, lastNDays, minutesOfDay, weekStartOf } from '@/src/domain/time/trackingDay';
+
+/** Minutes after midnight at a UTC offset (local wall clock), for an instant. */
+export function minutesAtOffset(instantMs: number, offsetMin: number): number {
+  const local = instantMs + offsetMin * 60_000;
+  return Math.floor((((local % 86_400_000) + 86_400_000) % 86_400_000) / 60_000);
+}
+
+/** Calendar day ("YYYY-MM-DD") at a UTC offset, for an instant. */
+export function dayAtOffset(instantMs: number, offsetMin: number): string {
+  return new Date(instantMs + offsetMin * 60_000).toISOString().slice(0, 10);
+}
+
+/**
+ * The wall-clock minute a night began or ended: at the offset it was slept at when the record
+ * carries one, otherwise in `zone` (the phone's current zone), as older records always read.
+ */
+export function sleepClockMin(n: SleepNight, which: 'start' | 'end', zone: string): number {
+  const offset = which === 'start' ? n.startOffsetMin : n.endOffsetMin;
+  const at = which === 'start' ? n.startAt : n.endAt;
+  return offset === undefined ? minutesOfDay(at, zone) : minutesAtOffset(at, offset);
+}
 import { isWalk } from './exerciseTypes';
 import type { BodyState, HeartDay, SleepNight, Workout } from './types';
 
@@ -179,7 +200,7 @@ export function bedtimeSpreadMin(body: BodyState, calendarToday: string, zone: s
     const n = nightEndingOn(body, day);
     if (!n) continue;
     // Minutes after 18:00 so that 23:30 and 00:30 sit next to each other.
-    const m = (minutesOfDay(n.startAt, zone) - 18 * 60 + 24 * 60) % (24 * 60);
+    const m = (sleepClockMin(n, 'start', zone) - 18 * 60 + 24 * 60) % (24 * 60);
     bedtimes.push(m);
   }
   if (bedtimes.length < 3) return undefined;
@@ -207,9 +228,9 @@ export function latestResting(body: BodyState): { bpm: number; day: string } | u
   return undefined;
 }
 
-/** Workouts in the week containing `day` (Monday start), newest first. */
-export function workoutsThisWeek(body: BodyState, day: string): Workout[] {
-  const start = weekStartOf(day);
+/** Workouts in the week containing `day` (from the week's first day, `weekStartIndex`), newest first. */
+export function workoutsThisWeek(body: BodyState, day: string, weekStart = 0): Workout[] {
+  const start = weekStartOf(day, weekStart);
   const end = addDays(start, 7);
   return countedWorkouts(body)
     .filter((w) => w.day >= start && w.day < end)

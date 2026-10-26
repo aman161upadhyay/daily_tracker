@@ -10,7 +10,8 @@ import { isRunningInExpoGo } from 'expo';
 import Constants from 'expo-constants';
 import { Linking, Platform } from 'react-native';
 import { BODY_RECORD_TYPES, type BodyBatch, type BodyRecordType, type HeartDay, type HydrationImport, type SleepNight, type StepDay, type WeightEntry, type Workout } from '@/src/domain/body/types';
-import { addDays, calendarDayOf, instantOf, trackingDayOf } from '@/src/domain/time/trackingDay';
+import { dayAtOffset } from '@/src/domain/body/stats';
+import { addDays, calendarDayOf, instantOf, trackingDayOf, zoneOffsetAt } from '@/src/domain/time/trackingDay';
 import type { HealthAccess, HealthConnectStatus, ReadResult, ReadWindow } from './healthConnect';
 
 export type { HealthAccess, HealthConnectStatus, ReadResult, ReadWindow } from './healthConnect';
@@ -116,6 +117,13 @@ function recordId(meta: { id?: string } | undefined, fallback: string): string {
   return meta?.id ?? fallback;
 }
 
+/** A Health Connect zone offset as whole minutes, or undefined when the record carries none (or nonsense). */
+function offsetMinutes(z: { totalSeconds?: number } | null | undefined): number | undefined {
+  const s = z?.totalSeconds;
+  if (typeof s !== 'number' || !Number.isFinite(s) || Math.abs(s) > 18 * 3600) return undefined;
+  return Math.round(s / 60);
+}
+
 export async function readBatch(window: ReadWindow, granted: BodyRecordType[]): Promise<ReadResult> {
   const batch: BodyBatch = {};
   const errors: ReadResult['errors'] = [];
@@ -209,10 +217,17 @@ export async function readBatch(window: ReadWindow, granted: BodyRecordType[]): 
       const startAt = Date.parse(r.startTime);
       const endAt = Date.parse(r.endTime);
       if (!(endAt > startAt)) continue;
-      const day = calendarDayOf(endAt, zone);
+      // The night is placed at the offsets it was slept at: the recording app's when Health
+      // Connect has them (the bridge passes them though its types do not list them for sleep),
+      // else this phone's at those instants. Stored with the night, so a later zone change
+      // leaves it where it was.
+      const offsets = r as { startZoneOffset?: { totalSeconds?: number } | null; endZoneOffset?: { totalSeconds?: number } | null };
+      const startOffsetMin = offsetMinutes(offsets.startZoneOffset) ?? Math.round(zoneOffsetAt(startAt, zone) / 60_000);
+      const endOffsetMin = offsetMinutes(offsets.endZoneOffset) ?? Math.round(zoneOffsetAt(endAt, zone) / 60_000);
+      const day = dayAtOffset(endAt, endOffsetMin);
       if (day < fromDay || day > toDay) continue;
       const span = Math.round((endAt - startAt) / 60_000);
-      const night: SleepNight = { id: recordId(r.metadata, `sleep:${r.startTime}`), startAt, endAt, day, minutes: span };
+      const night: SleepNight = { id: recordId(r.metadata, `sleep:${r.startTime}`), startAt, endAt, day, minutes: span, startOffsetMin, endOffsetMin };
       if (r.stages && r.stages.length > 0) {
         let awake = 0;
         let light = 0;

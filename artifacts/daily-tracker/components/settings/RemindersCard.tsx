@@ -6,7 +6,7 @@ import { Chip, Divider, PillButton, Row, Stepper } from '@/components/ui/primiti
 import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import type { ScheduledNudge } from '@/src/domain/nudges/planner';
-import { formatClock, parseClockInput } from '@/src/domain/time/format';
+import { formatClock, parseClockInput, weekdayName } from '@/src/domain/time/format';
 import { addDays, calendarDayOf, instantOf, minutesOfDay } from '@/src/domain/time/trackingDay';
 import { NOTIFICATIONS_SUPPORTED, exactAlarmsAllowed, getPermission, onSyncHealth, openExactAlarmSettings, openNotificationSettings, requestPermission, syncHealth, type PermissionState, type SyncHealth } from '@/src/services/notifications';
 import { nudgePlan } from '@/src/state/selectors';
@@ -175,7 +175,7 @@ export function RemindersCard() {
               <View style={{ flex: 1 }}>
                 <Txt role="title2">Weekly summary</Txt>
                 <Txt role="footnote" tone="secondary">
-                  Sundays — how the week went, in one line
+                  {weekdayName(s.weeklySummary.weekday)}s — how the week went, in one line (the last day of your week)
                 </Txt>
               </View>
               <Switch value={s.weeklySummary.enabled} onValueChange={(enabled) => actions.updateSettings({ weeklySummary: { ...s.weeklySummary, enabled } })} trackColor={{ false: c.hairline, true: c.green }} thumbColor={c.text} accessibilityLabel="Weekly summary" />

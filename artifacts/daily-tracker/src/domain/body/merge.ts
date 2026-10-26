@@ -40,6 +40,21 @@ function upsert<T extends object>(prev: T[], incoming: T[] | undefined, k: Keyed
 
 const STEP: Keyed<StepDay> = { key: (x) => x.day, same: shallowEqual };
 const SLEEP: Keyed<SleepNight> = { key: (x) => x.id, same: shallowEqual };
+
+/**
+ * A night read again with the same times keeps the day and offsets of its first import: a reread
+ * after a trip (or by a phone whose zone changed) must not move the night to another calendar
+ * square. Different times are a session edited upstream and take the new placing.
+ */
+function keepNightPlacing(old: SleepNight, next: SleepNight): SleepNight {
+  if (old.startAt !== next.startAt || old.endAt !== next.endAt) return next;
+  const merged: SleepNight = { ...next, day: old.day };
+  if (old.startOffsetMin !== undefined) merged.startOffsetMin = old.startOffsetMin;
+  else delete merged.startOffsetMin;
+  if (old.endOffsetMin !== undefined) merged.endOffsetMin = old.endOffsetMin;
+  else delete merged.endOffsetMin;
+  return merged;
+}
 const HEART: Keyed<HeartDay> = { key: (x) => x.day, same: shallowEqual };
 const WEIGHT: Keyed<WeightEntry> = { key: (x) => x.id, same: shallowEqual };
 const WORKOUT: Keyed<Workout> = { key: (x) => x.id, same: shallowEqual };
@@ -109,7 +124,7 @@ function pruneHeart(prev: HeartDay[], incoming: HeartDay[] | undefined, window: 
 export function mergeBody(body: BodyState, batch: BodyBatch): BodyState {
   const w = batch.window;
   const steps = prune(upsert(body.steps, batch.steps?.map(compact), STEP), batch.steps, STEP, w);
-  const sleep = prune(upsert(body.sleep, batch.sleep?.map(compact), SLEEP), batch.sleep, SLEEP, w);
+  const sleep = prune(upsert(body.sleep, batch.sleep?.map(compact), SLEEP, keepNightPlacing), batch.sleep, SLEEP, w);
   // A complete read says everything there is about the heart fields it covered, so those replace
   // the stored ones (a resting value deleted upstream goes away too); fields of a read it did not
   // cover (permission not granted) stay. A partial read only fills in what it brought.

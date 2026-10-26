@@ -53,6 +53,8 @@ export interface StreakInput {
   today: string;
   /** Days excluded from scoring (off mode / travel). */
   offDays?: ReadonlySet<string>;
+  /** First weekday of the week (`weekStartIndex`): Monday = 0 by default, Sunday = 6. */
+  weekStart?: number;
 }
 
 export interface StreakResult {
@@ -79,14 +81,14 @@ function monthEndOf(day: string): string {
 }
 
 /** First day of the period (week or month) a day belongs to; the day itself for DAILY. */
-export function periodStartOf(cadence: Cadence, day: string): string {
-  return periodBounds(cadence, day).start;
+export function periodStartOf(cadence: Cadence, day: string, weekStart = 0): string {
+  return periodBounds(cadence, day, weekStart).start;
 }
 
 /** Days per period a rule really asks for: `timesPerPeriod`, capped at the length of the period `day` is in. */
-export function periodQuota(rule: Pick<HabitRule, 'cadence' | 'timesPerPeriod'>, day: string): number {
+export function periodQuota(rule: Pick<HabitRule, 'cadence' | 'timesPerPeriod'>, day: string, weekStart = 0): number {
   if (rule.cadence === 'DAILY') return 1;
-  return Math.max(1, Math.min(rule.timesPerPeriod, periodBounds(rule.cadence, day).length));
+  return Math.max(1, Math.min(rule.timesPerPeriod, periodBounds(rule.cadence, day, weekStart).length));
 }
 
 /**
@@ -98,16 +100,16 @@ export function periodQuota(rule: Pick<HabitRule, 'cadence' | 'timesPerPeriod'>,
  * a Thursday — or the month a weekly habit became monthly — is judged the same everywhere.
  * 0 when the habit has no day in the period.
  */
-export function periodRequired(rule: Pick<HabitRule, 'cadence' | 'timesPerPeriod'>, day: string, from: string, offDays?: ReadonlySet<string>): number {
+export function periodRequired(rule: Pick<HabitRule, 'cadence' | 'timesPerPeriod'>, day: string, from: string, offDays?: ReadonlySet<string>, weekStart = 0): number {
   if (rule.cadence === 'DAILY') return 1;
-  const bounds = periodBounds(rule.cadence, day);
+  const bounds = periodBounds(rule.cadence, day, weekStart);
   const first = from > bounds.start ? from : bounds.start;
   if (first > bounds.end) return 0;
   // Arithmetic, not a walk: this runs once per day of every history chart and cycle insight.
   let available = dayDiff(first, bounds.end) + 1;
   if (offDays) for (const d of offDays) if (d >= first && d <= bounds.end) available--;
   if (available <= 0) return 0;
-  return Math.min(available, Math.max(1, Math.round((periodQuota(rule, bounds.end) * available) / bounds.length)));
+  return Math.min(available, Math.max(1, Math.round((periodQuota(rule, bounds.end, weekStart) * available) / bounds.length)));
 }
 
 /**
@@ -117,8 +119,8 @@ export function periodRequired(rule: Pick<HabitRule, 'cadence' | 'timesPerPeriod
  * (the day after that week ended), and its first month is prorated from there, not scored against
  * a full month's quota.
  */
-export function segmentStartOn(rules: HabitRule[], createdDay: string, day: string): string {
-  return segmentStartIn(cadenceSegments(rules, createdDay, day), day, createdDay);
+export function segmentStartOn(rules: HabitRule[], createdDay: string, day: string, weekStart = 0): string {
+  return segmentStartIn(cadenceSegments(rules, createdDay, day, weekStart), day, createdDay);
 }
 
 export interface CadenceSegment {
@@ -132,7 +134,7 @@ export interface CadenceSegment {
  * the segment of any day in the range by lookup, where walking again for each day of a year's
  * history would be a year of periods per day.
  */
-export function cadenceSegments(rules: HabitRule[], createdDay: string, day: string): CadenceSegment[] {
+export function cadenceSegments(rules: HabitRule[], createdDay: string, day: string, weekStart = 0): CadenceSegment[] {
   const sorted = sortRules(rules);
   if (sorted.length === 0) return [{ from: createdDay, cadence: 'DAILY' }];
   let cadence = ruleOn(sorted, createdDay).cadence;
@@ -146,7 +148,7 @@ export function cadenceSegments(rules: HabitRule[], createdDay: string, day: str
       cadence = rule.cadence;
       out.push({ from: cursor, cadence });
     }
-    cursor = addDays(periodBounds(rule.cadence, cursor).end, 1);
+    cursor = addDays(periodBounds(rule.cadence, cursor, weekStart).end, 1);
   }
   return out;
 }
@@ -158,10 +160,11 @@ export function segmentStartIn(segments: readonly CadenceSegment[], day: string,
   return createdDay;
 }
 
-export function periodBounds(cadence: Cadence, day: string): { start: string; end: string; length: number } {
+/** Bounds of the period containing `day`; `weekStart` is the week's first weekday (`weekStartIndex`), Monday by default. */
+export function periodBounds(cadence: Cadence, day: string, weekStart = 0): { start: string; end: string; length: number } {
   if (cadence === 'DAILY') return { start: day, end: day, length: 1 };
   if (cadence === 'WEEKLY') {
-    const start = weekStartOf(day);
+    const start = weekStartOf(day, weekStart);
     return { start, end: addDays(start, 6), length: 7 };
   }
   const start = monthStartOf(day);
@@ -186,6 +189,7 @@ export function ruleOn(sortedRules: HabitRule[], day: string): HabitRule {
 export function evaluateStreak(input: StreakInput): StreakResult {
   const rules = sortRules(input.rules);
   const off = input.offDays ?? new Set<string>();
+  const weekStart = input.weekStart ?? 0;
   const empty: StreakResult = { streak: 0, best: 0, periods: [], freezesUsed: {}, freezesLeftThisMonth: 0 };
   if (rules.length === 0 || input.createdDay > input.today) return empty;
 
@@ -197,7 +201,7 @@ export function evaluateStreak(input: StreakInput): StreakResult {
 
   while (cursor <= input.today) {
     const startRule = ruleOn(rules, cursor);
-    const bounds = periodBounds(startRule.cadence, cursor);
+    const bounds = periodBounds(startRule.cadence, cursor, weekStart);
     // The rule that governs the period: the latest one (of the same cadence)
     // that took effect by the period's last day, so a target edited mid-week
     // applies to the current week but never to closed ones.
@@ -219,7 +223,7 @@ export function evaluateStreak(input: StreakInput): StreakResult {
     }
     // Prorated for the habit's start and days off, and never more than the days the period has (a
     // "31 days a month" rhythm asks for every day of February, not for three days that do not exist).
-    const required = periodRequired(rule, end, start, off);
+    const required = periodRequired(rule, end, start, off, weekStart);
 
     let status: PeriodStatus;
     let freezeMonth: string | undefined;

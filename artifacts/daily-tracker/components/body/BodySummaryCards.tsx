@@ -4,10 +4,10 @@ import { SummaryCard } from '@/components/tracker/SummaryCard';
 import { UI } from '@/components/ui/icons';
 import { PillButton } from '@/components/ui/primitives';
 import { useColors } from '@/hooks/useColors';
-import { averageOf, bedtimeSpreadMin, formatSleep, lastNight, seriesOf } from '@/src/domain/body/stats';
+import { averageOf, bedtimeSpreadMin, formatSleep, lastNight, seriesOf, sleepClockMin } from '@/src/domain/body/stats';
 import type { BodyState } from '@/src/domain/body/types';
 import { formatClock, formatDayShort, formatNumber } from '@/src/domain/time/format';
-import { lastNDays, minutesOfDay } from '@/src/domain/time/trackingDay';
+import { lastNDays } from '@/src/domain/time/trackingDay';
 import type { StepsCardView } from '@/src/domain/body/stepsCard';
 
 /**
@@ -78,7 +78,7 @@ export function SleepSummaryCard({ view, zone, onPress }: { view: SleepCardView 
       unit="asleep"
       timestamp={night.isToday ? 'Last night' : `Night to ${formatDayShort(night.day)}`}
       detail={[
-        `${formatClock(minutesOfDay(night.night.startAt, zone))} → ${formatClock(minutesOfDay(night.night.endAt, zone))}`,
+        `${formatClock(sleepClockMin(night.night, 'start', zone))} → ${formatClock(sleepClockMin(night.night, 'end', zone))}`,
         night.night.deepMin !== undefined ? `${formatSleep(night.night.deepMin)} deep` : undefined,
         view.bedSpread !== undefined ? `bedtime ±${view.bedSpread} min` : undefined,
       ]

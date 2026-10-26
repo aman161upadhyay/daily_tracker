@@ -7,12 +7,13 @@ import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import { withAlpha } from '@/src/domain/color/oklch';
 import { displayPhase, PHASE_LABELS, phaseQualifier, type CyclePhase, type CycleTimeline } from '@/src/domain/cycle/timeline';
-import { monthCells, monthOf, monthTitle, shiftMonth } from '@/src/domain/time/month';
+import { monthCells, monthOf, monthTitle, shiftMonth, weekdayLetters } from '@/src/domain/time/month';
+import { weekStartIndex } from '@/src/domain/time/trackingDay';
+import { useTracker } from '@/src/state/TrackerProvider';
 import { formatDayLong, formatDayShort } from '@/src/domain/time/format';
 import { parseDay } from '@/src/domain/time/trackingDay';
 import { phaseColor, phaseFill } from './phaseColors';
 
-const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 export interface CycleCalendarProps {
   /** "YYYY-MM" */
@@ -27,12 +28,14 @@ export interface CycleCalendarProps {
   onMonthChange: (month: string) => void;
 }
 
-/** Month grid, Monday first; days are tinted by phase (solid = logged, soft = predicted). */
+/** Month grid from the person's first day of the week; days are tinted by phase (solid = logged, soft = predicted). */
 export function CycleCalendar({ month, today, timeline, birthControl, loggedDays, selected, onSelect, onMonthChange }: CycleCalendarProps) {
   const c = useColors();
   const palette = { cycle: c.cat.cycle, green: c.green, violet: c.violetSoft, gold: c.goldBright, textTertiary: c.textTertiary };
 
-  const cells = useMemo(() => monthCells(month), [month]);
+  const weekStart = weekStartIndex(useTracker().state.settings.weekStart);
+  const cells = useMemo(() => monthCells(month, weekStart), [month, weekStart]);
+  const weekdays = useMemo(() => weekdayLetters(weekStart), [weekStart]);
 
   const legend = useMemo(() => {
     const seen = new Set<CyclePhase>();
@@ -59,7 +62,7 @@ export function CycleCalendar({ month, today, timeline, birthControl, loggedDays
         <IconButton Glyph={UI.Caret} label="Next month" onPress={() => onMonthChange(shiftMonth(month, 1))} size={36} color={c.text} />
       </Row>
       <View style={styles.weekRow}>
-        {WEEKDAYS.map((w, i) => (
+        {weekdays.map((w, i) => (
           <Txt key={`${w}-${i}`} role="caption" tone="tertiary" align="center" style={styles.weekday}>
             {w}
           </Txt>

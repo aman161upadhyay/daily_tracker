@@ -18,7 +18,7 @@ import { upcomingReminders, type ReminderFire } from '@/src/domain/cycle/reminde
 import { buildTimeline, cycleLengths, isPeriodOpen, type CycleTimeline } from '@/src/domain/cycle/timeline';
 import { nextNudge, nextRotationItem, type NextNudge, type RotationItem } from '@/src/domain/nudges/nextNudge';
 import { planNudges, type PlanHabit, type PlanInput, type ScheduledNudge } from '@/src/domain/nudges/planner';
-import { addDays, calendarDayOf, dayDiff, lastNDays, minutesOfDay } from '@/src/domain/time/trackingDay';
+import { addDays, calendarDayOf, dayDiff, lastNDays, minutesOfDay, weekStartIndex } from '@/src/domain/time/trackingDay';
 import { waterStatus, type WaterStatus } from '@/src/domain/water/pace';
 import type { TrackerState } from './types';
 import { snackCountsFor } from '@/src/domain/habits/snackMatch';
@@ -169,13 +169,14 @@ const SEGMENT_CACHE_MAX = 256;
 export function segmentFrom(state: TrackerState, habit: Habit, day: string): string {
   const rules = rulesFor(state, habit.id);
   if (rules.every((r) => r.cadence === rules[0]!.cadence)) return habit.createdDay;
-  const key = `${habit.createdDay}|${rules.map((r) => `${r.effectiveFrom}:${r.cadence}`).join(',')}`;
+  const weekStart = weekStartIndex(state.settings.weekStart);
+  const key = `${habit.createdDay}|${weekStart}|${rules.map((r) => `${r.effectiveFrom}:${r.cadence}`).join(',')}`;
   let walked = segmentCache.get(key);
   if (!walked || walked.walkedTo < day) {
     if (!walked && segmentCache.size >= SEGMENT_CACHE_MAX) segmentCache.clear();
     // Walk a year past what was asked, so the next later day is a lookup too.
     const walkedTo = addDays(day, 366);
-    walked = { walkedTo, segments: cadenceSegments(rules, habit.createdDay, walkedTo) };
+    walked = { walkedTo, segments: cadenceSegments(rules, habit.createdDay, walkedTo, weekStart) };
     segmentCache.set(key, walked);
   }
   return segmentStartIn(walked.segments, day, habit.createdDay);
@@ -188,7 +189,7 @@ export function segmentFrom(state: TrackerState, habit: Habit, day: string): str
 export function periodDoneOn(state: TrackerState, habit: Habit, cadence: Cadence, day: string): number {
   let done = 0;
   const from = segmentFrom(state, habit, day);
-  const start = periodStartOf(cadence, day);
+  const start = periodStartOf(cadence, day, weekStartIndex(state.settings.weekStart));
   for (let d = from > start ? from : start; d <= day; d = addDays(d, 1)) {
     const target = ruleFor(state, habit.id, d)?.target ?? 1;
     if (habitDayValue(state, habit, d) >= target) done++;
@@ -207,6 +208,7 @@ export function habitRatios(state: TrackerState, habit: Habit, days: string[]): 
   // one check and keep its quota, instead of re-counting the period from its start for each day
   // (a month of days is 30 checks, not 465) and re-measuring the period each time.
   let prev: { day: string; end: string; from: string; rule: HabitRule; done: number; required: number } | null = null;
+  const weekStart = weekStartIndex(state.settings.weekStart);
   for (const day of days) {
     const rule = ruleFor(state, habit.id, day);
     const target = rule?.target ?? 1;
@@ -217,7 +219,7 @@ export function habitRatios(state: TrackerState, habit: Habit, days: string[]): 
         prev.day = day;
         prev.done += value >= target ? 1 : 0;
       } else {
-        prev = { day, end: periodBounds(rule.cadence, day).end, from, rule, done: periodDoneOn(state, habit, rule.cadence, day), required: periodRequired(rule, day, from) };
+        prev = { day, end: periodBounds(rule.cadence, day, weekStart).end, from, rule, done: periodDoneOn(state, habit, rule.cadence, day), required: periodRequired(rule, day, from, undefined, weekStart) };
       }
       out.push({ day, value, target, ratio: ratioOf(prev.done, prev.required) });
     } else {
@@ -268,7 +270,7 @@ const viewCache = new WeakMap<TrackerState, Map<string, HabitView>>();
 // its slice of the log and the day are the ones it was built from. A water tap, or a reminder edit
 // on another habit, changes none of these for the other habits, so their streak walks are not
 // repeated on the render thread (the whole-table identities would miss on every edit to any habit).
-const viewMemo = new WeakMap<Habit, { rules: readonly HabitRule[]; policy: NudgePolicy | undefined; slice: readonly unknown[]; today: string; view: HabitView }>();
+const viewMemo = new WeakMap<Habit, { rules: readonly HabitRule[]; policy: NudgePolicy | undefined; slice: readonly unknown[]; today: string; weekStart: number; view: HabitView }>();
 
 export function habitView(state: TrackerState, habit: Habit, today: string): HabitView {
   let perState = viewCache.get(state);
@@ -284,11 +286,15 @@ export function habitView(state: TrackerState, habit: Habit, today: string): Hab
   const rules = rulesFor(state, habit.id);
   const policy = policyFor(state, habit.id);
   const memo = viewMemo.get(habit);
+  // The week's first day moves every weekly quota and the strips, so it is part of the memo's key.
+  const weekStart = weekStartIndex(state.settings.weekStart);
   const view =
-    memo && memo.today === today && memo.policy === policy && sameList(memo.rules, rules) && sameList(memo.slice, slice) ? memo.view : buildHabitView(state, habit, today);
+    memo && memo.today === today && memo.weekStart === weekStart && memo.policy === policy && sameList(memo.rules, rules) && sameList(memo.slice, slice)
+      ? memo.view
+      : buildHabitView(state, habit, today);
   if (state.habits.includes(habit)) {
     perState.set(key, view);
-    viewMemo.set(habit, { rules, policy, slice, today, view });
+    viewMemo.set(habit, { rules, policy, slice, today, weekStart, view });
   }
   return view;
 }
@@ -305,8 +311,9 @@ function buildHabitView(state: TrackerState, habit: Habit, today: string): Habit
   const ratios14 = habitRatios(state, habit, lastNDays(today, 14));
   const todayRatio = ratios14[ratios14.length - 1]!;
   const weekly = rule.cadence !== 'DAILY';
+  const weekStart = weekStartIndex(state.settings.weekStart);
   const periodDone = weekly ? periodDoneOn(state, habit, rule.cadence, today) : undefined;
-  const quota = weekly ? periodRequired(rule, today, segmentFrom(state, habit, today)) : undefined;
+  const quota = weekly ? periodRequired(rule, today, segmentFrom(state, habit, today), undefined, weekStart) : undefined;
   const periodLabel = rule.cadence === 'WEEKLY' ? 'this week' : rule.cadence === 'MONTHLY' ? 'this month' : undefined;
   const adherence = adherenceOf(ratios14, habit.createdDay, today);
   const streaks = evaluateStreak({
@@ -314,6 +321,7 @@ function buildHabitView(state: TrackerState, habit: Habit, today: string): Habit
     valueOf: (day) => habitDayValue(state, habit, day),
     createdDay: habit.createdDay,
     today,
+    weekStart,
   });
   return {
     habit,
@@ -434,26 +442,30 @@ export function liveNudge(state: TrackerState, today: string, nowMs: number, zon
   if (items.length === 0) return null;
   const todaySnacks = state.snacks.filter((x) => x.day === today && x.trigger !== 'SUGAR_SHIELD');
   const last = todaySnacks.reduce<MovementSnack | null>((acc, x) => (!acc || x.at > acc.at ? x : acc), null);
-  const lastDoneMin = last ? minutesOfDay(last.at, zone) : undefined;
-  const snoozedUntilMin =
-    state.nudgeSnoozedUntil && state.nudgeSnoozedUntil > nowMs ? minutesOfDay(state.nudgeSnoozedUntil, zone) : undefined;
+  // The last snack and the snooze are placed by real minutes from now, not read off the wall clock:
+  // on the autumn night the clock shows 01:45 twice, and a snooze "until 01:45" taken at the first
+  // is sixty minutes away, not due. The active hours stay wall-clock, as they mean.
+  const lastDoneMin = last ? nowMin - Math.floor((nowMs - last.at) / 60_000) : undefined;
+  const snoozedUntilMin = state.nudgeSnoozedUntil && state.nudgeSnoozedUntil > nowMs ? nowMin + Math.ceil((state.nudgeSnoozedUntil - nowMs) / 60_000) : undefined;
   const swap = state.nudgeSwap?.day === today ? state.nudgeSwap.offset : 0;
   const legacy = nextNudge(
     { nowMin, activeStartMin: s.activeStartMin, activeEndMin: s.activeEndMin, intervalMin: s.nudgeIntervalMin, lastDoneMin, snoozedUntilMin },
     items,
     todaySnacks.length + swap,
   );
-  if (!legacy || !s.remindersEnabled) return legacy;
+  if (!legacy) return null;
+  // The due clock time is the one that instant shows (across the fold it is not now + the wait).
+  const atClock = (n: NextNudge): NextNudge => ({ ...n, dueMin: minutesOfDay(nowMs + n.inMin * 60_000, zone) });
+  if (!s.remindersEnabled) return atClock(legacy);
   // Agree with the first pending movement notification (snoozes and swaps made from a notification
   // are only known to the planner); an overdue slot still shows as "due now" on the card. When the
   // planner has nothing left to offer today — the cap is spent, the day is paused, every budget is
   // used — the card promises nothing either.
   const planned = nudgePlan(state, today, nowMs, zone).find((n) => n.day === today && (n.kind === 'ROTATION' || n.kind === 'WATER') && n.habitIds.some((id) => items.some((i) => i.habitId === id)));
   const item = planned && items.find((i) => planned.habitIds.includes(i.habitId));
-  if (legacy.inMin === 0) return item ? { ...legacy, item } : legacy;
+  if (legacy.inMin === 0) return atClock(item ? { ...legacy, item } : legacy);
   if (!planned || !item) return null;
-  const dueMin = minutesOfDay(planned.at, zone);
-  return { dueMin, inMin: Math.max(0, dueMin - nowMin), item };
+  return { dueMin: minutesOfDay(planned.at, zone), inMin: Math.max(0, Math.ceil((planned.at - nowMs) / 60_000)), item };
 }
 
 export function snackSuggestion(type: SnackType): string {
@@ -640,7 +652,7 @@ function planHabitOf(state: TrackerState, view: HabitView, today: string): PlanH
     doneToday: view.doneToday,
     donePeriod,
     // A met quota settles the rest of the period: no "tomorrow" slots inside a week already done.
-    ...(donePeriod ? { periodEndsOn: periodBounds(rule.cadence, today).end } : {}),
+    ...(donePeriod ? { periodEndsOn: periodBounds(rule.cadence, today, weekStartIndex(state.settings.weekStart)).end } : {}),
     todayRatio: view.dayRatio,
     lastLogMs: lastLogMsToday(state, habit, today),
     movement: isMovement(habit),

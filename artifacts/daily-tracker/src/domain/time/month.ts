@@ -24,11 +24,20 @@ export function monthTitle(month: string): string {
   return `${MONTH_NAMES[m - 1]} ${y}`;
 }
 
-/** The month laid out Monday-first: leading and trailing blanks are null, whole weeks always. */
-export function monthCells(month: string): (string | null)[] {
+/** The weekday letters of a grid's header row, starting on the week's first day (`weekStartIndex`). */
+export function weekdayLetters(weekStart = 0): string[] {
+  const letters = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  return letters.map((_, i) => letters[(i + weekStart) % 7]!);
+}
+
+/**
+ * The month laid out in rows of seven starting on the week's first day (`weekStart` as
+ * `weekStartIndex` gives it, Monday by default): leading and trailing blanks are null, whole weeks always.
+ */
+export function monthCells(month: string, weekStart = 0): (string | null)[] {
   const [y, m] = month.split('-').map(Number) as [number, number];
   const first = toDayString(y, m, 1);
-  const lead = weekdayOf(first);
+  const lead = (weekdayOf(first) - weekStart + 7) % 7;
   const n = daysInMonth(month);
   const out: (string | null)[] = [];
   for (let i = 0; i < lead; i++) out.push(null);

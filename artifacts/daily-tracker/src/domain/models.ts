@@ -7,7 +7,10 @@
  * remove them.
  */
 
+import type { WeekStart } from './time/trackingDay';
 import type { PinnedCardId } from './today/pinned';
+
+export type { WeekStart } from './time/trackingDay';
 
 export type Category = 'hydration' | 'movement' | 'mind' | 'cycle' | 'body' | 'fuel' | 'craft';
 
@@ -257,6 +260,8 @@ export interface Settings {
   activeStartMin: number;
   activeEndMin: number;
   dayBoundaryHour: number;
+  /** First day of the week for weekly quotas, the week strips and the calendars (Monday unless set to Sunday). */
+  weekStart: WeekStart;
   nudgeIntervalMin: number;
   dailyNudgeCap: number;
   cycleEnabled: boolean;
@@ -307,6 +312,7 @@ export const DEFAULT_SETTINGS: Settings = {
   activeStartMin: 9 * 60,
   activeEndMin: 21 * 60,
   dayBoundaryHour: 3,
+  weekStart: 'monday',
   nudgeIntervalMin: 60,
   dailyNudgeCap: 10,
   cycleEnabled: false,

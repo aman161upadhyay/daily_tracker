@@ -100,6 +100,12 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
         const actions = widgetTapActions(current, habitId, ctx, kind);
         if (actions.length === 0) return { state: current, snapshot: false };
         const applied = applyAll(current, actions, reducer);
+        // The tap goes to disk before the re-plan, not after it: the widget library gives this task
+        // 30 seconds, and once they are up the OS may drop the process whenever it likes. A tap has
+        // no identity to replay by (a second drink is a real second drink), so it is made durable
+        // early instead; the schedule is the slow part and is rebuilt from the saved rows below.
+        await store.persist(current, applied);
+        await markHeadlessWrite();
         let next = applied;
         let delivered: FiredRecord[] = [];
         try {
@@ -107,10 +113,10 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
         } catch (err) {
           console.warn('Widget re-plan failed; the log is still saved', err);
         }
-        // Once more after the await: a provider that registered meanwhile gets the tap instead.
-        const aliveNow = liveStore();
-        if (aliveNow) return { live: aliveNow };
-        await store.persist(current, next);
+        // After the await: a provider that registered meanwhile reloads the tap (the revision above)
+        // and plans for itself; the deliveries folded here stay in the journal for it to fold.
+        if (liveStore() || next === applied) return { state: applied, snapshot: true, nowMs: ctx.nowMs };
+        await store.persist(applied, next);
         // The deliveries folded above are on disk now; nothing needs to replay them.
         await acknowledgeDeliveries(delivered).catch((err) => console.warn('Delivery journal update failed', err));
         await markHeadlessWrite();

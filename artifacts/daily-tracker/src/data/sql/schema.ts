@@ -179,6 +179,11 @@ export const MIGRATIONS: readonly string[] = [
   `
   ALTER TABLE nudge_policy ADD COLUMN weekdays_json TEXT;
   `,
+  // v7 — a night remembers the UTC offsets it was slept at, so a trip does not move it
+  `
+  ALTER TABLE sleep_night ADD COLUMN start_offset_min INTEGER;
+  ALTER TABLE sleep_night ADD COLUMN end_offset_min INTEGER;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

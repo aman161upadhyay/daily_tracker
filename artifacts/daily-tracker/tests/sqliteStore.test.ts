@@ -210,6 +210,22 @@ describe('schema migrations', () => {
     driver.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION + 5}`);
     await assert.rejects(() => migrate(driver), /newer version/);
   });
+
+  it('v7 adds the sleep offsets: a v6 night loads without them, a new one keeps them', async () => {
+    const driver = new NodeDriver();
+    for (const m of MIGRATIONS.slice(0, 6)) driver.db.exec(m);
+    driver.db.exec('PRAGMA user_version = 6');
+    driver.db.exec("INSERT INTO kv (key, value) VALUES ('settings', '{\"name\":\"Aman\"}')");
+    driver.db.exec("INSERT INTO sleep_night (id, start_at, end_at, day, minutes) VALUES ('old', 1, 2, '2026-10-20', 480)");
+    assert.deepEqual(await migrate(driver), { from: 6, to: SCHEMA_VERSION });
+    const store = await SqliteStore.open(driver);
+    const before = await store.load();
+    assert.deepEqual(before?.body.sleep, [{ id: 'old', startAt: 1, endAt: 2, day: '2026-10-20', minutes: 480 }], 'no offset keys invented for an old night');
+    const state: TrackerState = { ...buildEmptyState(TODAY), body: { ...buildEmptyState(TODAY).body, sleep: [{ id: 'n1', startAt: NOW - 8 * 3_600_000, endAt: NOW, day: TODAY, minutes: 470, startOffsetMin: -240, endOffsetMin: -300 }] } };
+    await store.replace(state);
+    const loaded = await store.load();
+    assert.deepEqual(loaded?.body.sleep, state.body.sleep);
+  });
 });
 
 describe('state parsing', () => {

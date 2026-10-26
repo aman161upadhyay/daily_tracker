@@ -161,12 +161,17 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
       const snacks = back.flatMap((r) => (r.log === 'snack' ? [r.record] : []));
       const mind = back.flatMap((r) => (r.log === 'mind' ? [r.record] : []));
       const entries = back.flatMap((r) => (r.log === 'entry' ? [r.record] : []));
+      // The same precedence as logging by hand: a manual record coming back replaces what Health
+      // Connect filled in for that day while it was gone (a sync can land inside the Undo window),
+      // so the day does not count both.
+      const manualDays = new Set(entries.filter((e) => e.source === 'MANUAL').map((e) => `${e.habitId}|${e.day}`));
+      const keptEntries = manualDays.size ? state.entries.filter((x) => !(x.source === 'AUTO_HC' && manualDays.has(`${x.habitId}|${x.day}`))) : state.entries;
       return {
         ...state,
         water: water.length ? [...state.water, ...water] : state.water,
         snacks: snacks.length ? [...state.snacks, ...snacks] : state.snacks,
         mind: mind.length ? [...state.mind, ...mind] : state.mind,
-        entries: entries.length ? [...state.entries, ...entries] : state.entries,
+        entries: entries.length ? [...keptEntries, ...entries] : state.entries,
       };
     }
 
