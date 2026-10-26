@@ -26,6 +26,7 @@ import { minutesOfDay } from '@/src/domain/time/trackingDay';
 import { pausedUntilText, shortPolicyText } from '@/src/domain/nudges/describePolicy';
 import { useClockFormat, useHabitViews, useHighlights, useLiveNudge, useTodaySummary } from '@/src/state/hooks';
 import { type PinnedCardId } from '@/src/domain/today/pinned';
+import { ringsCentre } from '@/src/domain/today/ringsCentre';
 import { cycleTimeline, habitDayValue, mindSeries, policyFor, rotationItems, ruleFor, snackSeries, snackSuggestion, waterSeries } from '@/src/state/selectors';
 import { displayPhase, PHASE_LABELS, phaseQualifier } from '@/src/domain/cycle/timeline';
 import { formatDayShort } from '@/src/domain/time/format';
@@ -72,8 +73,10 @@ export default function TodayScreen() {
   const { width, fontScale } = useWindowDimensions();
   // Room beside the ring for "1,350 / 2,000 ml": about 150 dp at the default font size.
   const narrow = width - 2 * SPACE.screen - 2 * SPACE.cardPad - 164 - 16 < 150 * Math.min(fontScale, 1.6);
-  const centerValue = beforeNoon ? remaining.value : String(summary.snacksDone);
-  const centerLabel = beforeNoon ? `${remaining.unit} to go` : summary.snacksDone === 1 ? 'snack' : 'snacks';
+  // The centre names what the person tracks (ringsCentre): "Start empty" archives Water, so it is not owed "2,000 ml to go".
+  const centre = ringsCentre({ beforeNoon, tracksWater: showWater, tracksMovement: showMovement, tracksMind: showMind, remaining, snacksDone: summary.snacksDone, mindMinutes: formatNumber(summary.mindMinutes), habitCount: views.length });
+  const centerValue = centre.value;
+  const centerLabel = centre.label;
 
   const waterDetail = water.reachedGoal
     ? 'Goal reached'
@@ -211,7 +214,7 @@ export default function TodayScreen() {
             </Txt>
           </TodayRings>
           <View style={narrow ? styles.legendStacked : styles.legendBeside}>
-            <Legend color={c.cat.hydration} label="Hydration" value={`${logged.value} / ${goal.value} ${goal.unit}`} />
+            <Legend color={c.cat.hydration} label="Hydration" value={showWater ? `${logged.value} / ${goal.value} ${goal.unit}` : 'Not tracked'} />
             {/* With nothing asked today (no movement or mind habit, or every quota met), the count stands alone: "6 / 0" reads as broken;
                 a met week or month says so, since a full ring with "0 snacks" would read as an untouched day. */}
             <Legend color={c.cat.movement} label="Movement" value={summary.snacksTarget > 0 ? `${summary.snacksDone} / ${summary.snacksTarget} snacks` : summary.snacksSettled ? settledLegend(summary.snacksDone, 'snacks') : `${summary.snacksDone} snacks`} />
@@ -220,6 +223,8 @@ export default function TodayScreen() {
         </View>
       </Card>
 
+      {/* Movement nudges are about movement habits: with none, the Library's invitation is enough. */}
+      {showMovement ? (
       <NudgeCard
         nudge={nudge}
         hasRotation={rotationItems(state).length > 0}
@@ -233,6 +238,7 @@ export default function TodayScreen() {
         onSwap={() => actions.swapNudge()}
         onSettings={openSettings}
       />
+      ) : null}
 
       <SectionHeader title="Pinned" action="Choose cards" onAction={() => setPickerOpen(true)} />
 

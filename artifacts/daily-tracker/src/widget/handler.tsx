@@ -22,7 +22,7 @@ type TileKind = WidgetTile['kind'];
 function tileKindOf(raw: unknown): TileKind {
   return raw === 'water' || raw === 'rotation' ? raw : 'habit';
 }
-import { CLICK_LOG, TrackerWidget } from './TrackerWidget';
+import { CLICK_LOG, TrackerWidget, WidgetFallback } from './TrackerWidget';
 
 const EMPTY: WidgetModel = { day: '', tiles: [] };
 
@@ -36,12 +36,38 @@ function modelOf(state: TrackerState | null, notice?: string): WidgetModel {
 const TAP_FAILED = 'That tap could not be saved. Open Daily Tracker and log it there.';
 const LOAD_FAILED = 'Could not read your data. Open Daily Tracker.';
 
-/** Redraw every placed widget (all sizes) from one model. */
+/**
+ * Draw one widget through the library's synchronous renderer, with the fallback behind it: a throw
+ * inside the tree used to escape the task (Android then keeps the stale widget and the person,
+ * seeing an old number, taps again — a second real drink).
+ */
+function draw(render: (el: React.JSX.Element) => void, model: WidgetModel, width: number, height: number): void {
+  try {
+    render(<TrackerWidget model={model} width={width} height={height} />);
+  } catch (err) {
+    console.error('Widget draw failed', err);
+    try {
+      render(<WidgetFallback width={width} height={height} />);
+    } catch (again) {
+      console.error('Widget fallback draw failed', again);
+    }
+  }
+}
+
+/** Redraw every placed widget (all sizes) from one model; a throw inside the tree draws the fallback instead. */
 export async function drawAllWidgets(model: WidgetModel): Promise<void> {
-  await requestWidgetUpdate({
-    widgetName: WIDGET_NAME,
-    renderWidget: (info) => <TrackerWidget model={model} width={info.width} height={info.height} />,
-  });
+  try {
+    await requestWidgetUpdate({
+      widgetName: WIDGET_NAME,
+      renderWidget: (info) => <TrackerWidget model={model} width={info.width} height={info.height} />,
+    });
+  } catch (err) {
+    console.error('Widget draw failed', err);
+    await requestWidgetUpdate({
+      widgetName: WIDGET_NAME,
+      renderWidget: (info) => <WidgetFallback width={info.width} height={info.height} />,
+    });
+  }
 }
 
 /**
@@ -153,7 +179,7 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
 
   const model = modelOf(state, notice);
   const { width, height } = props.widgetInfo;
-  props.renderWidget(<TrackerWidget model={model} width={width} height={height} />);
+  draw(props.renderWidget, model, width, height);
   if (props.widgetAction === 'WIDGET_CLICK') {
     // Other instances of the widget show the same numbers.
     await drawAllWidgets(model).catch((err) => console.warn('Widget redraw failed', err));

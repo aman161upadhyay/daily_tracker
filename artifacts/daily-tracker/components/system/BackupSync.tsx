@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { AppState, Platform } from 'react-native';
 import { cleanupPending, deleteKeptSnapshots, deleteSnapshot, markCleanupPending } from '@/src/services/backup';
+import { reportBackup } from '@/src/services/backupHealth';
 import { afterSnapshots, committedSource, maybeSnapshot } from '@/src/services/snapshotSync';
 import { liveStore } from '@/src/state/liveStore';
 import { purgeTransferCache } from '@/src/services/transferCache';
@@ -32,6 +33,15 @@ export function BackupSync() {
   const enqueue = (job: () => Promise<void>) => {
     afterSnapshots(job).catch((err) => console.warn('[backup]', err));
   };
+  /** A delete the person was promised ("off", "Erase everything"): its outcome is shown in Your data. */
+  const enqueueDelete = (job: () => Promise<void>) => {
+    afterSnapshots(job)
+      .then(() => reportBackup('delete', null))
+      .catch((err) => {
+        console.warn('[backup]', err);
+        reportBackup('delete', err);
+      });
+  };
 
   useEffect(() => {
     if (!ready || Platform.OS === 'web') return;
@@ -51,15 +61,22 @@ export function BackupSync() {
           const source = committedSource(live);
           let used: TrackerState | null = null;
           return maybeSnapshot(() => (used = source())).then((written) => {
-            if (written) lastWritten.current = used;
+            if (written) {
+              lastWritten.current = used;
+              reportBackup('write', null);
+            }
           });
         })
-        .catch((err) => console.warn('[backup]', err));
+        .catch((err) => {
+          // Shown in Your data: "Android keeps a copy" must not stand while the copy is not being written.
+          console.warn('[backup]', err);
+          reportBackup('write', err);
+        });
     };
     cleanupPending()
       .then((pending) => {
-        if (pending === 'all') enqueue(deleteSnapshot);
-        else if (pending === 'kept') enqueue(deleteKeptSnapshots);
+        if (pending === 'all') enqueueDelete(deleteSnapshot);
+        else if (pending === 'kept') enqueueDelete(deleteKeptSnapshots);
       })
       .catch((err) => console.warn('[backup]', err));
     run();
@@ -83,8 +100,11 @@ export function BackupSync() {
     if (erased || turnedOff) {
       lastWritten.current = null;
       markCleanupPending()
-        .catch((err) => console.warn('[backup]', err))
-        .then(() => enqueue(deleteSnapshot));
+        .catch((err) => {
+          // The delete still runs now; only the restart safety net is missing, which the person hears of if the delete fails too.
+          console.warn('[backup]', err);
+        })
+        .then(() => enqueueDelete(deleteSnapshot));
       if (erased) enqueue(() => purgeTransferCache({ all: true }));
     }
   }, [ready, state]);

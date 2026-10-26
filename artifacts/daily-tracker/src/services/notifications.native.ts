@@ -251,13 +251,34 @@ async function writeBookkeeping(bk: Bookkeeping, expected: string): Promise<stri
 export interface SyncHealth {
   /** The last failure, or null while syncs succeed. */
   failure: { at: number; message: string } | null;
+  /** What the OS granted of the two background registrations, once they were attempted. */
+  background: BackgroundHealth | null;
 }
 
-let health: SyncHealth = { failure: null };
+/**
+ * The two things reminders need from the OS besides permission: the task that applies a button
+ * press while the app is dead, and the periodic refresh that plans past the 36-hour horizon. A
+ * refusal used to be a console line; the person then found their buttons dead or their reminders
+ * gone after a day and a half with nothing in Settings to explain it.
+ */
+export interface BackgroundHealth {
+  /** The notification-response task is registered (Done / Snooze work with the app closed). */
+  responses: boolean;
+  /** The background re-plan is registered (reminders keep being planned while the app stays closed). */
+  replan: 'registered' | 'unavailable';
+  /** Expo Go has neither; the installed app has both. */
+  expoGo: boolean;
+}
+
+let health: SyncHealth = { failure: null, background: null };
 const healthListeners = new Set<(h: SyncHealth) => void>();
 
+export function reportBackgroundHealth(background: BackgroundHealth): void {
+  setHealth({ ...health, background });
+}
+
 function setHealth(next: SyncHealth): void {
-  if (next.failure === health.failure) return;
+  if (next.failure === health.failure && next.background === health.background) return;
   health = next;
   for (const l of healthListeners) {
     try {
@@ -283,10 +304,10 @@ export function onSyncHealth(listener: (h: SyncHealth) => void): () => void {
 async function watched<T>(job: () => Promise<T>): Promise<T> {
   try {
     const out = await job();
-    setHealth({ failure: null });
+    if (health.failure) setHealth({ ...health, failure: null });
     return out;
   } catch (err) {
-    if (!(err instanceof SupersededError)) setHealth({ failure: { at: Date.now(), message: err instanceof Error ? err.message : String(err) } });
+    if (!(err instanceof SupersededError)) setHealth({ ...health, failure: { at: Date.now(), message: err instanceof Error ? err.message : String(err) } });
     throw err;
   }
 }
@@ -632,9 +653,26 @@ export function scheduleMindEnd(endAtMs: number, minutes: number, kind: MindKind
   });
 }
 
+/**
+ * Cancel the bell of a session that was paused or discarded. Three tries, then the rejection is
+ * the caller's: a bell that outlives its session rings "Session complete" for a session the person
+ * stopped, and its tap logs the minutes — the screen must be able to say so (app/mind.tsx).
+ */
 export function cancelMindEnd(): Promise<void> {
   ++mindBellGen;
-  return mindBellOp(() => Notifications.cancelScheduledNotificationAsync(MIND_END_ID).catch(() => {}));
+  return mindBellOp(async () => {
+    let failure: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await Notifications.cancelScheduledNotificationAsync(MIND_END_ID);
+        return;
+      } catch (err) {
+        failure = err;
+        await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+      }
+    }
+    throw failure;
+  });
 }
 
 // The test ring's schedule and cancel run one at a time and the newest request wins, like the mind

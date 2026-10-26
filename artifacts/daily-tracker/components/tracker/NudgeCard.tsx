@@ -12,7 +12,7 @@ import { useClockFormat } from '@/src/state/hooks';
 export interface NudgeCardProps {
   nudge: NextNudge | null;
   suggestion?: string;
-  /** Whether any movement snack is enabled for nudging. */
+  /** Whether any movement snack is enabled for nudging (the card is only shown when movement habits exist). */
   hasRotation: boolean;
   activeStartMin: number;
   activeEndMin: number;
@@ -34,7 +34,7 @@ export function NudgeCard({ nudge, suggestion, hasRotation, activeStartMin, acti
     // Says why nothing is planned, and promises no clock time the planner did not set: the first
     // slot of a day follows the active start by the interval, so "resume at 9:00 AM" was never true.
     const text = !hasRotation
-      ? 'Add a movement snack from the Library to get nudges.'
+      ? "Every movement reminder is off or paused. Turn one on from the habit's Reminders."
       : pausedUntil
         ? `Nudges are paused ${pausedUntil}. Resume them in Settings → Reminders.`
         : nowMin < activeStartMin
@@ -47,7 +47,7 @@ export function NudgeCard({ nudge, suggestion, hasRotation, activeStartMin, acti
         <Row gap={12}>
           <IconTile Glyph={UI.Bell} color={c.textTertiary} size={40} />
           <View style={{ flex: 1 }}>
-            <Txt role="title2">{!hasRotation ? 'No nudges yet' : pausedUntil ? 'Nudges paused' : 'No nudge due'}</Txt>
+            <Txt role="title2">{!hasRotation ? 'No movement nudges' : pausedUntil ? 'Nudges paused' : 'No nudge due'}</Txt>
             <Txt role="footnote" tone="secondary">
               {text}
             </Txt>

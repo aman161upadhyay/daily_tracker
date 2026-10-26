@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Switch, View } from 'react-native';
 import { Card } from '@/components/ui/Card';
-import { Divider, Row, Segmented } from '@/components/ui/primitives';
+import { Divider, PillButton, Row, Segmented } from '@/components/ui/primitives';
 import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import { APP_LOCK_DELAYS } from '@/src/domain/models';
-import { lockCapability, type LockCapability } from '@/src/services/appLock';
+import { lockCapability, setScreenProtection, type LockCapability } from '@/src/services/appLock';
+import { setProtectionStatus, useProtectionStatus } from '@/src/services/protectionState';
 import { useTracker } from '@/src/state/TrackerProvider';
 
 const DELAY_LABELS: Record<(typeof APP_LOCK_DELAYS)[number], string> = { 0: 'Right away', 1: '1 min', 5: '5 min', 15: '15 min' };
@@ -16,6 +17,11 @@ export function AppLockCard() {
   const { state, actions } = useTracker();
   const lock = state.settings.appLock;
   const [capability, setCapability] = useState<LockCapability | null>(null);
+  const protection = useProtectionStatus();
+  const protectionFailed = lock.enabled && protection !== null && protection.enabled && !protection.ok;
+  const retryProtection = () => {
+    setScreenProtection(true).then((r) => setProtectionStatus({ enabled: true, ...r }));
+  };
 
   useEffect(() => {
     let alive = true;
@@ -52,6 +58,17 @@ export function AppLockCard() {
           accessibilityLabel="App lock"
         />
       </Row>
+      {protectionFailed ? (
+        <>
+          <Divider />
+          <Row gap={8} style={{ paddingTop: 12, alignItems: 'center' }}>
+            <Txt role="footnote" tone="gold" style={{ flex: 1 }}>
+              {`Screenshots and the recent-apps preview are not blocked: the phone refused (${protection.reason ?? 'no reason given'}). The lock itself still works.`}
+            </Txt>
+            <PillButton label="Retry" kind="ghost" compact onPress={retryProtection} />
+          </Row>
+        </>
+      ) : null}
       {lock.enabled && available ? (
         <>
           <Divider />

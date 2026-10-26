@@ -40,8 +40,9 @@ function Ring({ tile, layout }: { tile: WidgetTile; layout: WidgetLayout }) {
   return (
     <OverlapWidget
       style={{ width: size, height: size }}
-      clickAction={CLICK_LOG}
-      clickActionData={{ habitId: tile.habitId, kind: tile.kind }}
+      // A ring that would log nothing (Steps, a met daily target) opens the habit, as its label says.
+      clickAction={tile.logs ? CLICK_LOG : 'OPEN_URI'}
+      clickActionData={tile.logs ? { habitId: tile.habitId, kind: tile.kind } : { uri: HABIT_URI(tile.habitId) }}
       accessibilityLabel={ringLabel(tile)}
     >
       <SvgWidget svg={ringSvg({ size, ratio: tile.ratio, color: tile.color })} style={{ width: size, height: size }} />
@@ -143,6 +144,25 @@ function Message({ text, width, height, padding }: { text: string; width: number
     <Frame width={width} height={height} padding={padding}>
       <TextWidget text={text} maxLines={3} style={{ fontSize: 12, fontFamily: FONT_SEMI, color: hex(C.textSecondary), textAlign: 'center' }} />
     </Frame>
+  );
+}
+
+/** What the widget says when drawing the real one threw: no primitives beyond a box and a line, so it cannot fail the same way. */
+export const DRAW_FAILED = 'Daily Tracker could not draw this widget. Tap to open the app.';
+
+/**
+ * The fallback drawn when `TrackerWidget` itself throws (a layout or font edge nobody foresaw):
+ * the person sees why the numbers are missing instead of a stale or blank widget, and a tap opens
+ * the app — never re-logs anything.
+ */
+export function WidgetFallback({ width, height }: { width: number; height: number }) {
+  return (
+    <FlexWidget
+      clickAction="OPEN_APP"
+      style={{ width: 'match_parent', height: 'match_parent', padding: 12, backgroundColor: hex(C.surface), borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}
+    >
+      <TextWidget text={DRAW_FAILED} maxLines={height < 80 ? 2 : 3} style={{ fontSize: width < 160 ? 11 : 12, fontFamily: FONT_SEMI, color: hex(C.gold), textAlign: 'center' }} />
+    </FlexWidget>
   );
 }
 

@@ -6,6 +6,7 @@ import { IconTile, PillButton } from '@/components/ui/primitives';
 import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import { authenticate, lockCapability, setScreenProtection } from '@/src/services/appLock';
+import { setProtectionStatus } from '@/src/services/protectionState';
 import { setAppLocked } from '@/src/services/lockState';
 import { useTracker } from '@/src/state/TrackerProvider';
 
@@ -57,9 +58,14 @@ export function AppLockGate() {
     }
   }, []);
 
-  // Screenshot / app-switcher protection follows the setting.
+  // Screenshot / app-switcher protection follows the setting; the outcome is kept where Settings
+  // can show a failure (and retry it) rather than describing a protection the OS refused.
   useEffect(() => {
-    void setScreenProtection(enabled);
+    let alive = true;
+    setScreenProtection(enabled).then((r) => alive && setProtectionStatus(enabled ? { enabled, ...r } : null));
+    return () => {
+      alive = false;
+    };
   }, [enabled]);
 
   // The lock turning on while the app is open locks right away: a restored backup that had it on

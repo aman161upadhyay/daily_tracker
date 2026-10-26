@@ -590,7 +590,10 @@ export function highlights(state: TrackerState, today: string): Highlight[] {
       prev.reduce((a, b) => a + b, 0),
       cur.reduce((a, b) => a + b, 0),
     );
-    const trend = change === null ? '' : change >= 0 ? ` Up ${change}% on last week.` : ` Down ${Math.abs(change)}% on last week.`;
+    // "On last week" only once last week was lived with the habit: on day 8 the previous window held
+    // one real day and six that predate the install, and 2,000 ml against 5,500 read as "Up 175%".
+    const livedBoth = dayDiff(water.createdDay, today) + 1 >= 14;
+    const trend = change === null || !livedBoth ? '' : change >= 0 ? ` Up ${change}% on last week.` : ` Down ${Math.abs(change)}% on last week.`;
     // Two empty weeks are not a highlight (a fresh install read "0 of the last 7 days" as history it
     // did not have); one empty week after a logged one is said plainly.
     const prevTotal = prev.reduce((a, b) => a + b, 0);
@@ -649,7 +652,10 @@ export function highlights(state: TrackerState, today: string): Highlight[] {
   const snacksThisWeek = snackSeries(state, today, 7).reduce((a, b) => a + b, 0);
   const snacksLastWeek = snackSeries(state, addDays(today, -7), 7).reduce((a, b) => a + b, 0);
   if (snacksThisWeek > 0) {
-    const change = percentChange(snacksLastWeek, snacksThisWeek);
+    // The same rule for snacks: a comparison needs two lived weeks of movement habits.
+    const firstMovementDay = state.habits.filter(isMovement).map((h) => h.createdDay).sort()[0];
+    const livedBoth = firstMovementDay !== undefined && dayDiff(firstMovementDay, today) + 1 >= 14;
+    const change = livedBoth ? percentChange(snacksLastWeek, snacksThisWeek) : null;
     out.push({
       id: 'snacks-week',
       title: `${snacksThisWeek} movement snacks this week`,

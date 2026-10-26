@@ -10,7 +10,9 @@ import { useColors } from '@/hooks/useColors';
 import { MIN_PASSWORD_LENGTH, type EncryptedBackup } from '@/src/data/backupCrypto';
 import { describeImport, exportState, inspectExport, pickImport, unlockExportAsync } from '@/src/data/transfer';
 import { backupAge, withExportStamp } from '@/src/domain/backup/backupAge';
-import { deleteKeptSnapshots, markCleanupPending, readKeptSnapshots, type Snapshot } from '@/src/services/backup';
+import { deleteKeptSnapshots, deleteSnapshot, markCleanupPending, readKeptSnapshots, type Snapshot } from '@/src/services/backup';
+import { reportBackup, useBackupFailure } from '@/src/services/backupHealth';
+import { afterSnapshots } from '@/src/services/snapshotSync';
 import type { TrackerState } from '@/src/state/types';
 import { useTracker } from '@/src/state/TrackerProvider';
 
@@ -33,6 +35,15 @@ export function BackupCard({ confirm }: { confirm: Confirm }) {
   const [locked, setLocked] = useState<EncryptedBackup | null>(null);
   /** Phone-backup snapshots an older build could not read, kept for this one to try (newest first). */
   const [kept, setKept] = useState<Snapshot[]>([]);
+  const backupFailure = useBackupFailure();
+  // The same queued delete BackupSync runs, from a button: "deleted" must end up meaning deleted.
+  const retryDelete = () => {
+    setBusy(true);
+    afterSnapshots(deleteSnapshot)
+      .then(() => reportBackup('delete', null))
+      .catch((err) => reportBackup('delete', err))
+      .finally(() => setBusy(false));
+  };
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -173,6 +184,17 @@ export function BackupCard({ confirm }: { confirm: Confirm }) {
             </View>
             <Switch value={s.cloudBackup} onValueChange={(cloudBackup) => actions.updateSettings({ cloudBackup })} trackColor={{ false: c.hairline, true: c.green }} thumbColor={c.text} accessibilityLabel="Android phone backup" />
           </Row>
+          {backupFailure ? (
+            <Row gap={8} style={{ marginTop: 12, alignItems: 'center' }}>
+              <UI.Info size={16} color={c.danger} weight="bold" />
+              <Txt role="caption" tone="secondary" style={{ flex: 1 }}>
+                {backupFailure.what === 'write'
+                  ? `The copy for Android phone backup could not be written (${backupFailure.message}). Android backs up the previous copy, if there is one; the app tries again when you come back to it. An exported file is the sure copy.`
+                  : `The phone-backup copy could not be deleted (${backupFailure.message}); it is still on this phone. The app tries again on its next start.`}
+              </Txt>
+              {backupFailure.what === 'delete' ? <PillButton label="Retry" kind="ghost" compact onPress={retryDelete} disabled={busy} /> : null}
+            </Row>
+          ) : null}
           {kept.length > 0 ? (
             <View style={{ marginTop: 12 }}>
               <Txt role="footnote" tone="secondary">

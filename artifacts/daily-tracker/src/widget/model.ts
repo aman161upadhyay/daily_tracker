@@ -33,6 +33,12 @@ export interface WidgetTile {
   color: string;
   /** The Steps habit: its count comes from the phone or the app, a tap on the ring logs nothing. */
   steps?: boolean;
+  /**
+   * Whether a tap on the ring logs something — the same rule as `completeFromNudge`: water and snacks
+   * always, Steps never, any other habit until today's own target is met (a met week with today
+   * open still logs). A ring that logs nothing opens the habit instead, and TalkBack says which.
+   */
+  logs: boolean;
 }
 
 export interface WidgetModel {
@@ -104,7 +110,9 @@ function habitTile(state: TrackerState, habit: Habit, today: string): WidgetTile
   const weekly = view.rule.cadence !== 'DAILY';
   const doneToday = view.todayValue >= view.target;
   const done = weekly ? view.todayRatio >= 1 : doneToday;
-  const base = { habitId: habit.id, kind: 'habit' as const, name: habit.name, ratio: clamp01(view.todayRatio), done, color, ...(habit.presetId === 'steps' ? { steps: true } : {}) };
+  const steps = habit.presetId === 'steps';
+  const logs = !steps && (!!habit.snackType || !doneToday);
+  const base = { habitId: habit.id, kind: 'habit' as const, name: habit.name, ratio: clamp01(view.todayRatio), done, color, logs, ...(steps ? { steps: true } : {}) };
 
   if (habit.type === 'YES_NO') {
     const caption = weekly ? `${view.periodDone ?? 0} of ${view.periodQuota ?? view.rule.timesPerPeriod} days` : doneToday ? 'Done' : 'Tap to log';
@@ -132,6 +140,7 @@ export function widgetModel(state: TrackerState, today: string, nowMs: number, z
         ratio: clamp01(summary.rings.hydration),
         done: logged >= state.settings.waterGoalMl,
         color: colors.dark.cat.hydration,
+        logs: true,
       };
     }
     if (automatic && habit.snackType) {
@@ -147,6 +156,7 @@ export function widgetModel(state: TrackerState, today: string, nowMs: number, z
         ratio: clamp01(summary.rings.movement),
         done: settled || (summary.snacksTarget > 0 && summary.snacksDone >= summary.snacksTarget),
         color: colors.dark.cat.movement,
+        logs: true,
       };
     }
     return habitTile(state, habit, today);
@@ -154,11 +164,21 @@ export function widgetModel(state: TrackerState, today: string, nowMs: number, z
   return { day: today, tiles };
 }
 
-/** What TalkBack reads for a ring: the progress, then what a tap does (pure, so tests can read it). */
+/** What TalkBack reads for a ring: the progress, then what a tap does — the same `logs` rule the ring's click action follows. */
 export function ringLabel(tile: WidgetTile): string {
   const progress = `${tile.name}: ${tile.value} ${tile.caption}`.trim();
-  // A tap logs only what the tap handler would log: a met daily target and the Steps count take no more (widgetTapActions).
-  const action = tile.kind === 'water' ? 'Double-tap to log a glass.' : tile.kind === 'rotation' ? 'Double-tap to log the next snack.' : tile.steps ? 'Opens the habit.' : tile.done ? 'Done for today.' : 'Double-tap to log it.';
+  const action =
+    tile.kind === 'water'
+      ? 'Double-tap to log a glass.'
+      : tile.kind === 'rotation'
+        ? 'Double-tap to log the next snack.'
+        : !tile.logs
+          ? tile.steps
+            ? 'Opens the habit.'
+            : 'Done for today. Opens the habit.'
+          : tile.done
+            ? 'Double-tap to log another.'
+            : 'Double-tap to log it.';
   return `${progress}. ${action}`;
 }
 

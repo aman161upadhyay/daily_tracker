@@ -12,9 +12,12 @@ import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import type { MindKind } from '@/src/domain/models';
 import { now } from '@/src/domain/time/clock';
-import { formatMinSec } from '@/src/domain/time/format';
+import { formatClock, formatMinSec } from '@/src/domain/time/format';
+import { minutesOfDay } from '@/src/domain/time/trackingDay';
 import { cancelMindEnd, scheduleMindEnd } from '@/src/services/notifications';
 import { useTracker } from '@/src/state/TrackerProvider';
+import { useClockFormat } from '@/src/state/hooks';
+import { showToast } from '@/components/ui/Toast';
 
 const MEDITATION_PRESETS = [5, 10, 13, 20];
 const BREATHING_MINUTES = 5;
@@ -25,7 +28,8 @@ export default function MindScreen() {
   const c = useColors();
   const goBack = useBackOrHome();
   const params = useLocalSearchParams<{ kind?: string }>();
-  const { actions } = useTracker();
+  const { actions, zone } = useTracker();
+  const clock = useClockFormat();
 
   const [kind, setKind] = useState<MindKind>(params.kind === 'BREATHING' ? 'BREATHING' : 'MEDITATION');
   const [minutes, setMinutes] = useState(13);
@@ -104,17 +108,40 @@ export default function MindScreen() {
   /** The instant the running session's bell is set for (fixed for the session: the clock runs on wall time). */
   const bellAt = useRef(0);
   const [bellError, setBellError] = useState<string | null>(null);
+  /** The bell of a stopped session is still set (its cancel failed): shown while the timer is not running. */
+  const [bellStale, setBellStale] = useState<string | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  /**
+   * The bell of a stopped session could not be cancelled (three tries): said where the person is —
+   * on this screen while it is open, as a toast after leaving it — because the phone will ring
+   * "Session complete" at the planned time, and a tap on that bell logs the session.
+   */
+  const bellOutlived = (err: unknown) => {
+    console.warn('Could not cancel the end bell', err);
+    if (bellAt.current <= now()) return; // Due already: the bell is the session's own and should ring.
+    const at = formatClock(minutesOfDay(bellAt.current, zone), clock);
+    const message = `The end bell could not be cancelled, so the phone may still ring at ${at}. Swipe that notification away — tapping it would log the session.`;
+    if (mounted.current) setBellStale(message);
+    else showToast({ message, durationMs: 10_000 });
+  };
   useEffect(() => {
     if (!running) {
       if (bellSet.current) {
         bellSet.current = false;
-        void cancelMindEnd();
+        cancelMindEnd().catch(bellOutlived);
       }
       return;
     }
     bellSet.current = true;
     bellAt.current = now() + remainingMs;
     setBellError(null);
+    setBellStale(null);
     scheduleMindEnd(bellAt.current, Math.round(totalMs / 60_000), kind).catch((err) => {
       console.warn('Could not schedule the end bell', err);
       setBellError('The end bell could not be set, so the phone will not ring when time is up. Keep the screen on, or check notification permission in Settings.');
@@ -122,7 +149,7 @@ export default function MindScreen() {
     return () => {
       if (bellSet.current) {
         bellSet.current = false;
-        void cancelMindEnd();
+        cancelMindEnd().catch(bellOutlived);
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -134,7 +161,10 @@ export default function MindScreen() {
     if (!running || Platform.OS === 'web') return;
     const sub = AppState.addEventListener('change', (st) => {
       if (st !== 'active' || !bellSet.current || bellAt.current - now() < 1000) return;
-      scheduleMindEnd(bellAt.current, Math.round(totalMs / 60_000), kind).catch(() => {});
+      scheduleMindEnd(bellAt.current, Math.round(totalMs / 60_000), kind).catch((err) => {
+        // The first schedule stood; this re-submission failing means the bell keeps the precision it had.
+        console.warn('Could not re-submit the end bell', err);
+      });
     });
     return () => sub.remove();
   }, [running, totalMs, kind]);
@@ -298,6 +328,11 @@ export default function MindScreen() {
         {bellError && running ? (
           <Txt role="caption" tone="gold" align="center" style={{ marginTop: 10 }} accessibilityLiveRegion="polite">
             {bellError}
+          </Txt>
+        ) : null}
+        {bellStale && !running ? (
+          <Txt role="caption" tone="gold" align="center" style={{ marginTop: 10 }} accessibilityLiveRegion="polite">
+            {bellStale}
           </Txt>
         ) : null}
       </Card>

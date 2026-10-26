@@ -15,10 +15,10 @@ Last updated: 2026-10-26, autonomous session (council rounds 1–20 fixed; see j
 |---|---|
 | App | Daily Tracker — private Android tracker: habits · water · movement snacks · meditation · opt-in cycle · home-screen widget · configurable nudges · Health Connect import · app lock · encrypted backups |
 | Code | `artifacts/daily-tracker/` — Expo SDK 57, React Native 0.86, TypeScript, Expo Router, expo-sqlite |
-| Version | `app.json` `version 0.28.0`, `versionCode 28`, tag `v0.28` (M6 complete + council rounds 1–24) |
+| Version | `app.json` `version 0.29.0`, `versionCode 29`, tag `v0.29` (M6 complete + council rounds 1–25) |
 | Repo | https://github.com/aman161upadhyay/daily_tracker.git, branch `main`, commits authored as Aman |
 | Milestones | M0 skeleton ✅ · M1 storage/streaks/onboarding ✅ · M2 nudges/notifications ✅ · M3 widget ✅ · M4 Health Connect/Body ✅ · M5 cycle ✅ · M6 theme/lock/backup/signing ✅ (`docs/IMPLEMENTATION_PLAN.md`) |
-| Verified here | type-check (three packages), 508 unit tests (incl. a 75-sequence randomised nudge simulation and a seeded state fuzz), Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks (incl. the Health Connect rationale activity), web walkthroughs by a browser-driving tester |
+| Verified here | type-check (three packages), 521 unit tests (incl. a 75-sequence randomised nudge simulation and a seeded state fuzz), Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks (incl. the Health Connect rationale activity), web walkthroughs by a browser-driving tester |
 | Never run yet | a real Android device. Everything native (widget taps, notification buttons with the app closed, Health Connect, app lock, Auto Backup, signed APK) is coded and reviewed but untested on hardware — `docs/DEVICE_CHECKLIST.md` lists the exact rows |
 | User's next step | `docs/GET_IT_ON_YOUR_PHONE.md` (plain-language build guide) |
 
@@ -675,6 +675,28 @@ contradicts one, write down why.
     chips follow the clock format. **Why:** the coherence lens found eight places where two words
     named one thing or one word two things; each costs a tap to find out which.
 
+107. **A control and its description are derived from one fact.** The widget ring's click action
+    (log, or open the habit) and its TalkBack hint both read `WidgetTile.logs`, which is computed by
+    the same rule as the tap handler (`completeFromNudge`): water and snacks always, Steps never, any
+    other habit until today's own target is met. **Why:** round 24 made the *label* honest while the
+    *action* stayed "log" — a Steps ring that said "Opens the habit" did nothing, a "Done for today"
+    snack ring still logged. Two renderings of one rule drift unless they share the variable.
+
+108. **A comparison names two spans that were both lived.** "Up 20% on last week" is said only once
+    the habit has existed for the whole of last week (`createdDay`); before that the week stands on
+    its own ("514 ml a day on average", "Every one of them counts as a sitting break"). **Why:** on
+    day eight the previous window held one real day and six that predate the install, and 3,500 ml
+    against 500 read as "Up 600%" — a number about the install date, not the habit.
+
+109. **A background promise has a visible failure.** Everything Settings describes as happening on
+    its own — the phone-backup copy, its delete, screenshot protection, the notification-button task,
+    the background re-plan — records its last outcome in a small in-memory store the describing card
+    reads (`backupHealth`, `protectionState`, `SyncHealth.background`), with a Retry where a retry is
+    possible. The widget draws from the committed state while a save has failed, and draws a fallback
+    tile when its own tree throws. **Why:** the error-path lens found six places where a refusal was a
+    `console.warn` and the screen kept describing the promise as kept — "Android keeps a copy" over a
+    copy that was not being written, a lock that promised blocked screenshots it had not blocked.
+
 ### How council findings are judged
 - Accept when: evidence is concrete (file:line, reproducible), it violates a paradigm or a user constraint,
   or it would break on a real phone. Severity drives order: data loss / crash / privacy > wrong behaviour >
@@ -781,12 +803,39 @@ Dates are America/New_York. Commits are on `main`.
 | 2026-10-26 night | **Round-24 fixes:** the automatic movement widget tile reads a met week as "nothing due" and done (R24-A1); `StepsCardView.source` and the Today Steps card opening the habit page when the figures are hand-logged (UX24-1); `ringLabel` moved into the pure widget model and made honest about taps, the picker's copy, a snack tile in the habit's own unit (UX24-2, UX24-7); the empty NudgeCard's four honest states and `pausedUntilText` shared with Settings (UX24-3 / S24-1, paradigm 105); a discard guard on the cycle `ReminderSheet` and a "Changes are kept when the sheet closes" line on the cycle `DaySheet` (UX24-4); "Pin to Today" → "Show first" (UX24-5); `adherenceSpan` and the first-week water highlight (UX24-6, paradigm 104); `shortPolicyText` "Paused · …" (S24-2); the Settings / Health Connect / backup-pointer / day-boundary copy (UX24-7, paradigm 106). |
 | 2026-10-26 night | Verification: tsc clean, 508 tests (7 new in `tests/round24.test.ts`: the met week's tile and its TalkBack line, a snack tile in walks, the paused row hint, the pause wording on the same and a later day in both clocks, the adherence span at 1 / 2 / 3 / 14 / 60 days, the water highlight silent on day one and "3 of your first 3 days" on day three then the usual week from day seven, the Steps source), browser walk of Today / a habit page / Settings / Cycle on the preview (see §6 Round 24), `expo export` release bundle; pushed as `v0.28`. |
 
+| 2026-10-26 night | **Council round 25** — three lenses over the round-24 result: a diff review with probes, a fresh-install simulation (a "Start empty" person, a water-only person, a movement-only person across their first two weeks) and an error-path review (every `catch` that ends in a console line). Two mediums from the diff, one medium and two lows from the simulation, two highs and four mediums from the error paths; nothing critical. |
+| 2026-10-26 night | **Round-25 fixes:** `WidgetTile.logs` from the tap handler's rule, the ring's click action and `ringLabel` both derived from it (R25-A1 / R25-A2, paradigm 107); week-over-week water and snack comparisons gated on two lived weeks (F25-01, paradigm 108); `ringsCentre` — Today's centre names what the person tracks and "Start empty" is not owed 2,000 ml, the Hydration legend reads "Not tracked", the nudge card is shown only with movement habits and its empty state says "No movement nudges" when every reminder is off (F25-02 / F25-03); `WidgetSync` draws the committed state while a save has failed (E25-01); `backupHealth` and the Your data notice with Retry for the phone-backup copy's write and delete (E25-02); the mind bell's cancel retries three times and a surviving bell is said on the screen or as a toast (E25-03); `SyncHealth.background` and two Reminders notices for a refused response task / background re-plan, Expo Go named as normal (E25-04); `WidgetFallback` behind every widget draw (E25-05); `setScreenProtection` returns its outcome, `protectionState`, and the App lock card's notice with Retry (E25-06). |
+| 2026-10-26 night | Verification: tsc clean, 521 tests (13 new in `tests/round25.test.ts`: every sample tile's `logs` equals the handler's verdict, the Steps ring, a met daily yes/no, a met week with today open, a snack habit at target, water and rotation; the water and snack comparisons on day 8 / Sunday / day 14 with up and down weeks; `ringsCentre` across the four kinds of person; the backup-failure clearing rule; the protection status), browser walk of Today with sample data and a "Start empty" install on the preview (see §6 Round 25), `expo export` release bundle; pushed as `v0.29`. |
+
 (Entries for each council round follow below as they happen.)
 
 ## 6. Council log
 
 Format per round: lens → findings (severity · title · disposition · commit). Dispositions: **fixed**,
 **rejected** (reason), **deferred** (needs user/phone).
+
+### Round 25 (2026-10-26 night)
+
+Three lenses over the round-24 result — a diff review with probes, a fresh-install simulation (the first fourteen days of a "Start empty" person, a water-only person and a movement-only person, `/tmp`-only script) and an error-path review (every `catch` that ends in a console line, read for what the screen says meanwhile).
+
+**Diff review**
+- R25-A1 med · the Steps ring's TalkBack line said "Opens the habit." (round 24) but its click action was still the log action, which the handler answers with nothing — a tap did nothing · **fixed** — `WidgetTile.logs`; a ring that logs nothing is an `OPEN_URI` to the habit (paradigm 107); test over every sample tile.
+- R25-A2 med · "Done for today." hid taps that still log: a chosen snack habit at its daily target still logged a snack, a weekly habit `done` from its period ratio still logged when today was open · **fixed** — `logs` follows `completeFromNudge` exactly (snacks always; others by today's own value); the label says "Double-tap to log another." where it does and "Done for today. Opens the habit." where it does not; tests for both.
+
+**Fresh-install simulation**
+- F25-01 med · the week-over-week percentage in highlights compared against a partial first week ("Up 600%" on day eight) · **fixed** — gated on `createdDay` for water and on the oldest movement habit for snacks (paradigm 108); tests on day 8, Sunday, day 14 with up and down weeks.
+- F25-02 low · a person without movement habits saw "No nudges yet / Add a movement snack from the Library" (and a movement-only person with every reminder off saw the same, though they have snacks) · **fixed** — the card is shown only with movement habits; its empty state reads "No movement nudges — every movement reminder is off or paused".
+- F25-03 low · a "Start empty" install (Water archived) read "2,000 ml to go" in the rings and "Hydration 0 / 2,000 ml" · **fixed** — `ringsCentre` names what is tracked (water → snacks → water → Mind → habit count → "nothing tracked"); the legend reads "Not tracked"; browser-checked on a fresh install.
+
+**Error paths**
+- E25-01 high · `WidgetSync` redrew the widget from the in-memory state after the database refused the save (the headless path already drew the committed state) · **fixed** — while `storageError` is a failed save the widget draws `committed()`, and the live state again once the retry lands.
+- E25-02 high · the Auto Backup snapshot, the cleanup marker and the delete failed into `console.warn` while Your data said "Android keeps a copy" / "deleted" · **fixed** — `backupHealth` records the last write or delete failure; Your data shows it under Android phone backup with a Retry for the delete; a later success of the same kind clears it (paradigm 109; test). Headless snapshot failures (widget tap, notification press) are still console-only: the next foreground attempt reports.
+- E25-03 med · the mind bell's cancel swallowed its rejection: a discarded session's bell rang "Session complete" and its tap logged the minutes · **fixed** — `cancelMindEnd` tries three times then rejects; the screen shows "The end bell could not be cancelled, so the phone may still ring at 9:13 PM. Swipe that notification away — tapping it would log the session." while open, as a toast after leaving; the foreground re-submit's failure is logged by name.
+- E25-04 med · the response-task and background re-plan registrations' results were dropped: dead notification buttons and reminders that stop after 36 hours closed looked like a healthy app · **fixed** — `SyncHealth.background` (`reportBackgroundHealth` from the scheduler); Reminders shows one notice per refusal, naming Expo Go as normal and battery settings as the usual fix.
+- E25-05 med · `renderWidget` ran outside the handler's try; a throw inside the widget tree left the stale widget standing (and a person retapping) · **fixed** — `draw()` with `WidgetFallback` ("Daily Tracker could not draw this widget. Tap to open the app.") behind the headless draw, `drawAllWidgets` and the foreground `refreshWidgets`.
+- E25-06 med · `preventScreenCaptureAsync` failing was a warning; the lock described blocked screenshots it had not blocked · **fixed** — `setScreenProtection` returns `{ ok, reason }`, the gate records it in `protectionState`, the App lock card shows "Screenshots and the recent-apps preview are not blocked: the phone refused (…). The lock itself still works." with Retry.
+
+**Browser walk on 0.29.0** — scripted Chromium against the preview: sample data (the rings' centre "6 snacks" in the afternoon, "Hydration 1,550 / 2,000 ml", the live nudge card, Settings' App lock card) and a fresh install through onboarding with every preset deselected ("Start empty": centre "– nothing tracked", "Hydration Not tracked", no nudge card, "No habits yet"); no console errors.
 
 ### Round 24 (2026-10-26 night)
 
@@ -1645,7 +1694,7 @@ Five lenses over the round-6 result, each a fresh read-only session with its own
 - PIPE10-03 — reconstruction of merged reminders scheduled by v0.12 (they are replaced on the first sync after the update).
 
 ### Device verification owed
-- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10, T1–T11, U1–U11, V1–V11, X1–X11, Y1–Y14, Z1–Z13, AA1–AA16, AB1–AB11, AC1–AC8, AD1–AD7, AE1–AE6, AF1–AF5, AG1–AG6, AH1–AH2, AI1–AI3, AJ1–AJ4, AK1–AK4, AL1–AL3, AM1–AM4, AN1–AN6, AO1–AO4 have never been run on hardware. First build on the laptop is the next real milestone — and the reminder self-test (Settings → Reminders → Test) is the first thing to run on it.
+- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10, T1–T11, U1–U11, V1–V11, X1–X11, Y1–Y14, Z1–Z13, AA1–AA16, AB1–AB11, AC1–AC8, AD1–AD7, AE1–AE6, AF1–AF5, AG1–AG6, AH1–AH2, AI1–AI3, AJ1–AJ4, AK1–AK4, AL1–AL3, AM1–AM4, AN1–AN6, AO1–AO4, AP1–AP6 have never been run on hardware. First build on the laptop is the next real milestone — and the reminder self-test (Settings → Reminders → Test) is the first thing to run on it.
 - Residual risk carried knowingly: two JavaScript runtimes writing SQLite at once (UPG6-03, row V11). If the device run shows a lost write there, the fix is a database revision compared inside the write transaction.
 - Rows added in round 7: X1–X5 (exact alarms and the offline re-plan — the two library defaults the platform lens read in the sources), X6 (sheets in a short window), X7–X9 (Today without the trio, cycle off / hidden), X10–X11 (long titles, the drink ceiling).
 - Rows added in round 8: Y1–Y3 (snapshot replacement, kept copies, journaled deletes), Y4–Y6 (speculative and birth-control reminders, estimated wording), Y7–Y10 (widget sizes, font scale, notice), Y11–Y14 (drink reconcile, one night across sources, late records and backfill, permission names).
@@ -1662,6 +1711,7 @@ Five lenses over the round-6 result, each a fresh read-only session with its own
 - Rows added in round 20: AK1 (a phone set to 24-hour time writes every time "21:30" under Automatic, and follows the switch when it is flipped in the background), AK2 (an archived preset added again with chosen days rings on those days and keeps its history), AK3 (an encrypted export of a large state keeps the busy label moving and Cancel responsive), AK4 (amounts typed on German and Arabic keyboards); AJ4 now expects 0.24.0.
 - Rows added in round 21: AL1 (the reminder self-test on a locked phone, then with the app killed; "No" lists the checks), AL2 (Cancel during an unlock: no replace confirmation afterwards; a wrong password's error does not reach the next sheet), AL3 (a crafted backup with a fractional rotation offset is refused at import).
 - Rows added in round 22: AM1 (TalkBack: a sheet announces its title on open, headings are reachable by heading navigation on Today, Settings and a habit page), AM2 (a 320-dp-class phone or display size "Largest": the rings card stacks, "Done now" / "+250 ml" / "Period started today" whole, the Log sheet's button inside the sheet), AM3 (the self-test's Cancel under a refused cancel — hard to stage; at least: Send twice quickly leaves one ring, Cancel leaves none), AM4 (a test sent on a fresh install before any reminder was planned still rings — the channel exists).
+- Rows added in round 25: AP1 (the Steps ring opens the habit; a met daily ring opens it; an open ring logs — each as TalkBack says), AP2 (a widget redraw under a failed save shows the saved number), AP3 (the phone-backup copy's write and delete failures shown in Your data; Retry), AP4 (a discarded meditation's bell: none rings; if the cancel fails, the notice names the time), AP5 (Reminders' notices for a refused button task / background re-plan — expected in Expo Go, absent in the installed app), AP6 (App lock's screenshot protection: a screenshot attempt is blocked; the notice and Retry if the phone refuses).
 - Rows added in round 24: AO1 (a met week on the widget: "nothing due", a full ring, TalkBack's "Double-tap to log the next snack" still true), AO2 (the cycle reminder sheet's discard question under Back and the scrim), AO3 (the empty nudge card during a pause, before and after the active hours, on a spent day), AO4 (a hand-logged Steps card opening the habit page).
 - Rows added in round 23: AN1 (Android 15, gesture and 3-button navigation: every sheet's last button and the Toast's Undo above the navigation bar), AN2 (a 568-dp-tall phone with the keyboard up: amounts, names, backup passwords and stepper values stay reachable; the password field opens the keyboard on its own), AN3 (font scale 1.3 / 2.0 at 390 and 320 dp: calendar dates, the onboarding numbers, badges, tabs, long totals), AN4 (Back during a habit edit, a running timer and a confirm Alert: the discard question, the timer pausing and resuming, a dismissed confirm deleting nothing), AN5 (split screen at the smallest window: Mind and onboarding scroll, a sheet's Close and the lock's Unlock reachable, nothing private shown), AN6 (opposite app and phone themes: a cold start's splash-to-palette transition, confirm Alerts in the app's palette after the fix, status and navigation icons legible); AJ4 now expects 0.27.0.
 - PLAT12-03 (deferred): after a reboot Android drops expired one-shot alarms before Expo's boot receiver runs; the next sync reads them as rung and the daily cap is spent a slot early. A fix needs a Kotlin boot receiver that records the boot instant for the JavaScript side; AC5 measures how often it bites.

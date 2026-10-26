@@ -14,8 +14,10 @@ import {
   beginHandling,
   endHandling,
   registerBackgroundReplan,
+  reportBackgroundHealth,
   type NudgeResponse,
 } from '@/src/services/notifications';
+import { isRunningInExpoGo } from 'expo';
 import { registerResponseTask, replayPendingResponses } from '@/src/services/nudgeTasks';
 import { contextFor, reconcileAndSync } from '@/src/services/replan';
 import { nudgeResponseActions, type CommandContext } from '@/src/state/commands';
@@ -80,8 +82,9 @@ export function NudgeScheduler() {
   useEffect(() => {
     if (!NOTIFICATIONS_SUPPORTED || !ready) return;
     const remove = addResponseListener((r) => void handle(r).catch((err) => console.warn('Notification press failed', err)));
-    void registerResponseTask();
-    void registerBackgroundReplan();
+    // What the OS granted is shown in Settings → Reminders: dead buttons and reminders that stop
+    // after a day and a half closed are otherwise indistinguishable from a healthy app.
+    void Promise.all([registerResponseTask(), registerBackgroundReplan()]).then(([responses, replan]) => reportBackgroundHealth({ responses, replan, expoGo: isRunningInExpoGo() }));
     // Presses an earlier process wrote down and never confirmed applied, then the one that
     // launched the app (if any): the launch response is the newest, and the inbox dedupes both.
     void replayPendingResponses()

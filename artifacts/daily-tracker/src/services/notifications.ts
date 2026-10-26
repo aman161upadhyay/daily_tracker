@@ -40,13 +40,22 @@ export class OsRefusedError extends Error {
   }
 }
 
+export interface BackgroundHealth {
+  responses: boolean;
+  replan: 'registered' | 'unavailable';
+  expoGo: boolean;
+}
+
 export interface SyncHealth {
   failure: { at: number; message: string } | null;
+  background: BackgroundHealth | null;
 }
 
 export function syncHealth(): SyncHealth {
-  return { failure: null };
+  return { failure: null, background: null };
 }
+
+export function reportBackgroundHealth(_background: BackgroundHealth): void {}
 
 export function onSyncHealth(_listener: (h: SyncHealth) => void): () => void {
   return () => {};

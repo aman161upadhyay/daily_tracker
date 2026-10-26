@@ -28,10 +28,19 @@ export function registerWidgetTaskHandler(): void {
 export async function refreshWidgets(state: TrackerState, today: string, nowMs: number, zone: string): Promise<void> {
   if (!WIDGET_SUPPORTED) return;
   const rnaw = require('react-native-android-widget') as Rnaw;
-  const { TrackerWidget } = require('@/src/widget/TrackerWidget') as Widget;
+  const { TrackerWidget, WidgetFallback } = require('@/src/widget/TrackerWidget') as Widget;
   const model = widgetModel(state, today, nowMs, zone);
-  await rnaw.requestWidgetUpdate({
-    widgetName: WIDGET_NAME,
-    renderWidget: (info) => React.createElement(TrackerWidget, { model, width: info.width, height: info.height }),
-  });
+  try {
+    await rnaw.requestWidgetUpdate({
+      widgetName: WIDGET_NAME,
+      renderWidget: (info) => React.createElement(TrackerWidget, { model, width: info.width, height: info.height }),
+    });
+  } catch (err) {
+    // A throw inside the tree: say so on the widget rather than leave an old number standing.
+    console.error('Widget draw failed', err);
+    await rnaw.requestWidgetUpdate({
+      widgetName: WIDGET_NAME,
+      renderWidget: (info) => React.createElement(WidgetFallback, { width: info.width, height: info.height }),
+    });
+  }
 }

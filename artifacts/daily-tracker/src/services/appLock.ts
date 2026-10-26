@@ -28,5 +28,14 @@ export async function authenticate(): Promise<boolean> {
   return true;
 }
 
+/** The outcome of asking the OS for (or releasing) screenshot / recents protection. */
+export interface ProtectionResult {
+  ok: boolean;
+  /** Why the OS refused, for Settings. */
+  reason?: string;
+}
+
 /** Hide the app's content from screenshots and the recent-apps switcher while the lock is on. */
-export async function setScreenProtection(_enabled: boolean): Promise<void> {}
+export async function setScreenProtection(_enabled: boolean): Promise<ProtectionResult> {
+  return { ok: true };
+}

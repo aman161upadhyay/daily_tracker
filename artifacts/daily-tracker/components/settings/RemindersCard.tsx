@@ -216,6 +216,22 @@ export function RemindersCard() {
             </Txt>
           </Row>
         ) : null}
+        {s.remindersEnabled && perm === 'granted' && health.background && !health.background.responses ? (
+          <Row gap={8} style={{ alignItems: 'center' }}>
+            <UI.Info size={16} color={c.gold} weight="bold" />
+            <Txt role="caption" tone="secondary" style={{ flex: 1 }}>
+              {`The Done and Snooze buttons on reminders work only while the app is open: the phone refused the background task that applies them. Tapping a reminder still opens the app.${health.background.expoGo ? ' Normal in Expo Go; the installed app has it.' : ''}`}
+            </Txt>
+          </Row>
+        ) : null}
+        {s.remindersEnabled && perm === 'granted' && health.background && health.background.replan === 'unavailable' ? (
+          <Row gap={8} style={{ alignItems: 'center' }}>
+            <UI.Info size={16} color={c.gold} weight="bold" />
+            <Txt role="caption" tone="secondary" style={{ flex: 1 }}>
+              {`Reminders are planned about a day and a half ahead, and the phone refused the background refresh that plans further — so they stop if the app stays closed longer than that. Opening the app, or tapping a reminder or the widget, plans again.${health.background.expoGo ? ' Normal in Expo Go; the installed app refreshes on its own.' : ' Allowing background activity for the app in battery settings usually fixes it.'}`}
+            </Txt>
+          </Row>
+        ) : null}
       </View>
 
       {s.remindersEnabled && perm === 'granted' && NOTIFICATIONS_SUPPORTED ? (

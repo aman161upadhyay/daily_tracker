@@ -6,9 +6,9 @@
  */
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as ScreenCapture from 'expo-screen-capture';
-import type { LockCapability } from './appLock';
+import type { LockCapability, ProtectionResult } from './appLock';
 
-export type { LockCapability } from './appLock';
+export type { LockCapability, ProtectionResult } from './appLock';
 
 const PROTECTION_KEY = 'app-lock';
 
@@ -43,11 +43,14 @@ export async function authenticate(): Promise<boolean> {
  * blank card in the recent-apps switcher — the lock screen would otherwise
  * cover the app only after the thumbnail was already taken.
  */
-export async function setScreenProtection(enabled: boolean): Promise<void> {
+export async function setScreenProtection(enabled: boolean): Promise<ProtectionResult> {
   try {
     if (enabled) await ScreenCapture.preventScreenCaptureAsync(PROTECTION_KEY);
     else await ScreenCapture.allowScreenCaptureAsync(PROTECTION_KEY);
+    return { ok: true };
   } catch (err) {
+    // Reported, not swallowed: the lock's privacy promise is only as good as this call (Settings shows it with a Retry).
     console.warn('Screen protection could not be changed', err);
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
   }
 }
