@@ -5,3 +5,5 @@
 export async function registerResponseTask(): Promise<boolean> {
   return false;
 }
+
+export async function replayPendingResponses(): Promise<void> {}

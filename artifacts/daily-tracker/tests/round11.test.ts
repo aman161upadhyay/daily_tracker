@@ -119,7 +119,8 @@ describe('bookkeeping: a dead sync is read back', () => {
   it('parses a stored record leniently and never as a failure', () => {
     assert.deepEqual(parseBookkeeping(null), EMPTY_BOOKKEEPING);
     assert.deepEqual(parseBookkeeping('nope'), EMPTY_BOOKKEEPING);
-    assert.deepEqual(parseBookkeeping('{"ledger":[{"id":"a"}],"cancelling":["a",1],"scheduling":"x"}'), { ledger: [{ id: 'a' }], journal: [], cancelling: ['a'], scheduling: [] });
+    // Round 12: entries are checked one by one; a damaged one is dropped rather than kept to crash a later sync.
+    assert.deepEqual(parseBookkeeping('{"ledger":[{"id":"a"}],"cancelling":["a",1],"scheduling":"x"}'), { ledger: [], journal: [], cancelling: ['a'], scheduling: [] });
   });
 });
 

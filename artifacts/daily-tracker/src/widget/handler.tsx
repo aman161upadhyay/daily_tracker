@@ -51,10 +51,11 @@ export async function drawAllWidgets(model: WidgetModel): Promise<void> {
  */
 async function tapThroughApp(live: LiveStore, habitId: string, kind: TileKind, tap: boolean): Promise<{ state: TrackerState; persisted: boolean }> {
   const { applied, persisted } = await live.apply((current) => (tap ? widgetTapActions(current, habitId, contextFor(current), kind) : []));
+  // The store gave up saving (this tap, or an earlier change this tap waited for): the app holds
+  // the change in memory and shows its storage error, but the widget must show only what is on
+  // disk — a second failed tap must not draw the first unsaved one — nor snapshot anything else.
+  if (!persisted) return { state: live.committed(), persisted: false };
   if (!applied) return { state: live.current(), persisted: true };
-  // The store gave up saving: the app holds the tap in memory and shows its storage error, but the
-  // widget must not show numbers that are not on disk, nor snapshot them.
-  if (!persisted) return { state: live.current(), persisted: false };
   const ctx = contextFor(live.current());
   try {
     await replanLive(live, ctx);
@@ -79,9 +80,9 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
   try {
     const live = liveStore();
     if (live) {
-      loaded = live.current();
+      loaded = live.committed();
       const result = await tapThroughApp(live, habitId, kind, tap);
-      state = result.persisted ? result.state : loaded;
+      state = result.state;
       if (!result.persisted) notice = TAP_FAILED;
     } else {
       // One load → apply → persist at a time: a notification button pressed at the same moment runs
@@ -116,8 +117,9 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
         return { state: next, snapshot: true, nowMs: ctx.nowMs };
       });
       if ('live' in written) {
+        loaded = written.live.committed();
         const result = await tapThroughApp(written.live, habitId, kind, tap);
-        state = result.persisted ? result.state : loaded;
+        state = result.state;
         if (!result.persisted) notice = TAP_FAILED;
       } else {
         state = written.state;

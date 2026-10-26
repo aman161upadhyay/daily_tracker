@@ -250,7 +250,10 @@ export function Stepper({
   const opened = useRef({ text: '', value });
   const apply = (text: string) => {
     if (text === opened.current.text) {
-      if (value !== opened.current.value) onChange(opened.current.value);
+      // Restored to the opening value — inside the bounds as they stand now (a sibling field may
+      // have moved them while this one was open: an end time typed before its start).
+      const restored = Math.min(max, Math.max(min, opened.current.value));
+      if (value !== restored) onChange(restored);
       return;
     }
     if (text.trim() === '') return;

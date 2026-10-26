@@ -18,8 +18,23 @@ export interface TrackerStore {
   load(): Promise<TrackerState | null>;
   /** Write the difference between two consecutive states. */
   persist(prev: TrackerState, next: TrackerState): Promise<void>;
-  /** Write a whole state, replacing everything saved (first run, import). */
+  /**
+   * Write a whole state, replacing everything saved (first run, import, erase, sample data) —
+   * the service records included: what the old state's alarms delivered dies with the old state.
+   */
   replace(state: TrackerState): Promise<void>;
+  /**
+   * A service record kept beside the state (the notification service's bookkeeping, the inbox of
+   * button presses): it shares the state's database, so it is as durable as the state and is
+   * replaced with it. Null when there is none.
+   */
+  readRecord(key: string): Promise<string | null>;
+  /**
+   * Write a service record only if it still reads `expected` (null: no record yet); false when
+   * another writer moved it first, so the caller can read again instead of overwriting. A null
+   * `value` removes it.
+   */
+  writeRecord(key: string, value: string | null, expected: string | null): Promise<boolean>;
 }
 
 export class StorageError extends Error {

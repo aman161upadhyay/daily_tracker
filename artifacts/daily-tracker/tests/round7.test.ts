@@ -166,6 +166,7 @@ describe('live store handoff', () => {
     const applied: number[] = [];
     const store: LiveStore = {
       current: () => state,
+      committed: () => state,
       apply: async (build) => {
         const actions = build(state);
         const next = applyAll(state, actions, reducer);

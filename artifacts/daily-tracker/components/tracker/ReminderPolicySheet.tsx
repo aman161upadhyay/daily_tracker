@@ -119,7 +119,7 @@ export function ReminderPolicySheet({ visible, onClose, habit, policy, context, 
           <Txt role="body" style={{ marginTop: 14 }}>
             On
           </Txt>
-          <View style={styles.days} accessibilityRole="radiogroup" accessibilityLabel="Days of the week">
+          <View style={styles.days} accessibilityLabel="Days of the week">
             {WEEKDAY_LETTERS.map((letter, day) => {
               const on = d.weekdays.includes(day);
               return (

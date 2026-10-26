@@ -191,6 +191,13 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   const failuresRef = useRef(0);
   /** Headless revision we last loaded (see services/replan). */
   const seenRevisionRef = useRef<number | null>(null);
+  /**
+   * The change that replaced the whole state (erase, restore, sample data), if the database does
+   * not hold it yet. Such a change is written with `replace`, not as a row diff: the service
+   * records beside the state (what the old state's alarms delivered, presses still to apply) go
+   * with the old state in the same transaction.
+   */
+  const replaceGenRef = useRef(0);
   /** Dispatch generation of targetRef / committedRef, and who is waiting for a commit. */
   const targetGenRef = useRef(0);
   const committedGenRef = useRef(0);
@@ -222,7 +229,8 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
           const target = targetRef.current;
           const targetGen = targetGenRef.current;
           try {
-            await store.persist(base, target);
+            if (replaceGenRef.current > committedGenRef.current && targetGen >= replaceGenRef.current) await store.replace(target);
+            else await store.persist(base, target);
             committedRef.current = target;
             committedGenRef.current = Math.max(committedGenRef.current, targetGen);
             failuresRef.current = 0;
@@ -350,7 +358,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
           dispatch({ type: 'HYDRATE', state: next });
           targetGenRef.current = genRef.current;
           committedGenRef.current = genRef.current;
-          setLiveStore({ apply, current: () => pendingRef.current });
+          setLiveStore({ apply, current: () => pendingRef.current, committed: () => committedRef.current ?? pendingRef.current });
         });
       } catch (err) {
         console.error('Storage failed to open', err);
@@ -382,7 +390,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   // notification button that runs here goes through the reducer instead of racing our saves.
   useEffect(() => {
     if (!ready || !storeRef.current) return;
-    setLiveStore({ apply, current: () => pendingRef.current });
+    setLiveStore({ apply, current: () => pendingRef.current, committed: () => committedRef.current ?? pendingRef.current });
     return () => setLiveStore(null);
   }, [ready, apply]);
 
@@ -432,6 +440,17 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
       return { at: instantOf(day, 12 * 60, zone), zone, day };
     },
     [zone, boundary],
+  );
+
+  /** Make `next` the whole state (erase, restore, sample data); see replaceGenRef. */
+  const replaceWith = useCallback(
+    (next: TrackerState) => {
+      bumpBodyEpoch();
+      setReplaceEpoch((n) => n + 1);
+      dispatch({ type: 'REPLACE', state: next });
+      replaceGenRef.current = genRef.current;
+    },
+    [dispatch],
   );
 
   const actions = useMemo<TrackerActions>(() => {
@@ -691,20 +710,14 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
         dispatch({ type: 'REMOVE_EVENT', id });
       },
       startFresh() {
-        bumpBodyEpoch();
-        setReplaceEpoch((n) => n + 1);
-        dispatch({ type: 'REPLACE', state: buildEmptyState(stamp().day, { ...stateRef().settings, onboardingDone: true }) });
+        replaceWith(buildEmptyState(stamp().day, { ...stateRef().settings, onboardingDone: true }));
       },
       loadSample() {
-        bumpBodyEpoch();
-        setReplaceEpoch((n) => n + 1);
         const t = now();
-        dispatch({ type: 'REPLACE', state: buildSampleState(trackingDayOf(t, zone, boundary), zone, t) });
+        replaceWith(buildSampleState(trackingDayOf(t, zone, boundary), zone, t));
       },
       importState(next) {
-        bumpBodyEpoch();
-        setReplaceEpoch((n) => n + 1);
-        dispatch({ type: 'REPLACE', state: { ...next, settings: { ...next.settings, onboardingDone: true } } });
+        replaceWith({ ...next, settings: { ...next.settings, onboardingDone: true } });
       },
       periodStart(day) {
         const today = calendarDayOf(now(), zone);
@@ -737,7 +750,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
       },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stamp, zone, boundary]);
+  }, [stamp, zone, boundary, replaceWith]);
 
   const value = useMemo<TrackerContextValue>(
     () => ({ state, ready, storageError, nowMs, zone, replaceEpoch, today, calendarToday, nowMin, dispatch, apply, actions, commitPending }),

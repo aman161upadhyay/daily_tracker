@@ -18,6 +18,28 @@ export interface NudgeResponse {
   action: string;
   /** Unique per OS response, used to apply each press once. */
   key: string;
+  /** When the press reached us: the instant it is applied with, first time and on a replay alike. */
+  receivedAt: number;
+}
+
+/** The record changed under a sync (a replace, or a sync on another runtime). */
+export class SupersededError extends Error {
+  constructor() {
+    super('The notification record changed while this sync ran.');
+    this.name = 'SupersededError';
+  }
+}
+
+export interface SyncHealth {
+  failure: { at: number; message: string } | null;
+}
+
+export function syncHealth(): SyncHealth {
+  return { failure: null };
+}
+
+export function onSyncHealth(_listener: (h: SyncHealth) => void): () => void {
+  return () => {};
 }
 
 export const NOTIFICATIONS_SUPPORTED = false;
@@ -51,7 +73,7 @@ export async function syncPlan(_plan: ScheduledNudge[], _nowMs: number): Promise
   return [];
 }
 
-export async function cancelAll(_options: { forget?: boolean } = {}): Promise<void> {}
+export async function cancelAll(): Promise<void> {}
 
 export async function acknowledgeDeliveries(_records: readonly FiredRecord[]): Promise<void> {}
 
@@ -67,11 +89,15 @@ export async function scheduleMindEnd(_endAtMs: number, _minutes: number, _kind:
 
 export async function cancelMindEnd(): Promise<void> {}
 
-export async function beginHandling(_key: string): Promise<boolean> {
+export async function beginHandling(_r: NudgeResponse): Promise<boolean> {
   return true;
 }
 
 export async function endHandling(_key: string, _committed: boolean): Promise<void> {}
+
+export async function pendingResponses(): Promise<NudgeResponse[]> {
+  return [];
+}
 
 export async function registerBackgroundReplan(): Promise<'registered' | 'unavailable'> {
   return 'unavailable';

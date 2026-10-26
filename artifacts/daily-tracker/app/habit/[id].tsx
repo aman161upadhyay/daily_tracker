@@ -119,6 +119,7 @@ export default function HabitDetailScreen() {
     today,
     zone,
     nowMs,
+    offUntil: state.settings.offUntil,
     doneToday: view.doneToday,
     donePeriod: view.periodDone !== undefined && view.periodQuota !== undefined ? view.periodDone >= view.periodQuota : false,
     periodNoun,
@@ -338,14 +339,18 @@ export default function HabitDetailScreen() {
               </Txt>
             ) : null}
           </View>
-          <Switch
-            value={!!view.policy?.enabled && view.policy.kind !== 'NONE'}
-            disabled={!view.policy || view.policy.kind === 'NONE'}
-            onValueChange={(v) => view.policy && actions.setPolicy({ ...view.policy, enabled: v })}
-            trackColor={{ false: c.hairline, true: c.green }}
-            thumbColor={c.text}
-            accessibilityLabel="Remind me"
-          />
+          {policyEditable ? (
+            // An on-demand policy (the Sugar Shield's follow-up, the cycle's own reminders) has no
+            // pause: the card that schedules it decides; a switch here would promise one.
+            <Switch
+              value={!!view.policy?.enabled && view.policy.kind !== 'NONE'}
+              disabled={!view.policy || view.policy.kind === 'NONE'}
+              onValueChange={(v) => view.policy && actions.setPolicy({ ...view.policy, enabled: v })}
+              trackColor={{ false: c.hairline, true: c.green }}
+              thumbColor={c.text}
+              accessibilityLabel="Remind me"
+            />
+          ) : null}
         </Row>
         <Divider />
         <Row gap={10} style={{ marginTop: 10, alignItems: 'center' }}>
@@ -358,7 +363,9 @@ export default function HabitDetailScreen() {
                     ? 'Set times ring at their time; interval reminders stay inside your active hours. All count toward the daily cap (Settings → Reminders).'
                     : 'Arrives as a notification with Done and Snooze buttons, inside your active hours and the daily cap (Settings → Reminders).'
                 : habit.snackType
-                  ? 'No notification for this habit; the Today card still offers it when it is next in the movement rotation.'
+                  ? paused
+                    ? 'Paused: no notification, and the Today card leaves it out of the movement rotation until the switch is on.'
+                    : 'Off: no notification, and the Today card leaves it out of the movement rotation. Set up a reminder to put it back.'
                   : 'No notification for this habit.'
               : 'On demand: the card schedules its own follow-up.'}
           </Txt>

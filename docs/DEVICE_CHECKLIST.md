@@ -270,6 +270,19 @@ cycle (phases, calendar, day sheet, insights) was verified in the web preview an
 | AB10 | The Water summary opens the Library on Water | Archive Water; log a drink from the widget; tap the Water summary on Today | The Library sheet opens on Water with "Add to my habits" |
 | AB11 | Widget tap when the save fails | (If storage can be filled) fill the phone's storage; tap a widget tile | The widget shows the pre-tap numbers with "That tap could not be saved. Open Daily Tracker and log it there."; the app shows its storage error |
 
+### AC — round 12 (records beside the state, the press inbox, sync health, wording)
+
+| # | Check | Steps | Expected |
+|---|---|---|---|
+| AC1 | A replace under a sync in flight | Let a nudge ring and leave it in the shade; Settings → Erase everything → sample data, then at once change a reminder time | The old ring is not counted against the new state; `dumpsys notification --noredact` lists only the new plan; no "Could not save" banner |
+| AC2 | A press under a kill | With the app closed, press Done on a nudge and kill the process within a second (`adb shell am kill <package>`); open the app | The entry is logged (at the press's time) — on opening at the latest; it is logged once |
+| AC3 | A replayed press is one press | Repeat AC2 with Snooze; open the app | One SNOOZED event for the slot; the snooze ends 15 minutes after the press, not after the reopening |
+| AC4 | A failed sync shows and retries | Revoke notification permission while the app is open, change a reminder, re-grant | Settings → Reminders shows "The last reminder update failed (…)" while it fails; the line clears within a minute of the retry succeeding |
+| AC5 | A reboot with an expired alarm (PLAT12-03, measures the phantom) | Set a reminder two minutes ahead; power off before it rings; power on five minutes later; open the app | Expected today: the reminder does not ring (Android dropped it) and the habit's limit shows it spent (a phantom). Record whether this happens — it decides whether the Kotlin boot receiver is built |
+| AC6 | Set times across the boundary | Two habits with set times 02:59 and 03:00; wait | Two notifications, a minute apart, never merged; the 02:59 one counts for the day before |
+| AC7 | Next-ring wording at night | A set time 01:00; look at the card at 23:00 | "Next: tomorrow at 1:00 AM" (not "today"); the Settings preview says "Tomorrow 1:00 AM" |
+| AC8 | Water copy in ounces | Units oz; fall behind pace; wait for a water check | The notification says "About 8.5 oz behind pace", not ml |
+
 ## Recording results
 
-Add a dated line under the milestone in `docs/IMPLEMENTATION_PLAN.md` ("Device run YYYY-MM-DD, Pixel 7 / Android 15: N1–N17, Y1–Y14, Z1–Z13, AA1–AA16, AB1–AB11 pass except …") and open follow-ups for anything that failed.
+Add a dated line under the milestone in `docs/IMPLEMENTATION_PLAN.md` ("Device run YYYY-MM-DD, Pixel 7 / Android 15: N1–N17, Y1–Y14, Z1–Z13, AA1–AA16, AB1–AB11, AC1–AC8 pass except …") and open follow-ups for anything that failed.

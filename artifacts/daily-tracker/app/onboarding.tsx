@@ -169,7 +169,7 @@ export default function OnboardingScreen() {
           Daily Tracker
         </Txt>
         <Txt role="body" tone="secondary" style={{ marginTop: 6 }}>
-          Small habits, honest numbers. Your data lives on this phone — no account, no server.
+          Small habits, honest numbers. Your data lives on this phone — no account, no server. Only the Android phone backup, if you turn it on below, carries an encrypted copy to your Google account.
         </Txt>
       </View>
 

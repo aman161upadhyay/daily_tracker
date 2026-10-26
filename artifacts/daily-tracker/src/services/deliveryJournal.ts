@@ -89,6 +89,8 @@ export interface Resolved {
 export function deliveries(bk: Pick<Bookkeeping, 'ledger' | 'cancelling' | 'scheduling'>, pending: ReadonlySet<string>, nowMs: number): Resolved {
   const cancelled = new Set(bk.cancelling);
   const intents = new Map(bk.scheduling.map((e) => [e.id, e]));
+  const olds = new Map<string, LedgerEntry>();
+  for (const e of bk.ledger) if (!olds.has(e.id)) olds.set(e.id, e);
   const fired: FiredRecord[] = [];
   const live: LedgerEntry[] = [];
   const record = ({ sig: _sig, ...f }: LedgerEntry): FiredRecord => f;
@@ -96,7 +98,7 @@ export function deliveries(bk: Pick<Bookkeeping, 'ledger' | 'cancelling' | 'sche
   for (const e of [...bk.ledger, ...bk.scheduling]) {
     if (seen.has(e.id)) continue;
     seen.add(e.id);
-    const old = bk.ledger.find((x) => x.id === e.id);
+    const old = olds.get(e.id);
     const intent = intents.get(e.id);
     if (old && intent) {
       if (cancelled.has(e.id)) {
@@ -144,28 +146,77 @@ export function journalWithout(journal: FiredRecord[], acknowledged: readonly Pi
   return journal.filter((r) => !gone.has(occurrenceKey(r)));
 }
 
-/** Parse a stored journal or ledger; anything unreadable is an empty list. */
+/**
+ * More entries than any plan can produce (a 36-hour horizon holds a few dozen): a record past this
+ * is damaged, and only its newest entries are kept, so one bad write cannot make every later sync
+ * crawl through it.
+ */
+export const MAX_RECORDS = 1000;
+const MAX_ID_LENGTH = 200;
+
+const isId = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= MAX_ID_LENGTH;
+const isIds = (v: unknown): v is string[] => Array.isArray(v) && v.length <= 50 && v.every(isId);
+const isInstant = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 1e14;
+
+/** A stored delivery record, or null for anything that is not one (a damaged row is dropped, not fatal). */
+function firedRecord(x: unknown): FiredRecord | null {
+  if (!x || typeof x !== 'object') return null;
+  const r = x as Record<string, unknown>;
+  if (!isId(r.id) || !isIds(r.habitIds) || typeof r.day !== 'string' || r.day.length > 10 || !isInstant(r.at)) return null;
+  const out: FiredRecord = { id: r.id, habitIds: r.habitIds, day: r.day, at: r.at };
+  if (isIds(r.mergedIds) && r.mergedIds.length > 0) out.mergedIds = r.mergedIds;
+  return out;
+}
+
+function ledgerEntry(x: unknown): LedgerEntry | null {
+  const f = firedRecord(x);
+  if (!f) return null;
+  const sig = (x as Record<string, unknown>).sig;
+  return typeof sig === 'string' && sig.length <= 1000 ? { ...f, sig } : null;
+}
+
+/** The newest `MAX_RECORDS` of a list, in their stored order. */
+function newest<T extends { at: number }>(list: T[]): T[] {
+  if (list.length <= MAX_RECORDS) return list;
+  const keep = new Set([...list].sort((a, b) => b.at - a.at).slice(0, MAX_RECORDS));
+  return list.filter((x) => keep.has(x));
+}
+
+function clean<T extends { at: number }>(v: unknown, one: (x: unknown) => T | null): T[] {
+  if (!Array.isArray(v)) return [];
+  const out: T[] = [];
+  for (const x of v) {
+    const r = one(x);
+    if (r) out.push(r);
+  }
+  return newest(out);
+}
+
+/** Parse a stored journal or ledger; anything unreadable is an empty list, a damaged entry is dropped. */
 export function parseRecords<T extends FiredRecord>(raw: string | null): T[] {
   if (!raw) return [];
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? (parsed as T[]) : [];
+    return clean(JSON.parse(raw) as unknown, (x) => (ledgerEntry(x) ?? firedRecord(x)) as T | null);
   } catch {
     return [];
   }
 }
 
-/** Parse the stored bookkeeping; a missing or unreadable record is empty (a key that could not be read at all is the caller's error). */
+/**
+ * Parse the stored bookkeeping; a missing or unreadable record is empty (a record that could not
+ * be read at all is the caller's error). Entries are checked one by one: a damaged row is dropped
+ * rather than left to crash every later sync, which would stop reminders for good.
+ */
 export function parseBookkeeping(raw: string | null): Bookkeeping {
   if (!raw) return { ...EMPTY_BOOKKEEPING };
   try {
     const p = JSON.parse(raw) as Partial<Record<keyof Bookkeeping, unknown>> | null;
-    const list = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+    const cancelling = Array.isArray(p?.cancelling) ? p.cancelling.filter(isId).slice(-MAX_RECORDS) : [];
     return {
-      ledger: list<LedgerEntry>(p?.ledger),
-      journal: list<FiredRecord>(p?.journal),
-      cancelling: list<unknown>(p?.cancelling).filter((x): x is string => typeof x === 'string'),
-      scheduling: list<LedgerEntry>(p?.scheduling),
+      ledger: clean(p?.ledger, ledgerEntry),
+      journal: clean(p?.journal, firedRecord),
+      cancelling,
+      scheduling: clean(p?.scheduling, ledgerEntry),
     };
   } catch {
     return { ...EMPTY_BOOKKEEPING };

@@ -6,10 +6,9 @@ import { Chip, Divider, PillButton, Row, Stepper } from '@/components/ui/primiti
 import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import type { ScheduledNudge } from '@/src/domain/nudges/planner';
-import { now } from '@/src/domain/time/clock';
 import { formatClock, parseClockInput } from '@/src/domain/time/format';
 import { addDays, calendarDayOf, instantOf, minutesOfDay } from '@/src/domain/time/trackingDay';
-import { NOTIFICATIONS_SUPPORTED, exactAlarmsAllowed, getPermission, openExactAlarmSettings, openNotificationSettings, requestPermission, type PermissionState } from '@/src/services/notifications';
+import { NOTIFICATIONS_SUPPORTED, exactAlarmsAllowed, getPermission, onSyncHealth, openExactAlarmSettings, openNotificationSettings, requestPermission, syncHealth, type PermissionState, type SyncHealth } from '@/src/services/notifications';
 import { nudgePlan } from '@/src/state/selectors';
 import { useTracker } from '@/src/state/TrackerProvider';
 
@@ -29,14 +28,24 @@ function useNotificationPermission(): [PermissionState, boolean | null, () => Pr
   return [perm, exact, refresh];
 }
 
+/** Whether the last reminder sync went through (see notifications.syncHealth). */
+function useSyncHealth(): SyncHealth {
+  const [health, setHealth] = useState<SyncHealth>(() => syncHealth());
+  useEffect(() => onSyncHealth(setHealth), []);
+  return health;
+}
+
 const OFF_CHOICES: { label: string; hours: number | 'day' | null }[] = [
   { label: '2 hours', hours: 2 },
   { label: 'Rest of today', hours: 'day' },
   { label: '3 days', hours: 72 },
 ];
 
-function describeNudge(n: ScheduledNudge, zone: string, today: string): string {
-  const dayLabel = n.day === today ? '' : n.day === calendarDayOf(now() + 86_400_000, zone) ? 'Tomorrow ' : `${n.day} `;
+/** "Tomorrow" by the calendar, as a person reads a clock (a 1:00 AM ring belongs to the previous tracking day). */
+function describeNudge(n: ScheduledNudge, zone: string, nowMs: number): string {
+  const ringDay = calendarDayOf(n.at, zone);
+  const nowDay = calendarDayOf(nowMs, zone);
+  const dayLabel = ringDay === nowDay ? '' : ringDay === addDays(nowDay, 1) ? 'Tomorrow ' : `${ringDay} `;
   return `${dayLabel}${formatClock(minutesOfDay(n.at, zone))} · ${n.title}`;
 }
 
@@ -46,6 +55,7 @@ export function RemindersCard() {
   const { state, actions, today, nowMs, zone } = useTracker();
   const s = state.settings;
   const [perm, exact, refresh] = useNotificationPermission();
+  const health = useSyncHealth();
   const plan = nudgePlan(state, today, nowMs, zone);
   const paused = s.offUntil !== undefined && s.offUntil > nowMs;
 
@@ -124,6 +134,14 @@ export function RemindersCard() {
             Exact timing lets Android ring at the planned minute; without it nudges can arrive minutes late, longer while the phone sleeps.
           </Txt>
         ) : null}
+        {s.remindersEnabled && health.failure ? (
+          <Row gap={8} style={{ alignItems: 'center' }}>
+            <UI.Info size={16} color={c.danger} weight="bold" />
+            <Txt role="caption" tone="secondary" style={{ flex: 1 }}>
+              The last reminder update failed ({health.failure.message}). The schedule shown may be stale; the app retries on its own, and again when you return to it.
+            </Txt>
+          </Row>
+        ) : null}
       </View>
 
       {s.remindersEnabled ? (
@@ -135,7 +153,7 @@ export function RemindersCard() {
               <Row gap={8} style={{ alignItems: 'center' }}>
                 <UI.BellSlash size={18} color={c.violet} />
                 <Txt role="body" style={{ flex: 1 }}>
-                  Paused until {calendarDayOf(s.offUntil!, zone) === today ? '' : `${calendarDayOf(s.offUntil!, zone)} `}
+                  Paused until {calendarDayOf(s.offUntil!, zone) === calendarDayOf(nowMs, zone) ? '' : `${calendarDayOf(s.offUntil!, zone)} `}
                   {formatClock(minutesOfDay(s.offUntil!, zone))}
                 </Txt>
                 <PillButton label="Resume" kind="ghost" onPress={() => actions.updateSettings({ offUntil: undefined })} />
@@ -180,7 +198,7 @@ export function RemindersCard() {
             ) : (
               plan.slice(0, 4).map((n) => (
                 <Txt key={n.id} role="body" tone="secondary">
-                  {describeNudge(n, zone, today)}
+                  {describeNudge(n, zone, nowMs)}
                 </Txt>
               ))
             )}

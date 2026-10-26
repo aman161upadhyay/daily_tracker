@@ -168,7 +168,9 @@ Open Terminal (Mac) or PowerShell (Windows). The commands are the same on both u
 Do these once, in the app and in the phone's Settings:
 
 1. **Onboarding.** Open the app, enter your name, pick your habits, choose whether to track your
-   cycle. Nothing leaves the phone.
+   cycle. Nothing leaves the phone unless you keep **Include in Android phone backup** on (it is on
+   by default): then Android keeps an encrypted copy with your Google account for a new phone, the
+   same way it backs up other apps. There is no server of ours either way.
 2. **Notifications.** In the app: Settings (the letter in the top-right of Today) → *Reminders* →
    **Allow notifications** → Allow on the system box. If the card then shows **Allow exact
    timing** (Android 14 and newer start with it off), tap it and allow *Alarms & reminders* on the
@@ -209,7 +211,7 @@ Then try the list in `docs/DEVICE_CHECKLIST.md` if you want to check every featu
    on a Mac (Finder → Go → Go to Folder…, paste exactly that, including the `~`) and
    `C:\dev\daily_tracker\artifacts\daily-tracker\android\app\build\outputs\apk\release\app-release.apk`
    on Windows (paste it into the File Explorer address bar).
-   Rename a copy to something like `DailyTracker-0.10.apk` (the `version` from `app.json`) if you like.
+   Rename a copy to something like `DailyTracker-0.16.apk` (the `version` from `app.json`) if you like.
 2. Send it any way you want: Google Drive link, WhatsApp, email, AirDrop-style apps.
 3. On their phone they tap the file. Android asks to allow installing from that app (Files,
    Chrome, WhatsApp…) → **Allow** → **Install**. Two different prompts can appear, and they mean

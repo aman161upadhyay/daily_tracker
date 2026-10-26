@@ -313,6 +313,9 @@ const WORKOUT: Table<Workout> = {
 
 const ALL_TABLES = [HABIT, RULE, POLICY, ENTRY, WATER, SNACK, MIND, NUDGE_EVENT, EVENT, STEP_DAY, SLEEP_NIGHT, HEART_DAY, WEIGHT, WORKOUT, CYCLE_DAY] as const;
 
+/** Service records share the kv table with the state's own keys, under their own prefix; replace() clears the table. */
+const RECORD_PREFIX = 'svc.';
+
 function upsertSql<T>(t: Table<T>): string {
   const placeholders = t.columns.map(() => '?').join(', ');
   const updates = t.columns.filter((c) => !t.keyColumns.includes(c)).map((c) => `${c} = excluded.${c}`);
@@ -433,6 +436,24 @@ export class SqliteStore implements TrackerStore {
       await this.writeKv(KV_SNOOZE, state.nudgeSnoozedUntil === undefined ? null : String(state.nudgeSnoozedUntil));
       await this.writeKv(KV_SWAP, state.nudgeSwap === undefined ? null : JSON.stringify(state.nudgeSwap));
     });
+  }
+
+  async readRecord(key: string): Promise<string | null> {
+    const rows = await this.db.getAllAsync<{ value: string }>('SELECT value FROM kv WHERE key = ?', [RECORD_PREFIX + key]);
+    return rows[0]?.value ?? null;
+  }
+
+  async writeRecord(key: string, value: string | null, expected: string | null): Promise<boolean> {
+    // Compare-and-set inside one transaction: the compare and the write cannot interleave with
+    // another runtime's (a headless task's) write of the same record, nor with a replace().
+    let written = false;
+    await this.db.withTransactionAsync(async () => {
+      const current = await this.readRecord(key);
+      if (current !== expected) return;
+      await this.writeKv(RECORD_PREFIX + key, value);
+      written = true;
+    });
+    return written;
   }
 
   // ── helpers ──────────────────────────────────────────────────────────────

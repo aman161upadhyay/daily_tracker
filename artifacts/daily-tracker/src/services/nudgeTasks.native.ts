@@ -18,7 +18,7 @@ import { describeSyncError, performBodySync } from './bodySync';
 import { HEALTH_CONNECT_SUPPORTED } from './healthConnect';
 import { withHeadlessLock } from './headlessLock';
 import { parseResponse } from './notificationPayload';
-import { BACKGROUND_REPLAN_TASK, NUDGE_RESPONSE_TASK, beginHandling, endHandling, type FiredRecord } from './notifications';
+import { BACKGROUND_REPLAN_TASK, NUDGE_RESPONSE_TASK, beginHandling, endHandling, pendingResponses, type FiredRecord, type NudgeResponse } from './notifications';
 import { acknowledgeDeliveries, contextFor, markHeadlessWrite, replanHeadless, replanLive } from './replan';
 import { maybeSnapshot } from './snapshotSync';
 import { refreshWidgets } from './widget';
@@ -56,17 +56,27 @@ async function handleHeadlessResponse(raw: unknown): Promise<void> {
   // button pressed while the app is closed.
   const parsed = parseResponse(raw);
   if (!parsed) return;
-  const { payload, key } = parsed;
-  const action = parsed.action as NudgeActionKind | 'TAP';
-  // Claim in memory first (the foreground listener may see the same press); the durable mark is
-  // written only once the state write committed, so a crash in between replays rather than loses
-  // the press — and the nudge-event ledger makes the replay a no-op.
-  if (!(await beginHandling(key))) return;
+  await handleResponse({ payload: parsed.payload, action: parsed.action, key: parsed.key, receivedAt: Date.now() });
+}
+
+/**
+ * Apply a notification button press (a fresh one, or one replayed from the inbox), through the
+ * running app's store when there is one, else straight to the database under the headless lock.
+ */
+export async function handleResponse(r: NudgeResponse): Promise<void> {
+  const { payload, key } = r;
+  const action = r.action as NudgeActionKind | 'TAP';
+  // Written to the inbox and claimed in memory first (the foreground listener may see the same
+  // press); the durable "handled" mark is written only once the state write committed, so a crash
+  // in between replays rather than loses the press — the press is applied with the instant it was
+  // received, so the replay computes what the first attempt did and the command layer's dedupe
+  // (the nudge events written with the log) makes it a no-op.
+  if (!(await beginHandling(r))) return;
   let committed = false;
   try {
     // The app's own store is alive on this runtime: it is the only writer, and its components
     // re-plan, redraw the widget and refresh the snapshot themselves.
-    const build = (state: TrackerState) => nudgeResponseActions(state, payload, action, contextFor(state));
+    const build = (state: TrackerState) => nudgeResponseActions(state, payload, action, contextFor(state, r.receivedAt));
     const live = liveStore();
     if (live) {
       const { applied, persisted } = await live.apply(build);
@@ -83,8 +93,9 @@ async function handleHeadlessResponse(raw: unknown): Promise<void> {
       // rows we did. Persisting here would overwrite whatever it saves in the meantime.
       const alive = liveStore();
       if (alive) return { live: alive };
-      const ctx = contextFor(state);
       const applied = applyAll(state, build(state), reducer);
+      // The re-plan runs at the time it is now, not the press's instant: a replayed press may be hours old.
+      const ctx = contextFor(applied);
       let next = applied;
       let delivered: FiredRecord[] = [];
       try {
@@ -114,6 +125,28 @@ async function handleHeadlessResponse(raw: unknown): Promise<void> {
   }
 }
 
+/**
+ * Apply the presses an earlier process wrote down and never confirmed (see responseInbox). Called
+ * whenever a runtime starts work — the app's scheduler once hydrated, the periodic re-plan — so a
+ * press lost to a process death lands within hours, before its day is over.
+ */
+export async function replayPendingResponses(): Promise<void> {
+  let queued: NudgeResponse[];
+  try {
+    queued = await pendingResponses();
+  } catch (err) {
+    console.warn('Could not read the press inbox', err);
+    return;
+  }
+  for (const r of queued) {
+    try {
+      await handleResponse(r);
+    } catch (err) {
+      console.warn('Replaying a notification press failed', err);
+    }
+  }
+}
+
 TaskManager.defineTask(NUDGE_RESPONSE_TASK, async ({ data, error }) => {
   if (error || !data || typeof data !== 'object') return;
   if (!('actionIdentifier' in data)) return; // a received notification, not a button press
@@ -125,6 +158,8 @@ TaskManager.defineTask(NUDGE_RESPONSE_TASK, async ({ data, error }) => {
 });
 
 TaskManager.defineTask(BACKGROUND_REPLAN_TASK, async () => {
+  // Presses an earlier process lost before its write landed go first: the plan below must see them.
+  await replayPendingResponses();
   try {
     // The app is alive on this runtime (backgrounded, not closed): work from its newest state and
     // apply through its store, so this never persists over a tap the screen just made.

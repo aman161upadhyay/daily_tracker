@@ -24,6 +24,8 @@ export interface LiveStore {
   apply(build: (state: TrackerState) => Action[]): Promise<{ next: TrackerState; applied: boolean; persisted: boolean }>;
   /** The newest state. */
   current(): TrackerState;
+  /** What the database holds, as far as the app knows: the newest state minus the saves still pending or failed. */
+  committed(): TrackerState;
 }
 
 let live: LiveStore | null = null;

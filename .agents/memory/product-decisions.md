@@ -226,6 +226,20 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   Deferred: reminder set-up inside habit creation. **Why:** round 11's simulator and native-paths lenses showed
   round 10 journaled per occurrence but still budgeted per slot id, and that the service's record had crash
   windows and a read-failure-as-empty path. Dispositions in RUNNING_CONTEXT §6 Round 11.
+- Round 12 (2026-10-26 night) rules, paradigms 49–52 in RUNNING_CONTEXT §4: the notification service's
+  records (bookkeeping, press inbox) are rows in the state's SQLite `kv` table via
+  `TrackerStore.readRecord/writeRecord` (compare-and-set → `SupersededError`, start over, never overwrite),
+  cleared by `replace` in the same transaction — never AsyncStorage for anything the state's erase/restore
+  must take with it. Erase/restore/sample data flush through `store.replace` (provider `replaceGenRef`);
+  `replaceEpoch` is a dependency of the debounced re-plan (no separate cancel-all effect). A notification
+  button press is written to a durable inbox before it is applied and marked handled only after the state
+  write committed; the inbox is replayed at every runtime start with the *received* instant (so replays
+  compute the same thing; SNOOZE deduped by exact instant). Stored records are validated entry by entry and
+  capped — a damaged row is dropped, never fatal. Refused OS cancels keep their ledger entry; a failed sync
+  is shown (Settings → Reminders) and retried after a minute. Rejected DR12-04 (the 30-min overdue grace
+  cancel is correct: Expo removes a request at delivery). Deferred PLAT12-03 (reboot drops expired DATE
+  triggers before Expo's boot receiver → phantom FIRED; needs a Kotlin boot receiver; checklist AC5
+  measures it). Dispositions in RUNNING_CONTEXT §6 Round 12.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app

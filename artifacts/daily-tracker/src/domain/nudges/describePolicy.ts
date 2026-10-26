@@ -4,7 +4,7 @@
  */
 import type { NudgePolicy } from '../models';
 import { formatClock, formatDayShort, formatWeekdayShort } from '../time/format';
-import { addDays, instantOf, minutesOfDay, weekdayOf } from '../time/trackingDay';
+import { addDays, calendarDayOf, instantOf, minutesOfDay, weekdayOf } from '../time/trackingDay';
 
 export interface PolicyContext {
   /** A movement snack: interval policies join the shared rotation instead of running alone. */
@@ -193,6 +193,8 @@ export function nextRingText(args: {
   /** The instant the plan was made for; set times past the plan's horizon are read off the policy. */
   nowMs?: number;
   horizonMs?: number;
+  /** Settings → Reminders "Pause": nothing rings before this instant. */
+  offUntil?: number;
   doneToday: boolean;
   donePeriod: boolean;
   periodNoun: 'day' | 'week' | 'month';
@@ -201,9 +203,21 @@ export function nextRingText(args: {
   if (!policy || policy.kind === 'NONE' || policy.kind === 'EVENT' || policy.kind === 'CYCLE') return null;
   if (!args.remindersEnabled) return 'Reminders are off in Settings → Reminders.';
   if (!policy.enabled) return 'Paused: nothing rings until the switch is on.';
-  const dayWord = (day: string) => (day === args.today ? 'today' : day === addDays(args.today, 1) ? 'tomorrow' : formatWeekdayShort(day));
+  // "Today" and "tomorrow" by the calendar, as a person reads a clock: a 1:00 AM ring belongs to
+  // the previous tracking day (the day turns at 3 AM) but is "tomorrow at 1:00 AM" at 11 PM.
+  const dayWord = (at: number, day: string) => {
+    if (args.nowMs === undefined) return day === args.today ? 'today' : day === addDays(args.today, 1) ? 'tomorrow' : formatWeekdayShort(day);
+    const ringDay = calendarDayOf(at, args.zone);
+    const nowDay = calendarDayOf(args.nowMs, args.zone);
+    return ringDay === nowDay ? 'today' : ringDay === addDays(nowDay, 1) ? 'tomorrow' : formatWeekdayShort(ringDay);
+  };
+  if (args.offUntil !== undefined && args.nowMs !== undefined && args.offUntil > args.nowMs) {
+    return `Paused until ${dayWord(args.offUntil, calendarDayOf(args.offUntil, args.zone))} at ${formatClock(minutesOfDay(args.offUntil, args.zone))} (Settings → Reminders).`;
+  }
   const next = args.plan.filter((n) => n.habitIds.includes(args.habitId)).sort((a, b) => a.at - b.at)[0];
-  if (next) return `Next: ${dayWord(next.day)} at ${formatClock(minutesOfDay(next.at, args.zone))}`;
+  if (next) return `Next: ${dayWord(next.at, next.day)} at ${formatClock(minutesOfDay(next.at, args.zone))}`;
+  // A quota met for the week or month: nothing rings until the next period, whatever the times say.
+  if (args.donePeriod && args.periodNoun !== 'day') return `Done for the ${args.periodNoun}: nothing more rings.`;
   // Set times on a chosen weekday can lie past the plan's horizon (a Friday session seen on
   // Tuesday); the policy says when, the plan will confirm it once the day is near enough.
   if (policy.kind === 'FIXED' && policy.times?.length && args.nowMs !== undefined) {
@@ -220,7 +234,6 @@ export function nextRingText(args: {
       }
     }
   }
-  if (args.donePeriod && args.periodNoun !== 'day') return `Done for the ${args.periodNoun}: nothing more rings.`;
   if (args.doneToday) return 'Done for today: nothing more rings.';
   return 'Nothing planned for the rest of today or tomorrow (the daily cap or this habit’s limit may be spent).';
 }

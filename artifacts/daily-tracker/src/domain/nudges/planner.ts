@@ -23,6 +23,7 @@
  */
 import type { NudgeEvent, NudgePolicy, ScheduledEvent, Settings, SnackType } from '../models';
 import { SNACK_LABELS } from '../models';
+import { formatVolume } from '../time/format';
 import { DEFAULT_BOUNDARY_HOUR, addDays, calendarDayOf, instantOf, minutesOfDay, trackingDayOf, weekdayOf } from '../time/trackingDay';
 import { expectedIntakeMl, isOnPace } from '../water/pace';
 
@@ -83,7 +84,10 @@ export interface PlanWater {
 export type PlanSettings = Pick<
   Settings,
   'activeStartMin' | 'activeEndMin' | 'dailyNudgeCap' | 'nudgeIntervalMin' | 'remindersEnabled' | 'offUntil' | 'weeklySummary' | 'waterGoalMl' | 'tapSizeMl'
->;
+> & {
+  /** The volume unit the person reads (water copy); ml when absent. */
+  units?: Settings['units'];
+};
 
 export interface PlanInput {
   nowMs: number;
@@ -467,14 +471,16 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
         const when = effectiveAt(id, at);
         if (when === null || when >= activeEnd) continue;
         const behind = Math.max(0, expected - logged);
+        // In the unit the person reads: "8.5 oz behind", not "250 ml" for someone who set ounces.
+        const gap = formatVolume(Math.ceil(behind / 50) * 50, settings.units ?? 'ml');
         push({
           id,
           at: when,
           day: dayOf(at),
           habitIds: [water.habitId],
           title: 'Water',
-          body: behind > 0 ? `About ${Math.ceil(behind / 50) * 50} ml behind pace — a glass now keeps you on track.` : 'A glass now keeps you on pace.',
-          line: behind > 0 ? `Water (about ${Math.ceil(behind / 50) * 50} ml behind pace)` : 'Water',
+          body: behind > 0 ? `About ${gap.value} ${gap.unit} behind pace — a glass now keeps you on track.` : 'A glass now keeps you on pace.',
+          line: behind > 0 ? `Water (about ${gap.value} ${gap.unit} behind pace)` : 'Water',
           channel: 'water',
           kind: 'WATER',
           actions: ['WATER', 'SNOOZE'],
@@ -574,11 +580,14 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
 
   candidates.sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
 
-  // ── Merge anything closer than 5 minutes ───────────────────────────────
+  // ── Merge anything closer than 5 minutes, within one tracking day ──────
+  // A merged notification keeps the earlier slot's time and day, and every slot in it is recorded
+  // as delivered on that day. Two slots a minute apart across the 3 am boundary stay separate: a
+  // slot planned against tomorrow's budget must not be charged to today's.
   const merged: Candidate[] = [];
   for (const c of candidates) {
     const last = merged[merged.length - 1];
-    if (last && c.at - last.at < MERGE_WINDOW_MS && last.kind !== 'SUMMARY' && c.kind !== 'SUMMARY' && last.kind !== 'CYCLE' && c.kind !== 'CYCLE') {
+    if (last && c.at - last.at < MERGE_WINDOW_MS && c.day === last.day && last.kind !== 'SUMMARY' && c.kind !== 'SUMMARY' && last.kind !== 'CYCLE' && c.kind !== 'CYCLE') {
       merged[merged.length - 1] = mergeTwo(last, c);
       continue;
     }

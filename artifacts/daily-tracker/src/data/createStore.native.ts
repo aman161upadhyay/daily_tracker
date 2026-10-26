@@ -50,5 +50,7 @@ export async function createStore(): Promise<TrackerStore> {
     load: () => serialized(() => store.load()),
     persist: (prev, next) => serialized(() => store.persist(prev, next)),
     replace: (state) => serialized(() => store.replace(state)),
+    readRecord: (key) => serialized(() => store.readRecord(key)),
+    writeRecord: (key, value, expected) => serialized(() => store.writeRecord(key, value, expected)),
   };
 }

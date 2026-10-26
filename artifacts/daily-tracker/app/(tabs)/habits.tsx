@@ -26,11 +26,13 @@ export default function HabitsScreen() {
   const views = useHabitViews();
   // "/habits?preset=water" opens that preset's Library sheet straight away: the door from a Today
   // card whose habit is gone lands on the thing to add back, not on the top of a long list.
-  const { preset: presetParam } = useLocalSearchParams<{ preset?: string }>();
+  // `t` is the instant of the knock: the same door tapped twice opens the sheet twice.
+  const { preset: presetParam, t: knock } = useLocalSearchParams<{ preset?: string; t?: string }>();
+  const door = presetParam ? `${presetParam}|${knock ?? ''}` : undefined;
   const [preset, setPreset] = useState<Preset | null>(() => PRESET_BY_ID[presetParam ?? ''] ?? null);
-  const [openedFor, setOpenedFor] = useState(presetParam);
-  if (presetParam !== openedFor) {
-    setOpenedFor(presetParam);
+  const [openedFor, setOpenedFor] = useState(door);
+  if (door !== openedFor) {
+    setOpenedFor(door);
     setPreset(PRESET_BY_ID[presetParam ?? ''] ?? null);
   }
   const [amountHabit, setAmountHabit] = useState<Habit | null>(null);

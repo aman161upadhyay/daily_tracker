@@ -113,6 +113,32 @@ function storeContract(name: string, open: () => Promise<TrackerStore>) {
       await step({ type: 'REPLACE', state: buildSampleState(TODAY, ZONE, NOW) });
       await step({ type: 'REPLACE', state: buildEmptyState(TODAY, state.settings) });
     });
+
+    it('keeps service records beside the state, compare-and-set, and replaces them with it', async () => {
+      const store = await open();
+      await store.replace(buildEmptyState(TODAY));
+      assert.equal(await store.readRecord('nudges.bookkeeping'), null);
+      assert.equal(await store.writeRecord('nudges.bookkeeping', 'one', 'stale'), false, 'a write that expects a record that is not there is refused');
+      assert.equal(await store.writeRecord('nudges.bookkeeping', 'one', null), true);
+      assert.equal(await store.readRecord('nudges.bookkeeping'), 'one');
+      assert.equal(await store.writeRecord('nudges.bookkeeping', 'two', 'zero'), false, 'a write against a moved record is refused');
+      assert.equal(await store.readRecord('nudges.bookkeeping'), 'one', 'and leaves it alone');
+      assert.equal(await store.writeRecord('nudges.bookkeeping', 'two', 'one'), true);
+      assert.equal(await store.writeRecord('nudges.responses', '{}', null), true);
+      assert.equal(await store.readRecord('nudges.bookkeeping'), 'two');
+      assert.equal(await store.readRecord('nudges.responses'), '{}', 'records are independent');
+      // A row-level persist leaves the records alone; a whole replace takes them with the old state.
+      const before = (await store.load())!;
+      const after = reducer(before, { type: 'ADD_WATER', entry: { id: 'w1', day: TODAY, at: NOW, zone: ZONE, ml: 250, source: 'MANUAL' } });
+      await store.persist(before, after);
+      assert.equal(await store.readRecord('nudges.bookkeeping'), 'two');
+      await store.replace(buildSampleState(TODAY, ZONE, NOW));
+      assert.equal(await store.readRecord('nudges.bookkeeping'), null, 'gone with the replaced state');
+      assert.equal(await store.readRecord('nudges.responses'), null);
+      assert.equal(await store.writeRecord('nudges.bookkeeping', 'three', null), true, 'and a fresh one starts from nothing');
+      assert.equal(await store.writeRecord('nudges.bookkeeping', null, 'three'), true, 'null removes');
+      assert.equal(await store.readRecord('nudges.bookkeeping'), null);
+    });
   });
 }
 

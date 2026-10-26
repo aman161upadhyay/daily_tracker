@@ -26,11 +26,43 @@ export class JsonStore implements TrackerStore {
   }
 
   async persist(_prev: TrackerState, next: TrackerState): Promise<void> {
-    await this.replace(next);
+    await this.backend.setItem(this.key, JSON.stringify(next));
   }
 
   async replace(state: TrackerState): Promise<void> {
     await this.backend.setItem(this.key, JSON.stringify(state));
+    await this.backend.setItem(this.recordsKey, '{}');
+  }
+
+  // Service records: one JSON object beside the state blob, replaced with it.
+  private get recordsKey(): string {
+    return this.key + '.records';
+  }
+
+  private async records(): Promise<Record<string, string>> {
+    const raw = await this.backend.getItem(this.recordsKey);
+    if (!raw) return {};
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, string>) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  async readRecord(key: string): Promise<string | null> {
+    const all = await this.records();
+    return typeof all[key] === 'string' ? all[key]! : null;
+  }
+
+  async writeRecord(key: string, value: string | null, expected: string | null): Promise<boolean> {
+    const all = await this.records();
+    const current = typeof all[key] === 'string' ? all[key]! : null;
+    if (current !== expected) return false;
+    if (value === null) delete all[key];
+    else all[key] = value;
+    await this.backend.setItem(this.recordsKey, JSON.stringify(all));
+    return true;
   }
 }
 

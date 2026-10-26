@@ -279,6 +279,9 @@ export function nudgeResponseActions(state: TrackerState, payload: NudgePayload,
       break;
     }
     case 'SNOOZE':
+      // A snooze may be pressed again later on purpose; the same press replayed (the inbox keeps
+      // the instant it arrived) is one that was already written at exactly that instant.
+      if (state.nudgeEvents.some((e) => e.nudgeId === payload.nudgeId && e.kind === 'SNOOZED' && e.at === ctx.nowMs)) return out;
       out.push(...nudgeEventActions(payload, 'SNOOZED', ctx, ctx.nowMs + SNOOZE_MINUTES * 60_000));
       break;
     case 'SWAP':
