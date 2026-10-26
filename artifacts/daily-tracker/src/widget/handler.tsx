@@ -83,6 +83,9 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
         } catch (err) {
           console.warn('Widget re-plan failed; the log is still saved', err);
         }
+        // Once more after the await: a provider that registered meanwhile gets the tap instead.
+        const aliveNow = liveStore();
+        if (aliveNow) return { live: aliveNow };
         await store.persist(current, next);
         await markHeadlessWrite();
         return { state: next, snapshot: true, nowMs: ctx.nowMs };

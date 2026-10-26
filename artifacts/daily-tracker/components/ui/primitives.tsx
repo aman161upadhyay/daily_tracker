@@ -3,9 +3,10 @@
  * RangeSegment, Divider, Row. Each is < 60 lines; they live together to keep
  * the import surface small.
  */
-import React from 'react';
-import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import React, { useState } from 'react';
+import { Pressable, StyleSheet, TextInput, View, type StyleProp, type ViewStyle } from 'react-native';
 import type { CategoryKey } from '@/constants/colors';
+import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
 import { withAlpha } from '@/src/domain/color/oklch';
 import type { HabitIcon } from '@/src/domain/models';
@@ -211,6 +212,7 @@ export function Stepper({
   min = 0,
   max = Number.POSITIVE_INFINITY,
   format,
+  parse,
   label,
 }: {
   value: number;
@@ -219,6 +221,8 @@ export function Stepper({
   min?: number;
   max?: number;
   format?: (v: number) => string;
+  /** Reads a typed value (a clock time, say); plain numbers when absent. Returning null keeps the old value. */
+  parse?: (text: string) => number | null;
   label: string;
 }) {
   const c = useColors();
@@ -226,12 +230,48 @@ export function Stepper({
   // grid point rather than staying off it forever: 100 → 250 → 500, not 100 → 350 → 600.
   const up = Math.min(max, Math.max(min, value % step === 0 ? value + step : Math.ceil(value / step) * step));
   const down = Math.max(min, Math.min(max, value % step === 0 ? value - step : Math.floor(value / step) * step));
+  // Tapping the number types it: 2,000 → 1,850 ml is one entry, not six presses. Typed values keep
+  // to the bounds but not to the step grid (the next press snaps back onto it).
+  const [typed, setTyped] = useState<string | null>(null);
+  const commit = () => {
+    if (typed === null) return;
+    setTyped(null);
+    if (typed.trim() === '') return;
+    const n = parse ? parse(typed) : Number(typed.replace(/[^\d.]/g, ''));
+    if (n === null || !Number.isFinite(n)) return;
+    const next = Math.min(max, Math.max(min, Math.round(n)));
+    if (next !== value) onChange(next);
+  };
+  const shown = format ? format(value) : String(value);
+  const bounds = parse ? `, ${format ? format(min) : min} to ${format ? format(max) : max}` : Number.isFinite(max) ? `, ${min} to ${max}` : `, at least ${min}`;
   return (
     <View style={styles.stepper} accessibilityLabel={label}>
       <IconButton Glyph={UI.Minus} label={`Decrease ${label}`} onPress={() => onChange(down)} size={40} color={c.text} />
-      <Txt role="title2" style={styles.stepperValue} align="center" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-        {format ? format(value) : String(value)}
-      </Txt>
+      {typed !== null ? (
+        <TextInput
+          value={typed}
+          onChangeText={setTyped}
+          onBlur={commit}
+          onSubmitEditing={commit}
+          autoFocus
+          selectTextOnFocus
+          keyboardType={parse ? 'default' : 'number-pad'}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="done"
+          maxLength={parse ? 8 : 6}
+          placeholder={parse ? '9:30 pm' : undefined}
+          placeholderTextColor={c.textTertiary}
+          accessibilityLabel={`${label}${bounds}`}
+          style={[TYPE.title2, styles.stepperValue, styles.stepperInput, { color: c.text, borderColor: c.tint }]}
+        />
+      ) : (
+        <Pressable onPress={() => setTyped(parse ? shown : String(value))} accessibilityRole="button" accessibilityLabel={`${label}: ${shown}. Tap to type ${parse ? 'a time' : 'a number'}${bounds}`} hitSlop={6}>
+          <Txt role="title2" style={styles.stepperValue} align="center" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+            {shown}
+          </Txt>
+        </Pressable>
+      )}
       <IconButton Glyph={UI.Plus} label={`Increase ${label}`} onPress={() => onChange(up)} size={40} color={c.text} />
     </View>
   );
@@ -326,6 +366,12 @@ const styles = StyleSheet.create({
     minWidth: 84,
     // Long values ("1,750 ml", "12:30 pm") shrink before they push the + button off the card.
     flexShrink: 1,
+  },
+  stepperInput: {
+    textAlign: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderBottomWidth: 2,
   },
   segment: {
     flexDirection: 'row',

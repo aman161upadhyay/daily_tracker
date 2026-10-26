@@ -292,7 +292,7 @@ export default function CycleScreen() {
         onClose={() => setDay(null)}
         onSave={(log) => actions.setCycleLog(log)}
         onPeriodStart={(d) => actions.periodStart(d)}
-        onPeriodEnd={(d) => actions.periodEnd(d)}
+        onPeriodEnd={(d, start) => actions.updatePeriod(start, { end: d })}
         onRemovePeriod={(start) => actions.deletePeriod(start)}
       />
 

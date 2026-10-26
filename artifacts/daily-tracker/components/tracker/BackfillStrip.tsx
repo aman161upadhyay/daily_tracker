@@ -14,7 +14,8 @@ import { Txt } from '../ui/Txt';
 export interface BackfillStripProps {
   habit: Habit;
   today: string;
-  target: number;
+  /** Per-day target: the rule in force on that day, so an edited goal never rewrites last week's ticks. */
+  targetOf: (day: string) => number;
   valueOf: (day: string) => number;
   periods: PeriodResult[];
   onPressDay: (day: string, value: number) => void;
@@ -25,7 +26,7 @@ export interface BackfillStripProps {
  * (yes/no toggles; everything else opens the amount sheet in "set" mode).
  * A snowflake marks a day the streak was frozen through.
  */
-export function BackfillStrip({ habit, today, target, valueOf, periods, onPressDay }: BackfillStripProps) {
+export function BackfillStrip({ habit, today, targetOf, valueOf, periods, onPressDay }: BackfillStripProps) {
   const c = useColors();
   const days = lastNDays(today, 7);
   const frozen = new Set(periods.filter((p) => p.status === 'FROZEN' && p.cadence === 'DAILY').map((p) => p.start));
@@ -34,6 +35,7 @@ export function BackfillStrip({ habit, today, target, valueOf, periods, onPressD
     <View style={styles.row}>
       {days.map((day) => {
         const value = valueOf(day);
+        const target = targetOf(day);
         const ratio = target > 0 ? Math.min(1, value / target) : value > 0 ? 1 : 0;
         const done = ratio >= 1;
         const before = day < habit.createdDay;

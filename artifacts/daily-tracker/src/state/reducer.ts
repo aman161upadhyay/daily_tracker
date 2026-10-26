@@ -25,6 +25,8 @@ export type Action =
   | { type: 'DELETE_HABIT'; id: string }
   | { type: 'UPDATE_HABIT'; id: string; patch: Partial<Omit<Habit, 'id' | 'type'>> }
   | { type: 'SET_RULE'; rule: HabitRule }
+  /** Drop one rule version (a rhythm planned for later that was called off); a habit always keeps at least one. */
+  | { type: 'REMOVE_RULE'; habitId: string; effectiveFrom: string }
   | { type: 'SET_POLICY'; policy: NudgePolicy }
   | { type: 'UPDATE_SETTINGS'; patch: Partial<Settings> }
   | { type: 'SNOOZE'; untilMs: number }
@@ -168,6 +170,12 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
         policies: state.policies.filter((p) => p.habitId !== action.id),
         entries: state.entries.filter((e) => e.habitId !== action.id),
       };
+
+    case 'REMOVE_RULE': {
+      const rules = state.rules.filter((x) => !(x.habitId === action.habitId && x.effectiveFrom === action.effectiveFrom));
+      if (rules.length === state.rules.length || !rules.some((x) => x.habitId === action.habitId)) return state;
+      return { ...state, rules };
+    }
 
     case 'SET_RULE': {
       const r = action.rule;

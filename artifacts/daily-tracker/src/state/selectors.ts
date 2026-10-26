@@ -10,7 +10,7 @@ import {
   sumValues,
   type DayRatio,
 } from '@/src/domain/habits/progress';
-import { evaluateStreak, periodRequired, periodStartOf, type PeriodResult } from '@/src/domain/habits/streaks';
+import { evaluateStreak, periodRequired, periodStartOf, segmentStartOn, type PeriodResult } from '@/src/domain/habits/streaks';
 import type { Cadence, Category, Habit, HabitRule, MovementSnack, NudgePolicy, SnackType } from '@/src/domain/models';
 import { SNACK_LABELS } from '@/src/domain/models';
 import { habitSymptomCorrelations, symptomPatterns, type CompletedCycle, type Correlation, type HabitPerCycle, type SymptomPattern } from '@/src/domain/cycle/insights';
@@ -113,10 +113,20 @@ export function habitDayValue(state: TrackerState, habit: Habit, day: string): n
   return dayValues(state, habit).get(day) ?? 0;
 }
 
-/** Days met so far in the period (week or month) that `day` belongs to, counted from the period's first day up to `day`. */
+/** First day of the habit's cadence segment that contains `day` (creation, or where the current cadence took over). */
+export function segmentFrom(state: TrackerState, habit: Habit, day: string): string {
+  return segmentStartOn(rulesFor(state, habit.id), habit.createdDay, day);
+}
+
+/**
+ * Days met so far in the period (week or month) that `day` belongs to, counted from the period's
+ * first day — or from the day the current cadence took over, when that is later — up to `day`.
+ */
 export function periodDoneOn(state: TrackerState, habit: Habit, cadence: Cadence, day: string): number {
   let done = 0;
-  for (let d = periodStartOf(cadence, day); d <= day; d = addDays(d, 1)) {
+  const from = segmentFrom(state, habit, day);
+  const start = periodStartOf(cadence, day);
+  for (let d = from > start ? from : start; d <= day; d = addDays(d, 1)) {
     const target = ruleFor(state, habit.id, d)?.target ?? 1;
     if (habitDayValue(state, habit, d) >= target) done++;
   }
@@ -135,7 +145,7 @@ export function habitRatios(state: TrackerState, habit: Habit, days: string[]): 
     const target = rule?.target ?? 1;
     const value = habitDayValue(state, habit, day);
     if (rule && rule.cadence !== 'DAILY') {
-      out.push({ day, value, target, ratio: ratioOf(periodDoneOn(state, habit, rule.cadence, day), periodRequired(rule, day, habit.createdDay)) });
+      out.push({ day, value, target, ratio: ratioOf(periodDoneOn(state, habit, rule.cadence, day), periodRequired(rule, day, segmentFrom(state, habit, day))) });
     } else {
       out.push({ day, value, target, ratio: ratioOf(value, target) });
     }
@@ -181,7 +191,7 @@ export function habitView(state: TrackerState, habit: Habit, today: string): Hab
   const todayRatio = ratios14[ratios14.length - 1]!;
   const weekly = rule.cadence !== 'DAILY';
   const periodDone = weekly ? periodDoneOn(state, habit, rule.cadence, today) : undefined;
-  const quota = weekly ? periodRequired(rule, today, habit.createdDay) : undefined;
+  const quota = weekly ? periodRequired(rule, today, segmentFrom(state, habit, today)) : undefined;
   const periodLabel = rule.cadence === 'WEEKLY' ? 'this week' : rule.cadence === 'MONTHLY' ? 'this month' : undefined;
   const adherence = adherenceOf(ratios14, habit.createdDay, today);
   const streaks = evaluateStreak({
@@ -463,7 +473,7 @@ export function lastLogMsToday(state: TrackerState, habit: Habit, today: string)
 function planHabitOf(state: TrackerState, view: HabitView, today: string): PlanHabit | null {
   const { habit, rule, policy } = view;
   if (!policy || policy.kind === 'NONE' || policy.kind === 'EVENT' || policy.kind === 'CYCLE') return null;
-  const donePeriod = rule.cadence !== 'DAILY' && (view.periodDone ?? 0) >= periodRequired(rule, today, habit.createdDay);
+  const donePeriod = rule.cadence !== 'DAILY' && (view.periodDone ?? 0) >= (view.periodQuota ?? 0);
   return compactPlanHabit({
     id: habit.id,
     name: habit.name,

@@ -21,7 +21,7 @@ import { describeRule, formatClock, formatDayShort, formatNumber, formatVolume, 
 import { lastNDays, minutesOfDay } from '@/src/domain/time/trackingDay';
 import { PRESET_BY_ID } from '@/src/library/presets';
 import { useHabitView } from '@/src/state/hooks';
-import { habitDayValue, habitSeries, heatmapValues, latestRule } from '@/src/state/selectors';
+import { habitDayValue, habitSeries, heatmapValues, latestRule, ruleFor } from '@/src/state/selectors';
 import { useTracker } from '@/src/state/TrackerProvider';
 
 export default function HabitDetailScreen() {
@@ -103,6 +103,9 @@ export default function HabitDetailScreen() {
   const units = state.settings.units;
   const todayWater = isWater ? state.water.filter((w) => w.day === today).sort((a, b) => b.at - a.at) : [];
   const editRule = latestRule(state, habit.id) ?? view.rule;
+  // A rhythm saved for the next period is not in force yet; say so, or the save looks lost.
+  const pendingRule = editRule.effectiveFrom > today && editRule !== view.rule ? editRule : null;
+  const pendingNote = pendingRule ? `From ${formatDayShort(pendingRule.effectiveFrom)}: ${describeRule(habit, pendingRule)}` : null;
   const quickLabel = isWater
     ? (() => {
         const f = formatVolume(state.settings.tapSizeMl, units);
@@ -157,6 +160,11 @@ export default function HabitDetailScreen() {
             <Txt role="footnote" tone="secondary">
               {describeRule(habit, view.rule)}
             </Txt>
+            {pendingNote ? (
+              <Txt role="caption" tone="tertiary">
+                {pendingNote}
+              </Txt>
+            ) : null}
           </View>
           <View style={[styles.stage, { backgroundColor: withAlpha(fill, 0.18) }]}>
             <Txt role="caption" color={flow ? c.violetSoft : c.text}>
@@ -209,7 +217,7 @@ export default function HabitDetailScreen() {
 
       <SectionHeader title="Last 7 days" />
       <Card>
-        <BackfillStrip habit={habit} today={today} target={view.target} valueOf={(d) => habitDayValue(state, habit, d)} periods={view.periods} onPressDay={onBackfill} />
+        <BackfillStrip habit={habit} today={today} targetOf={(d) => ruleFor(state, habit.id, d)?.target ?? view.target} valueOf={(d) => habitDayValue(state, habit, d)} periods={view.periods} onPressDay={onBackfill} />
         <Txt role="caption" tone="tertiary" align="center" style={{ marginTop: 12 }}>
           {habit.createdDay >= today
             ? 'Added today — from tomorrow, tap a day here to fix a missed log.'
@@ -327,6 +335,11 @@ export default function HabitDetailScreen() {
             <Txt role="footnote" tone="secondary">
               {describeRule(habit, view.rule)} · {view.rule.freezesPerMonth} freezes a month
             </Txt>
+            {pendingNote ? (
+              <Txt role="caption" tone="tertiary">
+                {pendingNote}
+              </Txt>
+            ) : null}
           </View>
           <PillButton label="Edit" kind="ghost" Leading={UI.Edit} compact onPress={() => setEditing(true)} />
         </Row>

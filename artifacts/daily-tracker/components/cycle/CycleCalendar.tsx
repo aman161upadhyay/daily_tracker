@@ -149,6 +149,7 @@ const styles = StyleSheet.create({
   weekRow: {
     flexDirection: 'row',
     marginBottom: 4,
+    marginHorizontal: -12,
   },
   weekday: {
     flex: 1,
@@ -156,6 +157,9 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    // Bleeds into the card's padding: on a 360 dp phone the seven columns come to ~46 dp each
+    // instead of ~42, close to the 48 dp touch target without shrinking the discs.
+    marginHorizontal: -12,
   },
   cell: {
     width: `${100 / 7}%`,

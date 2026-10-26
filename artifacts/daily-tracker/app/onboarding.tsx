@@ -13,7 +13,7 @@ import { useColors } from '@/hooks/useColors';
 import { describeImport, inspectExport } from '@/src/data/transfer';
 import { withAlpha } from '@/src/domain/color/oklch';
 import { DEFAULT_SETTINGS, type Units } from '@/src/domain/models';
-import { formatClock, formatVolume } from '@/src/domain/time/format';
+import { formatClock, formatVolume, parseClockInput } from '@/src/domain/time/format';
 import { CATEGORY_LABELS, CATEGORY_ORDER, PRESETS } from '@/src/library/presets';
 import { deleteSnapshot, readSnapshot } from '@/src/services/backup';
 import { afterSnapshots } from '@/src/services/snapshotSync';
@@ -163,13 +163,13 @@ export default function OnboardingScreen() {
             <Txt role="body" tone="secondary">
               From
             </Txt>
-            <Stepper value={activeStartMin} onChange={(v) => setStart(Math.min(v, activeEndMin - 60))} step={30} min={5 * 60} max={12 * 60} label="start of active hours" format={formatClock} />
+            <Stepper value={activeStartMin} onChange={(v) => setStart(Math.min(v, activeEndMin - 60))} step={30} min={5 * 60} max={12 * 60} label="start of active hours" format={formatClock} parse={parseClockInput} />
           </Row>
           <Row style={{ justifyContent: 'space-between' }}>
             <Txt role="body" tone="secondary">
               Until
             </Txt>
-            <Stepper value={activeEndMin} onChange={(v) => setEnd(Math.max(v, activeStartMin + 60))} step={30} min={14 * 60} max={23 * 60 + 30} label="end of active hours" format={formatClock} />
+            <Stepper value={activeEndMin} onChange={(v) => setEnd(Math.max(v, activeStartMin + 60))} step={30} min={14 * 60} max={23 * 60 + 30} label="end of active hours" format={formatClock} parse={parseClockInput} />
           </Row>
         </View>
       </Step>

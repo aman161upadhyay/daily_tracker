@@ -47,7 +47,22 @@ export interface SyncResult {
  * headless path can each apply them their own way). Throws only when Health
  * Connect itself is unreachable; per-type failures come back as `error`.
  */
-export async function performBodySync(source: TrackerState | (() => TrackerState), ctx: CommandContext): Promise<SyncResult> {
+/** One read at a time, whoever asks (the screen, the foreground sync, the background task). */
+let inflight: Promise<unknown> = Promise.resolve();
+
+/**
+ * Reads are serialised across every caller: the background task and the screen can both ask
+ * while the app is alive, and two overlapping reads would let the older one land last — writing
+ * yesterday's step total over today's and moving the watermark backwards.
+ */
+export function performBodySync(source: TrackerState | (() => TrackerState), ctx: CommandContext): Promise<SyncResult> {
+  const job = () => readAndBuild(source, ctx);
+  const run = inflight.then(job, job);
+  inflight = run.catch(() => undefined);
+  return run;
+}
+
+async function readAndBuild(source: TrackerState | (() => TrackerState), ctx: CommandContext): Promise<SyncResult> {
   const access = await currentAccess();
   if (access.granted.length === 0) {
     const error = 'Health Connect access was removed. Connect again to keep importing.';
@@ -70,8 +85,9 @@ export async function performBodySync(source: TrackerState | (() => TrackerState
         granted: access.granted,
         background: access.background,
         lastError: error,
-        // A partly failed read keeps the old watermark so the missed days are read again next time.
-        ...(error ? {} : { lastSyncAt: ctx.nowMs }),
+        // A partly failed read keeps the old watermark so the missed days are read again next time;
+        // a watermark never moves backwards.
+        ...(error ? {} : { lastSyncAt: Math.max(ctx.nowMs, state.body.sync.lastSyncAt ?? 0) }),
       },
     },
   ];

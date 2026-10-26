@@ -3,13 +3,13 @@
  * notification handler. Each returns reducer actions; nothing here touches
  * React, the OS or the store.
  */
-import type { EntrySource, Habit, MindKind, NudgeEvent, NudgeEventKind, SnackTrigger, SnackType } from '@/src/domain/models';
+import type { Cadence, EntrySource, Habit, HabitRule, MindKind, NudgeEvent, NudgeEventKind, SnackTrigger, SnackType } from '@/src/domain/models';
 import { SNACK_LABELS } from '@/src/domain/models';
 import type { NudgeActionKind } from '@/src/domain/nudges/planner';
 import { SNOOZE_MINUTES } from '@/src/domain/nudges/planner';
-import { addDays, trackingDayOf } from '@/src/domain/time/trackingDay';
+import { addDays, trackingDayOf, weekStartOf } from '@/src/domain/time/trackingDay';
 import type { Action } from './reducer';
-import { habitView } from './selectors';
+import { habitView, latestRule, ruleFor } from './selectors';
 import type { TrackerState } from './types';
 
 export interface CommandContext {
@@ -59,7 +59,8 @@ export function parsePayload(data: unknown): NudgePayload | null {
   if (!data || typeof data !== 'object') return null;
   const d = data as Record<string, unknown>;
   if (!isId(d.nudgeId) || typeof d.kind !== 'string' || !PAYLOAD_KINDS.has(d.kind)) return null;
-  if (typeof d.day !== 'string' || !DAY_RE.test(d.day)) return null;
+  // The timer bell carries no day: its logger derives the day from the instant the session ended.
+  if (typeof d.day !== 'string' || !(DAY_RE.test(d.day) || (d.kind === 'MIND_END' && d.day === ''))) return null;
   if (!Array.isArray(d.habitIds) || d.habitIds.length > MAX_HABIT_IDS || !d.habitIds.every(isId)) return null;
   const out: NudgePayload = { nudgeId: d.nudgeId, kind: d.kind, habitIds: d.habitIds as string[], day: d.day };
   if (typeof d.snackType === 'string' && Object.prototype.hasOwnProperty.call(SNACK_LABELS, d.snackType)) out.snackType = d.snackType;
@@ -75,6 +76,74 @@ export function parsePayload(data: unknown): NudgePayload | null {
 
 export function isNudgePayload(data: unknown): data is NudgePayload {
   return parsePayload(data) !== null;
+}
+
+/** Identifier of the one scheduled timer bell. */
+export const MIND_END_ID = 'mind-end';
+
+/** What the timer's end bell carries: enough to log the session if the app was gone when it rang. */
+export function mindEndPayload(endAtMs: number, minutes: number, kind: MindKind): NudgePayload {
+  return { nudgeId: MIND_END_ID, kind: 'MIND_END', habitIds: [], day: '', mind: { kind, minutes, startAt: endAtMs - minutes * 60_000 } };
+}
+
+/**
+ * The same session seen from both ends — the timer screen when its clock runs out and the end
+ * bell when it is tapped — within a minute of each other. Two real sessions are always further
+ * apart than that (the second starts after the first ended).
+ */
+export function mindSessionExists(state: TrackerState, kind: MindKind, startAt: number): boolean {
+  return state.mind.some((x) => x.kind === kind && Math.abs(x.startAt - startAt) < 60_000);
+}
+
+/** First day of the period after the one containing `day`, for cadence changes. */
+export function nextPeriodStart(cadence: Cadence, day: string): string {
+  if (cadence === 'DAILY') return addDays(day, 1);
+  if (cadence === 'WEEKLY') return addDays(weekStartOf(day), 7);
+  const [y, m] = day.split('-').map(Number);
+  const next = new Date(Date.UTC(y!, m!, 1));
+  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-01`;
+}
+
+export type RuleDraft = Pick<HabitRule, 'cadence' | 'timesPerPeriod' | 'target' | 'freezesPerMonth'>;
+
+const sameRule = (a: RuleDraft, b: RuleDraft) => a.cadence === b.cadence && a.timesPerPeriod === b.timesPerPeriod && a.target === b.target && a.freezesPerMonth === b.freezesPerMonth;
+
+/** The rule in force on `day` (a habit without one behaves as a daily yes/no with two freezes). */
+export function ruleInForce(state: TrackerState, habitId: string, day: string): HabitRule {
+  return ruleFor(state, habitId, day) ?? { habitId, effectiveFrom: day, cadence: 'DAILY', timesPerPeriod: 1, target: 1, freezesPerMonth: 2 };
+}
+
+/**
+ * Save an edited rule. Rule changes are versioned, never retroactive: the same cadence applies
+ * from today (this period); a new cadence from the next period, so the period under way is judged
+ * by the rhythm it started with. A rhythm already planned for later is replaced by the new one at
+ * its own start — or called off when the draft is simply today's rule again.
+ */
+export function ruleChangeActions(state: TrackerState, habit: Pick<Habit, 'id'>, draft: RuleDraft, day: string): Action[] {
+  const today = ruleInForce(state, habit.id, day);
+  const latest = latestRule(state, habit.id);
+  const pending = latest && latest.effectiveFrom > day ? latest : null;
+  if (sameRule(draft, today)) return pending ? [{ type: 'REMOVE_RULE', habitId: habit.id, effectiveFrom: pending.effectiveFrom }] : [];
+  if (pending && sameRule(draft, pending)) return [];
+  const rule = { habitId: habit.id, ...draft };
+  if (draft.cadence === today.cadence) {
+    const out: Action[] = [{ type: 'SET_RULE', rule: { ...rule, effectiveFrom: day } }];
+    if (pending) out.push({ type: 'REMOVE_RULE', habitId: habit.id, effectiveFrom: pending.effectiveFrom });
+    return out;
+  }
+  return [{ type: 'SET_RULE', rule: { ...rule, effectiveFrom: pending ? pending.effectiveFrom : nextPeriodStart(today.cadence, day) } }];
+}
+
+/**
+ * Change only the per-day target: today's rule from today, and any rhythm already planned for
+ * later keeps its start and takes the new number too, so it neither starts early nor undoes it.
+ */
+export function targetChangeActions(state: TrackerState, habit: Pick<Habit, 'id'>, target: number, day: string): Action[] {
+  const out: Action[] = [];
+  const today = ruleInForce(state, habit.id, day);
+  if (today.target !== target) out.push({ type: 'SET_RULE', rule: { ...today, effectiveFrom: day, target } });
+  for (const pending of state.rules.filter((r) => r.habitId === habit.id && r.effectiveFrom > day && r.target !== target)) out.push({ type: 'SET_RULE', rule: { ...pending, target } });
+  return out;
 }
 
 /**
@@ -143,8 +212,7 @@ export function nudgeResponseActions(state: TrackerState, payload: NudgePayload,
   if (payload.kind === 'MIND_END') {
     const m = payload.mind;
     if (!m) return out;
-    const already = state.mind.some((x) => x.kind === m.kind && Math.abs(x.startAt - m.startAt) < 2 * 60_000);
-    if (!already) {
+    if (!mindSessionExists(state, m.kind, m.startAt)) {
       // The session belongs to the day it ended on, not the day the bell was tapped (it may be
       // acknowledged the next morning).
       const endAt = m.startAt + m.minutes * 60_000;

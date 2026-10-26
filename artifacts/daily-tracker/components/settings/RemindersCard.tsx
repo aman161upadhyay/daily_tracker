@@ -7,7 +7,7 @@ import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import type { ScheduledNudge } from '@/src/domain/nudges/planner';
 import { now } from '@/src/domain/time/clock';
-import { formatClock } from '@/src/domain/time/format';
+import { formatClock, parseClockInput } from '@/src/domain/time/format';
 import { calendarDayOf, instantOf, minutesOfDay } from '@/src/domain/time/trackingDay';
 import { NOTIFICATIONS_SUPPORTED, getPermission, openExactAlarmSettings, openNotificationSettings, requestPermission, type PermissionState } from '@/src/services/notifications';
 import { nudgePlan } from '@/src/state/selectors';
@@ -150,7 +150,7 @@ export function RemindersCard() {
                 <Txt role="body" tone="secondary">
                   At
                 </Txt>
-                <Stepper value={s.weeklySummary.minute} onChange={(minute) => actions.updateSettings({ weeklySummary: { ...s.weeklySummary, minute } })} step={30} min={8 * 60} max={21 * 60} label="weekly summary time" format={formatClock} />
+                <Stepper value={s.weeklySummary.minute} onChange={(minute) => actions.updateSettings({ weeklySummary: { ...s.weeklySummary, minute } })} step={30} min={8 * 60} max={21 * 60} label="weekly summary time" format={formatClock} parse={parseClockInput} />
               </Row>
             ) : null}
           </View>

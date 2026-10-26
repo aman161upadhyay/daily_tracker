@@ -83,18 +83,46 @@ export function periodQuota(rule: Pick<HabitRule, 'cadence' | 'timesPerPeriod'>,
 
 /**
  * Days the period containing `day` really requires of this habit: the quota, prorated to the days
- * the habit has in the period (from `createdDay` on, days off excluded) and never more than those
- * days. One formula for the streak, the Today card ("2 of 4 this week"), the charts and the
- * planner, so the week a habit was created on a Thursday is judged the same everywhere.
+ * the habit has in the period (from `from` on, days off excluded) and never more than those days.
+ * `from` is the first day of the habit's current cadence segment (`segmentStartOn`): the day it was
+ * created, or the day a new cadence took over. One formula for the streak, the Today card
+ * ("2 of 4 this week"), the charts, the widget and the planner, so the week a habit was created on
+ * a Thursday — or the month a weekly habit became monthly — is judged the same everywhere.
  * 0 when the habit has no day in the period.
  */
-export function periodRequired(rule: Pick<HabitRule, 'cadence' | 'timesPerPeriod'>, day: string, createdDay: string, offDays?: ReadonlySet<string>): number {
+export function periodRequired(rule: Pick<HabitRule, 'cadence' | 'timesPerPeriod'>, day: string, from: string, offDays?: ReadonlySet<string>): number {
   if (rule.cadence === 'DAILY') return 1;
   const bounds = periodBounds(rule.cadence, day);
   let available = 0;
-  for (let d = createdDay > bounds.start ? createdDay : bounds.start; d <= bounds.end; d = addDays(d, 1)) if (!offDays?.has(d)) available++;
+  for (let d = from > bounds.start ? from : bounds.start; d <= bounds.end; d = addDays(d, 1)) if (!offDays?.has(d)) available++;
   if (available === 0) return 0;
   return Math.min(available, Math.max(1, Math.round((periodQuota(rule, bounds.end) * available) / bounds.length)));
+}
+
+/**
+ * First day of the cadence segment that contains `day`: the habit's creation day, or the first day
+ * after the last period of the previous cadence. Replays the same walk the streak takes, so a
+ * weekly habit that became monthly on the 26th starts its monthly segment where the streak does
+ * (the day after that week ended), and its first month is prorated from there, not scored against
+ * a full month's quota.
+ */
+export function segmentStartOn(rules: HabitRule[], createdDay: string, day: string): string {
+  const sorted = sortRules(rules);
+  if (sorted.length === 0 || day <= createdDay) return createdDay;
+  let cursor = createdDay;
+  let cadence = ruleOn(sorted, cursor).cadence;
+  let segment = cursor;
+  while (cursor <= day) {
+    const rule = ruleOn(sorted, cursor);
+    if (rule.cadence !== cadence) {
+      cadence = rule.cadence;
+      segment = cursor;
+    }
+    const end = periodBounds(rule.cadence, cursor).end;
+    if (day <= end) return segment;
+    cursor = addDays(end, 1);
+  }
+  return segment;
 }
 
 export function periodBounds(cadence: Cadence, day: string): { start: string; end: string; length: number } {
@@ -158,7 +186,7 @@ export function evaluateStreak(input: StreakInput): StreakResult {
     }
     // Prorated for the habit's start and days off, and never more than the days the period has (a
     // "31 days a month" rhythm asks for every day of February, not for three days that do not exist).
-    const required = periodRequired(rule, end, input.createdDay, off);
+    const required = periodRequired(rule, end, start, off);
 
     let status: PeriodStatus;
     let freezeMonth: string | undefined;

@@ -2,19 +2,21 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { AppState } from 'react-native';
 import { createStore } from '@/src/data/createStore';
 import { WATER_GOAL_MAX_ML, WATER_GOAL_MIN_ML } from '@/src/data/validate';
+import { withHeadlessLock } from '@/src/services/headlessLock';
 import { headlessRevision, onHeadlessWrite } from '@/src/services/replan';
 import type { TrackerStore } from '@/src/data/store';
 import type { Cadence, Category, CycleDayLog, CycleReminder, Habit, HabitIcon, HabitRule, HabitType, MindKind, NudgePolicy, Settings, SnackTrigger, SnackType } from '@/src/domain/models';
 import { SNACK_LABELS } from '@/src/domain/models';
 import { applyPeriodStart } from '@/src/domain/cycle/timeline';
 import { currentZone, newId, now } from '@/src/domain/time/clock';
-import { addDays, calendarDayOf, instantOf, minutesOfDay, trackingDayOf, weekStartOf } from '@/src/domain/time/trackingDay';
+import { calendarDayOf, instantOf, minutesOfDay, trackingDayOf } from '@/src/domain/time/trackingDay';
 import { PRESET_BY_ID } from '@/src/library/presets';
+import { mindSessionExists, ruleChangeActions, ruleInForce, targetChangeActions, type RuleDraft } from './commands';
 import { reducer, type Action } from './reducer';
 import { buildEmptyState, buildSampleState, habitFromPreset } from './seed';
 import { bumpBodyEpoch } from './epochs';
 import { setLiveStore } from './liveStore';
-import { latestRule, ruleFor } from './selectors';
+import { latestRule } from './selectors';
 import type { TrackerState } from './types';
 
 export interface TrackerContextValue {
@@ -126,15 +128,6 @@ function describe(err: unknown): string {
     return `${err.message}${inner}`;
   }
   return String(err);
-}
-
-/** First day of the period after the one containing `day`, for cadence changes. */
-function nextPeriodStart(cadence: Cadence, day: string): string {
-  if (cadence === 'DAILY') return addDays(day, 1);
-  if (cadence === 'WEEKLY') return addDays(weekStartOf(day), 7);
-  const [y, m] = day.split('-').map(Number);
-  const next = new Date(Date.UTC(y!, m!, 1));
-  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-01`;
 }
 
 /** The Water habit's target and the `waterGoalMl` setting are one number, inside the bounds both sides accept. */
@@ -289,8 +282,12 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
     const gen = genRef.current;
     if (committedGenRef.current >= gen) return Promise.resolve(true);
     if (!storeRef.current) return Promise.resolve(false);
-    return new Promise((resolve) => waitersRef.current.push({ gen, resolve }));
-  }, []);
+    const wait = new Promise<boolean>((resolve) => waitersRef.current.push({ gen, resolve }));
+    // The save gave up earlier and no retry is coming: try once more for this caller, so the wait
+    // ends with that attempt (either way) instead of lasting until the next real change.
+    if (failuresRef.current > MAX_SAVE_RETRIES && !flushingRef.current && retryRef.current === null && targetRef.current !== committedRef.current) void flush();
+    return wait;
+  }, [flush]);
 
   /**
    * Compute actions from the newest state and apply them as one change. Used by the live store
@@ -314,24 +311,31 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
-        const store = await createStore();
-        // Revision before the load: a headless write that lands between the two bumps it, and
-        // the next check reloads. Reading it afterwards could mark such a write as already seen.
-        const revisionBefore = await headlessRevision();
-        let next = await store.load();
-        if (cancelled) return;
-        if (!next) {
-          next = buildEmptyState(trackingDayOf(now(), currentZone()));
-          await store.replace(next);
-        }
-        seenRevisionRef.current = revisionBefore;
-        if (cancelled) return;
-        storeRef.current = store;
-        committedRef.current = next;
-        targetRef.current = next;
-        dispatch({ type: 'HYDRATE', state: next });
-        targetGenRef.current = genRef.current;
-        committedGenRef.current = genRef.current;
+        // Under the headless writers' lock: a widget tap or notification button that is halfway
+        // through its own load → write finishes first, and once we are registered as the live
+        // store no headless job can start a database write of its own. Without this a job that
+        // passed its "app not alive" check could write a stale state after we took over.
+        await withHeadlessLock(async () => {
+          const store = await createStore();
+          // Revision before the load: a headless write that lands between the two bumps it, and
+          // the next check reloads. Reading it afterwards could mark such a write as already seen.
+          const revisionBefore = await headlessRevision();
+          let next = await store.load();
+          if (cancelled) return;
+          if (!next) {
+            next = buildEmptyState(trackingDayOf(now(), currentZone()));
+            await store.replace(next);
+          }
+          seenRevisionRef.current = revisionBefore;
+          if (cancelled) return;
+          storeRef.current = store;
+          committedRef.current = next;
+          targetRef.current = next;
+          dispatch({ type: 'HYDRATE', state: next });
+          targetGenRef.current = genRef.current;
+          committedGenRef.current = genRef.current;
+          setLiveStore({ apply, current: () => pendingRef.current });
+        });
       } catch (err) {
         console.error('Storage failed to open', err);
         if (!cancelled) setStorageError(describe(err));
@@ -440,28 +444,18 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: 'ADD_ENTRY', entry: { id: newId(), habitId: habit.id, day: d, at, zone: z, value, source: 'MANUAL' } });
     };
 
-    const currentRule = (habit: Habit, day: string): HabitRule =>
-      latestRule(stateRef(), habit.id) ?? { habitId: habit.id, effectiveFrom: day, cadence: 'DAILY', timesPerPeriod: 1, target: 1, freezesPerMonth: 2 };
-
     /**
      * The water goal lives twice: as a setting (Today's hydration card, the planner) and as the
      * Water habit's versioned target (completion, streaks, the widget). One number, inside the
-     * bounds both sides accept, whichever side was edited. Today's rule changes from today; a
-     * rhythm already scheduled for later keeps its start date and only takes the new number, so
-     * it neither starts early nor undoes the goal later.
+     * bounds both sides accept, whichever side was edited (see `targetChangeActions` for how a
+     * rhythm planned for later is treated).
      */
     const syncWaterGoal = (ml: number) => {
       const goal = clampWaterGoal(ml);
       const { day } = stamp();
       const s = stateRef();
       const water = s.habits.find((h) => h.presetId === 'water');
-      if (water) {
-        const todayRule = ruleFor(s, water.id, day) ?? currentRule(water, day);
-        if (todayRule.target !== goal) dispatch({ type: 'SET_RULE', rule: { ...todayRule, effectiveFrom: day, target: goal } });
-        for (const pending of s.rules.filter((r) => r.habitId === water.id && r.effectiveFrom > day && r.target !== goal)) {
-          dispatch({ type: 'SET_RULE', rule: { ...pending, target: goal } });
-        }
-      }
+      if (water) for (const a of targetChangeActions(s, water, goal, day)) dispatch(a);
       if (s.settings.waterGoalMl !== goal) dispatch({ type: 'UPDATE_SETTINGS', patch: { waterGoalMl: goal } });
     };
 
@@ -529,7 +523,11 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
         // 03:10 counts for the evening before, exactly as the end bell's own log would.
         const endAt = opts?.endAt ?? at;
         const d = endAt === at ? day : trackingDayOf(endAt, z, boundary);
-        dispatch({ type: 'LOG_MIND', session: { id: newId(), startAt: endAt - minutes * 60_000, endAt, zone: z, day: d, kind, minutes } });
+        const startAt = endAt - minutes * 60_000;
+        // The end bell may have logged this very session already (tapped while the screen's clock
+        // was paused by the OS); the same dedupe the bell uses, against the newest state.
+        if (mindSessionExists(pendingRef.current, kind, startAt)) return;
+        dispatch({ type: 'LOG_MIND', session: { id: newId(), startAt, endAt, zone: z, day: d, kind, minutes } });
       },
       addPreset(presetId) {
         const preset = PRESET_BY_ID[presetId];
@@ -581,23 +579,15 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
         if (draft.pinned !== habit.pinned) patch.pinned = draft.pinned;
         if (Object.keys(patch).length > 0) dispatch({ type: 'UPDATE_HABIT', id: habit.id, patch });
 
-        const current = currentRule(habit, day);
-        const next: HabitRule = {
-          habitId: habit.id,
-          effectiveFrom: day,
+        const next: RuleDraft = {
           cadence: draft.cadence,
           timesPerPeriod: draft.cadence === 'DAILY' ? 1 : Math.max(1, Math.round(draft.timesPerPeriod)),
           target: habit.type === 'YES_NO' ? 1 : Math.max(1, Math.round(draft.target)),
           freezesPerMonth: Math.max(0, Math.round(draft.freezesPerMonth)),
         };
-        const changed =
-          next.cadence !== current.cadence || next.timesPerPeriod !== current.timesPerPeriod || next.target !== current.target || next.freezesPerMonth !== current.freezesPerMonth;
-        if (changed) {
-          // Same cadence: applies from today (the current period). New cadence: from the next period.
-          const effectiveFrom = next.cadence === current.cadence ? day : nextPeriodStart(current.cadence, day);
-          dispatch({ type: 'SET_RULE', rule: { ...next, effectiveFrom: effectiveFrom < current.effectiveFrom ? current.effectiveFrom : effectiveFrom } });
-        }
-        if (habit.presetId === 'water' && next.target !== current.target) syncWaterGoal(next.target);
+        const before = ruleInForce(stateRef(), habit.id, day).target;
+        for (const a of ruleChangeActions(stateRef(), habit, next, day)) dispatch(a);
+        if (habit.presetId === 'water' && next.target !== before) syncWaterGoal(next.target);
       },
       updateHabit(id, patch) {
         dispatch({ type: 'UPDATE_HABIT', id, patch });
@@ -608,8 +598,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
       setTarget(habit, target) {
         if (habit.presetId === 'water') return syncWaterGoal(target);
         const { day } = stamp();
-        const base = currentRule(habit, day);
-        dispatch({ type: 'SET_RULE', rule: { ...base, effectiveFrom: day, target: Math.max(1, Math.round(target)) } });
+        for (const a of targetChangeActions(stateRef(), habit, Math.max(1, Math.round(target)), day)) dispatch(a);
       },
       setPolicy(policy) {
         dispatch({ type: 'SET_POLICY', policy });

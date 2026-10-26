@@ -19,7 +19,7 @@ import * as TaskManager from 'expo-task-manager';
 import { Linking, Platform } from 'react-native';
 import type { MindKind } from '@/src/domain/models';
 import type { NudgeChannel, ScheduledNudge } from '@/src/domain/nudges/planner';
-import type { NudgePayload } from '@/src/state/commands';
+import { MIND_END_ID, mindEndPayload, type NudgePayload } from '@/src/state/commands';
 import { parseResponse } from './notificationPayload';
 
 export type PermissionState = 'granted' | 'denied' | 'undetermined' | 'unsupported';
@@ -43,7 +43,6 @@ export const NUDGE_RESPONSE_TASK = 'dailytracker-nudge-response';
 
 const LEDGER_KEY = 'dailytracker.nudges.ledger.v1';
 const HANDLED_KEY = 'dailytracker.nudges.handled.v1';
-const MIND_END_ID = 'mind-end';
 const ANDROID = Platform.OS === 'android';
 
 /** What we last handed to the OS; `sig` changes when the time or the text changes. */
@@ -363,13 +362,7 @@ export async function endHandling(key: string, committed: boolean): Promise<void
 
 export async function scheduleMindEnd(endAtMs: number, minutes: number, kind: MindKind): Promise<void> {
   await Notifications.cancelScheduledNotificationAsync(MIND_END_ID).catch(() => {});
-  const payload: NudgePayload = {
-    nudgeId: MIND_END_ID,
-    kind: 'MIND_END',
-    habitIds: [],
-    day: '',
-    mind: { kind, minutes, startAt: endAtMs - minutes * 60_000 },
-  };
+  const payload = mindEndPayload(endAtMs, minutes, kind);
   await Notifications.scheduleNotificationAsync({
     identifier: MIND_END_ID,
     content: { title: 'Session complete', body: `${minutes} minutes of ${kind === 'BREATHING' ? 'breathing' : 'meditation'}. Tap if it was not logged.`, sound: 'default', data: { ...payload } },

@@ -63,13 +63,15 @@ export function AppLockGate() {
 
   // The lock turning on while the app is open locks right away: a restored backup that had it on
   // (the welcome screen's Restore) must not show its records before the first check, and the
-  // settings switch confirms the phone's lock works the moment it is turned on. Without a screen
-  // lock on the phone `unlock` lets the screen through at once.
-  const wasEnabled = useRef(enabled);
-  useEffect(() => {
-    if (enabled && !wasEnabled.current) setLocked(true);
-    wasEnabled.current = enabled;
-  }, [enabled]);
+  // settings switch confirms the phone's lock works the moment it is turned on. Decided during
+  // render, not in an effect: React re-renders before anything is painted, so the records behind
+  // the gate never reach the screen for a frame. Without a screen lock on the phone `unlock` lets
+  // the screen through at once.
+  const [seenEnabled, setSeenEnabled] = useState(enabled);
+  if (enabled !== seenEnabled) {
+    setSeenEnabled(enabled);
+    if (enabled) setLocked(true);
+  }
 
   // Re-lock after the configured time away; ignore the transitions the biometric prompt itself causes.
   useEffect(() => {
@@ -101,7 +103,7 @@ export function AppLockGate() {
   if (!locked) return null;
 
   return (
-    <Modal visible animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={() => {}}>
+    <Modal visible animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={() => {}}>
       <View style={[styles.screen, { backgroundColor: c.bg, paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]} accessibilityViewIsModal>
         <View style={styles.body}>
           <IconTile Glyph={UI.Lock} color={c.green} size={64} />

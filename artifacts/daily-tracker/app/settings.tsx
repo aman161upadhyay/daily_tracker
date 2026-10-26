@@ -15,7 +15,7 @@ import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
 import type { ThemePreference, Units } from '@/src/domain/models';
 import { WATER_GOAL_MAX_ML, WATER_GOAL_MIN_ML } from '@/src/data/validate';
-import { formatClock, formatVolume } from '@/src/domain/time/format';
+import { formatClock, formatVolume, parseClockInput } from '@/src/domain/time/format';
 import { useTracker } from '@/src/state/TrackerProvider';
 
 const INTERVALS = [45, 60, 90, 120];
@@ -115,13 +115,13 @@ export default function SettingsScreen() {
               <Txt role="body" tone="secondary">
                 From
               </Txt>
-              <Stepper value={s.activeStartMin} onChange={(v) => actions.updateSettings({ activeStartMin: Math.min(v, s.activeEndMin - 60) })} step={30} min={5 * 60} max={12 * 60} label="start of active hours" format={formatClock} />
+              <Stepper value={s.activeStartMin} onChange={(v) => actions.updateSettings({ activeStartMin: Math.min(v, s.activeEndMin - 60) })} step={30} min={5 * 60} max={12 * 60} label="start of active hours" format={formatClock} parse={parseClockInput} />
             </Row>
             <Row style={{ justifyContent: 'space-between' }}>
               <Txt role="body" tone="secondary">
                 Until
               </Txt>
-              <Stepper value={s.activeEndMin} onChange={(v) => actions.updateSettings({ activeEndMin: Math.max(v, s.activeStartMin + 60) })} step={30} min={14 * 60} max={23 * 60 + 30} label="end of active hours" format={formatClock} />
+              <Stepper value={s.activeEndMin} onChange={(v) => actions.updateSettings({ activeEndMin: Math.max(v, s.activeStartMin + 60) })} step={30} min={14 * 60} max={23 * 60 + 30} label="end of active hours" format={formatClock} parse={parseClockInput} />
             </Row>
           </View>
         </Setting>

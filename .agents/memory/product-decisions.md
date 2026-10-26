@@ -111,6 +111,18 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   ran out. App lock engages on every off→on transition. Name greeting on Today is *not* wanted — the initial
   avatar is the design. **Why:** round 4 showed the single-writer design still read one render behind itself.
   Dispositions in `docs/RUNNING_CONTEXT.md` §6 Round 4.
+- Council-round-5 decisions (2026-10-26 midday): a shared formula must share its *inputs* — the prorated quota
+  takes the cadence-segment start (`segmentStartOn` replays the streak's walk; the segment starts the day after
+  the previous cadence's last period ended, not on the rule's effectiveFrom), used by streak, card, charts,
+  planner, widget. The timer bell payload is built by `mindEndPayload()` next to `parsePayload` (empty day
+  allowed for MIND_END only) and both ends of a meditation dedupe through `mindSessionExists` (60 s on
+  startAt). Provider hydration + live-store registration run under the headless lock; headless DB paths
+  re-check `liveStore()` after their re-plan await. Health Connect reads are single-flight; watermark never
+  moves back. App-lock gate locks during render (no fade). Stepper numbers are tappable to type (clamped, not
+  snapped). Period ends are editable from any calendar day (extend/shorten). Screenshot protection follows
+  the *setting*, not the lock state — by design (Recents thumbnail). **Why:** round 5 showed round 4's shared
+  formula and tightened parser each broke a caller that was not updated with them. Dispositions in
+  `docs/RUNNING_CONTEXT.md` §6 Round 5.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app

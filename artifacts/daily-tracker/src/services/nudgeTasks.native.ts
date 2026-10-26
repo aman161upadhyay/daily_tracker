@@ -91,6 +91,10 @@ async function handleHeadlessResponse(raw: unknown): Promise<void> {
       } catch (err) {
         console.warn('Re-plan after a notification button failed; the log is still saved', err);
       }
+      // Once more after the await: the app's start-up waits for this lock, but a store registered
+      // by a provider that was already loaded must get the press instead of a write under it.
+      const aliveNow = liveStore();
+      if (aliveNow) return { live: aliveNow };
       await store.persist(state, next);
       return { next, ctx };
     });

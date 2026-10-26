@@ -191,8 +191,8 @@ export default function MindScreen() {
         <View style={styles.stage}>
           {kind === 'BREATHING' ? (
             <>
-              <BreathCircle running={running} />
-              <Txt role="title2" tone="violet" style={{ marginTop: 8 }}>
+              <BreathCircle running={running} elapsedMs={elapsedMs} />
+              <Txt role="title2" tone="violet" style={{ marginTop: 8 }} accessibilityLiveRegion="polite">
                 {running ? phaseAt(elapsedMs) : done ? 'Done' : 'Ready when you are'}
               </Txt>
             </>

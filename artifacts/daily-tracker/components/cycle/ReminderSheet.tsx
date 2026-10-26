@@ -7,7 +7,7 @@ import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
 import { describeReminder } from '@/src/domain/cycle/reminders';
 import type { CyclePhaseKey, CycleReminder } from '@/src/domain/models';
-import { formatClock } from '@/src/domain/time/format';
+import { formatClock, parseClockInput } from '@/src/domain/time/format';
 
 export interface ReminderSheetProps {
   /** The rule being edited; `null` closes the sheet. A rule with an empty id is new. */
@@ -78,7 +78,7 @@ export function ReminderSheet({ reminder, birthControl, onClose, onSave, onDelet
         <View style={{ flex: 1 }}>
           <Txt role="body">Time</Txt>
         </View>
-        <Stepper value={draft.minute} onChange={(minute) => setDraft({ ...draft, minute })} step={30} min={0} max={23 * 60 + 30} format={formatClock} label="time" />
+        <Stepper value={draft.minute} onChange={(minute) => setDraft({ ...draft, minute })} step={30} min={0} max={23 * 60 + 30} format={formatClock} parse={parseClockInput} label="time" />
       </Row>
       <Row style={styles.row}>
         <Txt role="body" style={{ flex: 1 }}>

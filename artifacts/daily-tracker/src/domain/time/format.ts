@@ -48,6 +48,26 @@ export function formatClock(minutesOfDay: number): string {
   return `${h12}:${min < 10 ? '0' : ''}${min} ${suffix}`;
 }
 
+/**
+ * A typed clock time → minutes of day, or null. Accepts "9", "9:30", "0930", "930", "21:15",
+ * "2115" and an optional am/pm ("9:30 pm", "930p"). Digits without a colon read as HHMM when there
+ * are three or more, as an hour otherwise. Hours 0–23 (12-hour with a suffix), minutes 0–59.
+ */
+export function parseClockInput(text: string): number | null {
+  const t = text.trim().toLowerCase();
+  const m = /^(\d{1,2})(?::(\d{2}))?\s*([ap])?\.?m?\.?$/.exec(t) ?? /^(\d{1,2})(\d{2})\s*([ap])?\.?m?\.?$/.exec(t);
+  if (!m) return null;
+  let hours = Number(m[1]);
+  const minutes = m[2] === undefined ? 0 : Number(m[2]);
+  const suffix = m[3];
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || minutes > 59) return null;
+  if (suffix) {
+    if (hours < 1 || hours > 12) return null;
+    hours = (hours % 12) + (suffix === 'p' ? 12 : 0);
+  } else if (hours > 23) return null;
+  return hours * 60 + minutes;
+}
+
 /** "in 24 min", "in 1 h 10 min", "now" */
 export function formatIn(minutes: number): string {
   if (minutes <= 0) return 'now';

@@ -133,3 +133,9 @@ skipped relinking because `.modules.yaml` said it was current).
 **How to apply:** any time a hoisted version changes (overrides, catalog bump) and tsc suddenly loses React types,
 check `ls node_modules/.pnpm/node_modules/@types/` before touching tsconfig or adding `.npmrc` hoist patterns.
 Hermes compiler path for bundle checks: `node_modules/.pnpm/hermes-compiler@*/node_modules/hermes-compiler/hermesc/linux64-bin/hermesc`.
+
+## CodeExecution file edits
+- `String.prototype.replace` with a *string* replacement interprets `$'`, `$&`, `$1`… — a replacement containing
+  shell/PowerShell text with `$'` spliced the rest of `docs/BUILD_ANDROID.md` into itself (round 4; repaired in
+  round 5). Always pass a function replacer: `src.replace(a, () => b)`. Also: no backticks inside JS template
+  literals in CodeExecution blocks.

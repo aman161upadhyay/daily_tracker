@@ -5,7 +5,7 @@ first thing to read after `replit.md`. It answers: what exists, why it is the wa
 verified, what happened step by step, and what is still open. Append to the journal; never rewrite
 history.
 
-Last updated: 2026-10-26, overnight autonomous session (council rounds 1–3 fixed; see journal and §6).
+Last updated: 2026-10-26, autonomous session (council rounds 1–5 fixed; see journal and §6).
 
 ---
 
@@ -15,10 +15,10 @@ Last updated: 2026-10-26, overnight autonomous session (council rounds 1–3 fix
 |---|---|
 | App | Daily Tracker — private Android tracker: habits · water · movement snacks · meditation · opt-in cycle · home-screen widget · configurable nudges · Health Connect import · app lock · encrypted backups |
 | Code | `artifacts/daily-tracker/` — Expo SDK 57, React Native 0.86, TypeScript, Expo Router, expo-sqlite |
-| Version | `app.json` `version 0.8.0`, `versionCode 8`, tag `v0.8` (M6 complete + council rounds 1–4) |
+| Version | `app.json` `version 0.9.0`, `versionCode 9`, tag `v0.9` (M6 complete + council rounds 1–5) |
 | Repo | https://github.com/aman161upadhyay/daily_tracker.git, branch `main`, commits authored as Aman |
 | Milestones | M0 skeleton ✅ · M1 storage/streaks/onboarding ✅ · M2 nudges/notifications ✅ · M3 widget ✅ · M4 Health Connect/Body ✅ · M5 cycle ✅ · M6 theme/lock/backup/signing ✅ (`docs/IMPLEMENTATION_PLAN.md`) |
-| Verified here | type-check (three packages), 231 unit tests, Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks, web walkthroughs by a browser-driving tester |
+| Verified here | type-check (three packages), 245 unit tests, Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks, web walkthroughs by a browser-driving tester |
 | Never run yet | a real Android device. Everything native (widget taps, notification buttons with the app closed, Health Connect, app lock, Auto Backup, signed APK) is coded and reviewed but untested on hardware — `docs/DEVICE_CHECKLIST.md` lists the exact rows |
 | User's next step | `docs/GET_IT_ON_YOUR_PHONE.md` (plain-language build guide) |
 
@@ -138,6 +138,25 @@ contradicts one, write down why.
 21. **One formula per number.** The prorated period quota ("2 of 4 this week" in the first, partial
     week) is computed once (`periodRequired`) and used by the streak, the card, the charts and the
     planner. When two screens can disagree about a number, extract the formula before fixing either.
+22. **One formula, same inputs.** A shared formula fed different inputs still disagrees: the round-4
+    quota was one function, but the streak gave it the period's real start and the card gave it the
+    creation day, so a cadence change split them again. When a formula is shared, share the derivation
+    of its inputs too (`segmentStartOn` for the quota), and test the transition cases (daily → weekly,
+    weekly → monthly, mid-week and on a boundary), not only the steady state.
+23. **Whatever writes a payload is what parses it.** The timer bell was built by hand in the
+    notification service and rejected by the parser that had been tightened in another file. A payload
+    builder lives next to its parser and a round-trip test (`parsePayload(build(...))`) guards every kind.
+24. **Two ends of one event share one dedupe.** The meditation timer can be finished by the screen's
+    clock or by the end bell, in either order, with the OS free to pause the screen's clock. Both go
+    through `mindSessionExists` (same key, same window) against the newest state; a dedupe that lives
+    only on one side is a double log waiting for the other.
+25. **Rule edits are decisions over the rule *in force*, not the latest row.** `ruleChangeActions` /
+    `targetChangeActions` (`src/state/commands.ts`) take today's rule as the baseline, treat a rhythm
+    planned for a later period as a plan — replaced at its own start, called off (`REMOVE_RULE`) when
+    the draft is today's rule again, carried along when only the target changes — and the habit page
+    shows the plan ("From Nov 2: …") so a save that starts next week never looks lost. **Why:** basing
+    an edit on the latest row made a planned monthly rhythm start today when a target was tweaked, and
+    an invisible plan read as a failed save.
 
 ### How council findings are judged
 - Accept when: evidence is concrete (file:line, reproducible), it violates a paradigm or a user constraint,
@@ -179,6 +198,9 @@ Dates are America/New_York. Commits are on `main`.
 | 2026-10-26 morning | **Council round 4** — six lenses over the round-3 result (new sessions). 30-odd findings; triage in §6. Theme: the single-writer design was right but its decisions still read React's *rendered* state (one render behind its own dispatches), a no-op dispatch could hang a waiter, and the live headless paths skipped the re-plan/widget/snapshot the database paths did | — |
 | 2026-10-26 morning | **Round-4 fixes:** provider rewritten around a synchronous newest-state ref + `publish` (generation only on a real change) + `apply(builder)`; every command path (actions, notification listener, widget tap, background re-plan, Health Connect sync) decides against that ref; live headless paths now re-plan, redraw the widget and snapshot before resolving; a shared body epoch cancels Health Connect reads across disconnect / remove / erase / restore from any screen; headless snapshot getters stand down when the app came alive; notification payloads validated field by field (prototype keys, bounds, shapes); WATER on a re-offered slot logs again once its snooze ran out; symptom severities / flow / mood validated on import; heart reads covering one permission keep the other's values; water goal mirrored from the editor side through one `syncWaterGoal`; prorated period quota shared by streak, card, charts and planner; app lock engages the moment it is enabled (toggle or restore); a foreground timer logs the instant it really ended (day boundary); Sugar Shield finish is single-shot; stepper snaps to its grid, 48 dp rows, shrinkable value; chips wrap; sheets keep taps with the keyboard up and skip the slide under reduce-motion; light-theme green/gold inks ≥ 4.5:1; oz hint shows the cap in oz; build guide (PowerShell 5 `&&`, first-clone vs later-build, Windows keystore path, build-tools filter) and checklist (R1 step 6, discreet default in C1–C3, R11 path, rows T1–T10) | this commit |
 | 2026-10-26 morning | Verification: tsc clean in all three packages, 231 tests (16 new in `tests/round4.test.ts`), Android Metro bundle 200 (12.5 MB dev), `expo export --platform android` → 5.9 MB Hermes bytecode, web preview renders (Settings) | this commit |
+| 2026-10-26 midday | **Council round 5** — five lenses (Android runtime, data, UX, security, release) over the round-4 result plus a cycle-flow e2e run. Theme: the round-4 proration formula was shared but fed the wrong start day after a cadence change; the timer bell's own payload failed the stricter parser; the live-store hand-over still had a window between a headless job's "app not alive" check and its write. Triage in §6 | — |
+| 2026-10-26 midday | **Round-5 fixes:** `parsePayload` accepts the timer bell's empty day (only for `MIND_END`) and the bell is built by the same `mindEndPayload()` the parser is tested against; one `mindSessionExists()` dedupe (60 s on the start instant) for the bell and the screen's own log; cadence segments — `segmentStartOn()` replays the streak's walk, and the card, charts, planner and widget prorate from the segment start instead of the creation day (a weekly habit turned monthly is no longer asked for the whole month's quota in its first partial month); the provider loads and registers the live store under the headless lock and headless jobs re-check for a live store after their re-plan await, before writing; `commitPending()` kicks one more save when the retry budget was already spent; Health Connect reads are single-flight with a watermark that never moves backwards; the app-lock gate locks during render (no unlocked frame) with no modal fade; BackfillStrip judges each day against its own rule; the stepper's number is tappable to type (bounded, no grid snap); the breathing circle resumes mid-phase and the phase label is a live region; a closed period's end can be moved from the day sheet (extend or shorten) and future days explain themselves; cycle calendar cells ≈46 dp; `docs/BUILD_ANDROID.md` restored after a round-4 text-splice corruption (a `$'` in a replacement string) | this commit |
+| 2026-10-26 midday | Verification: tsc clean ×3, 245 tests (14 new in `tests/round5.test.ts`), Android Metro bundle 200 (12.8 MB dev), `expo export --platform android` → 5.9 MB Hermes bytecode, web screenshot (Mind); e2e tester over the cycle sheet, the mind timer, the typed stepper, the cadence change and the Library (results in §6 Round 5) | this commit |
 
 (Entries for each council round follow below as they happen.)
 
@@ -338,6 +360,46 @@ Fresh reviewer sessions over the round-3 result. Ids are theirs.
 - Items 2–10 **pass** (water mirror clamps 100–20,000; editor caps 80/12; amount hint and Log label; "0 of 31 this month"; heatmap dot + legend; discreet on by default; export name with tag; no console errors). Item 1 (name greeting) is UX4-11 above.
 - After the fix batch, a second pass over the rewritten write path: two rapid water taps land as 500 ml and survive a reload; Settings goal stops at 100 ml and never shows less; the editor's target mirrors into Settings and back; a yes/no habit toggles on/off cleanly; no error banner. One real finding: a screen opened with no history behind it (`/shield` as a direct URL — on a phone, a notification or widget deep link) called `router.back()`, which is a dev error toast on web and a silent no-op in release, leaving the user on a screen that believed it had closed · **fixed** — `useBackOrHome()` (back when possible, else replace with Today) on Sugar Shield, the meditation timer and the habit page's archive/delete. The "movement 0 / 17 did not change" observation is by design: Sugar Shield squats count for the Sugar Shield habit, not the movement-snack quota.
 
+### Round 5 (2026-10-26 midday)
+
+Fresh reviewer sessions (Android runtime, data, UX, security, release) over the round-4 result, plus a browser e2e pass over the cycle flow. Ids are theirs.
+
+**Android runtime lens**
+- AND5-01 high · the headless DB path checked "app not alive" once, before `await replanHeadless`; a provider that hydrated during that await (and registered as the live store) could be overwritten by the job's persist, re-inserting rows the user had just erased · **fixed** — the provider's load + hydrate + `setLiveStore` run under the same headless lock, and the nudge and widget jobs re-check for a live store after the await and hand it the builder instead of writing.
+- AND5-02 high · `AppLockGate` turned the lock on in an effect, one frame after the switch — a frame of Settings (or of restored records) could be painted and the modal faded in over it · **fixed** — locked is decided during render (state-from-props pattern) and the modal uses no animation.
+- AND5-03 high · the foreground timer logged the session when its clock reached the total, and the end bell logged it again if tapped while Android had paused the JS clock (the screen's `logged` ref is per screen, the bell's dedupe was only on its own side) · **fixed** — `mindSessionExists()` shared by both (AND5-03 = DATA5-02).
+- AND5-04 med · after `MAX_SAVE_RETRIES` the retry timer stops; a later `commitPending()` with no new change waited forever (a notification button's "handled" mark never landed) · **fixed** — a waiter in that state starts one more flush, which settles every waiter either way.
+- AND5-05 med · the foreground sync (`useHealthConnect`) and the background task's sync could overlap; the older read landing last moved `lastSyncAt` backwards and could re-import a day it had just removed · **fixed** — `performBodySync` is single-flight across callers; the watermark is `max(old, now)`.
+
+**Data lens**
+- DATA5-01 high · `scheduleMindEnd` wrote `day: ''` but round 4's `parsePayload` requires `YYYY-MM-DD`, so every tap on the end bell was dropped (nothing logged when the app was closed) · **fixed** — empty day accepted for `MIND_END` only; `mindEndPayload()` builder shared with the parser's test.
+- DATA5-02 high · see AND5-03 · **fixed**.
+- DATA5-03 high · `evaluateStreak` passed `createdDay` to `periodRequired`, so after a cadence change the first partial period was prorated over the whole period (a weekly habit made monthly on the 26th needed the full 20 days in 6) — a regression from the round-4 "one formula" refactor, and the card/planner/charts made the same mistake · **fixed** — `periodRequired(rule, day, from)` takes the segment start; `segmentStartOn()` derives it for the selectors; `periodDoneOn` counts from the same day; transition tests (daily → weekly, weekly → monthly on a boundary and mid-week).
+- DATA5-04 med · `widget/model.ts` captions used `rule.timesPerPeriod` ("0 of 5 days" in a 4-day first week) · **fixed** — `view.periodQuota`; test.
+- DATA5-05 low · `BackfillStrip` judged all seven days against today's target · **fixed** — `targetOf(day)` from the rule in force that day.
+
+**UX lens**
+- UX5-01 med · the stepper could only step (2,000 → 1,850 ml was six presses) · **fixed** — tapping the number opens a bounded numeric field; typed values are clamped but not snapped; clock steppers take a typed time (`parse` prop, `parseClockInput`).
+- UX5-02 med · breathing circle restarted from an inhale after a pause while the label continued from the clock · **fixed** — the circle resumes mid-phase from `elapsedMs`; the phase label is `accessibilityLiveRegion="polite"`.
+- UX5-03 med · a closed period's end could only be edited from the history list, never from the calendar day; a future day's sheet offered nothing and explained nothing · **fixed** — "Period lasted until here" / "Period ended here instead" on the latest period started by that day (≤ 14 days, before the next period); future days get a one-line hint. (The e2e tester's step-9 "failure" was this by-design gap.)
+- UX5-04 low · cycle calendar cells 42 dp wide on a 360 dp phone · **accepted compromise** — the grid bleeds 12 dp into the card padding (≈46 dp); 48 would need a different card.
+- UX5-05 · a greeting by name on Today · **rejected** — the initial avatar is the design (round 4).
+- UX5-06 · Sugar Shield squats toward the movement-snack quota · **rejected** — by design, they are their own habit.
+
+**Security lens**
+- SEC5-01 med · screenshot protection follows the setting, not the lock state — while the lock is enabled the user cannot take screenshots even when unlocked · **by design, documented** (checklist R4): a secure window is what keeps Recents thumbnails blank the moment the app is backgrounded, before the lock has a chance to engage.
+- SEC5-02 low · `MIND_END` payload parsing gained a loophole for empty days · **reviewed** — only for that kind, and the day is never read for it (the logger derives it from the end instant).
+
+**Release / docs lens**
+- REL5-01 high · `docs/BUILD_ANDROID.md` was corrupted in round 4 (a `$'` inside a JavaScript `String.replace` replacement spliced the rest of the file into the middle) · **fixed** — restored from history and the round-4 edits re-applied with function replacers; the pitfall is in agent memory.
+- REL5-02 · RUNNING_CONTEXT header still said rounds 1–3; checklist L6 did not state the hourly snapshot rule · **fixed**; rows U1–U9 added.
+
+**End-to-end tester (web preview)**
+- Cycle flow: period start on 1 Oct moved the existing start, the day log persisted, the calendar and insights agree (steps 1–8 **pass**); step 9 (future day offers no period action) is UX5-03.
+- After the fix batch: period end shortened from a day inside it ("Period ended here instead"), extended from a day after it ("Period lasted until here"), removed from its start day, all surviving a reload; future day shows the hint and still takes symptoms **pass**. Meditation finished early → still one log **pass**; breathing resumed in "Long exhale", not from an inhale **pass**. Typed stepper: 1,850 exact, 50 → 100, 99999 → 20,000, + at the ceiling stays, Settings mirrors **pass**. One real finding: a cadence change (weekly → monthly) saved for the next period was invisible on the habit page — the card kept saying "2 days a week" and the tester read it as a failed save · **fixed** — the habit page shows "From Mon 2 Nov: 20 days a month" under the rule (header and Options → Rule) while a rule is pending; the editor already opened on the pending rule. Follow-on: clock steppers (active hours, summary time, cycle reminders) accept a typed time ("9:30 pm", "930", "21:15") via `parseClockInput`; tests.
+- Retest **pass**: the caption read `From Nov 2: 20 days a month`, the editor reopened on the pending rule, Library add → archive → restore row, typed `9:30 pm` into a start-time stepper clamped to its 12:00 PM ceiling and `noon` left it alone; no console errors. The retest also showed that switching the plan back to the current rule left a redundant "From Nov 2: 2 days a week" row, and reading the code showed `setTarget` based its new rule on the *latest* rule — a planned monthly rhythm would have started today the moment a target was edited · **fixed** — rule edits go through pure `ruleChangeActions` / `targetChangeActions` in `src/state/commands.ts` (a plan equal to today's rule is called off via the new `REMOVE_RULE` action, which never removes a habit's last rule; a same-cadence change supersedes the plan; a target change keeps today's cadence and carries the number into the plan); 4 tests.
+- The only console error (`withHeadlessLock is not defined`) was a half-saved provider edit during the batch, gone on reload.
+
 ### Round 3 (2026-10-26 night)
 
 Fresh reviewer sessions over the round-2 result. Ids are theirs.
@@ -399,5 +461,5 @@ Fresh reviewer sessions over the round-2 result. Ids are theirs.
 - Steps and cycle tiles in the widget; sleep-stages chart; write-back of water/mind sessions to Health Connect (v2).
 
 ### Device verification owed
-- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10, T1–T11 have never been run on hardware. First build on the laptop is the next real milestone.
+- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10, T1–T11, U1–U11 have never been run on hardware. First build on the laptop is the next real milestone.
 - Rows added this round: R9 and S6 now test both sides of the 3 am boundary; W4/W6/N-rows exercise the live-store path (app open vs swiped away) — both paths must log exactly once.

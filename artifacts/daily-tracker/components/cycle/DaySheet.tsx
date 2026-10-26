@@ -6,7 +6,7 @@ import { Txt } from '@/components/ui/Txt';
 import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
 import { FLOWS, isEmptyLog, MOODS, nextSeverity, SEVERITY_LABELS, SYMPTOMS } from '@/src/domain/cycle/symptoms';
-import { displayPhase, PHASE_LABELS, type CycleTimeline } from '@/src/domain/cycle/timeline';
+import { displayPhase, OPEN_PERIOD_MAX_DAYS, PHASE_LABELS, type CycleTimeline } from '@/src/domain/cycle/timeline';
 import type { CycleDayLog, Flow, Mood, Severity } from '@/src/domain/models';
 import { formatDayLong, formatDayShort } from '@/src/domain/time/format';
 import { dayDiff } from '@/src/domain/time/trackingDay';
@@ -22,7 +22,8 @@ export interface DaySheetProps {
   onSave: (log: CycleDayLog) => void;
   /** Period edits for this day; each returns an error message to show, or null. */
   onPeriodStart: (day: string) => string | null;
-  onPeriodEnd: (day: string) => void;
+  /** Make `day` the last day of the period that started on `start` (sets or moves its end). */
+  onPeriodEnd: (day: string, start: string) => void;
   onRemovePeriod: (start: string) => void;
 }
 
@@ -80,8 +81,13 @@ export function DaySheet({ day, today, timeline, birthControl, log, onClose, onS
     setDraft({ ...draft, symptoms });
   };
 
-  const openSpan = timeline.history.at(-1);
-  const canEnd = !!openSpan && !openSpan.end && day >= openSpan.start && dayDiff(openSpan.start, day) <= 13 && !future;
+  // The period this day could end: the latest one that started by this day — open or already
+  // closed (a tap on a later day extends it, on an earlier day shortens it) — as long as the next
+  // period has not started yet and the period stays within the longest length accepted.
+  const started = [...timeline.history].reverse().find((s) => s.start <= day);
+  const following = started ? timeline.history.find((s) => s.start > started.start) : undefined;
+  const canEnd =
+    !!started && !future && day > started.start && started.end !== day && dayDiff(started.start, day) <= OPEN_PERIOD_MAX_DAYS - 1 && (!following || following.start > day);
 
   return (
     <Sheet visible={!!day} title={formatDayLong(day)} onClose={close}>
@@ -118,17 +124,21 @@ export function DaySheet({ day, today, timeline, birthControl, log, onClose, onS
           )}
           {canEnd ? (
             <PillButton
-              label="Period ended here"
+              label={started.end ? (day > started.end ? 'Period lasted until here' : 'Period ended here instead') : 'Period ended here'}
               kind="ghost"
               compact
               onPress={() => {
-                onPeriodEnd(day);
+                onPeriodEnd(day, started.start);
                 close();
               }}
             />
           ) : null}
         </Row>
-      ) : null}
+      ) : (
+        <Txt role="footnote" tone="secondary" style={{ marginBottom: 14 }}>
+          A period is logged on the day it starts. Symptoms and a note can go in ahead of time.
+        </Txt>
+      )}
       {error ? (
         <Txt role="footnote" color={c.danger} style={{ marginBottom: 12 }}>
           {error}
