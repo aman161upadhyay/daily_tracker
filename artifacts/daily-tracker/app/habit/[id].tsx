@@ -86,7 +86,7 @@ export default function HabitDetailScreen() {
   const flow = view.adherence >= FLOW_THRESHOLD;
   const weekly = view.rule.cadence !== 'DAILY';
   const todayText = weekly
-    ? `${view.periodDone ?? 0} of ${view.rule.timesPerPeriod}`
+    ? `${view.periodDone ?? 0} of ${view.periodQuota ?? view.rule.timesPerPeriod}`
     : habit.type === 'YES_NO'
       ? view.todayRatio >= 1
         ? 'Done'

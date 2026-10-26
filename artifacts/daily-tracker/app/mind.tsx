@@ -38,14 +38,26 @@ export default function MindScreen() {
   // Leaving mid-session (system Back, the header arrow, a swipe) asks first instead of silently
   // dropping the minutes and the bell. Finish / Done / Discard set `leaving` and pass through.
   const navigation = useNavigation();
-  const latest = useRef({ elapsedMs, done, kind, leaving: false });
-  latest.current = { ...latest.current, elapsedMs, done, kind };
+  const latest = useRef({ elapsedMs, done, kind, running, leaving: false });
+  latest.current = { ...latest.current, elapsedMs, done, kind, running };
+  // One session is logged once, whichever path gets there first (the clock running out, Finish,
+  // or the leave dialog); a dialog answered after the bell must not add a second entry.
+  const logged = useRef(false);
+  const logOnce = (k: MindKind, mins: number) => {
+    if (logged.current) return;
+    logged.current = true;
+    actions.logMind(k, mins);
+  };
   useEffect(() => {
     if (Platform.OS === 'web') return;
     return navigation.addListener('beforeRemove', (e) => {
       const cur = latest.current;
       if (cur.leaving || cur.done || cur.elapsedMs === 0) return;
       e.preventDefault();
+      // The clock stops while the question is open, so the minutes offered are the minutes logged
+      // and the session cannot complete (and log itself) behind the dialog.
+      const wasRunning = cur.running;
+      if (wasRunning) setRunning(false);
       const mins = Math.max(1, Math.round(cur.elapsedMs / 60_000));
       const leave = () => {
         latest.current.leaving = true;
@@ -56,13 +68,13 @@ export default function MindScreen() {
         'Leave the timer?',
         cur.elapsedMs >= 60_000 ? `Finishing logs ${mins} min; discarding keeps today as it was.` : 'Under a minute so far, so nothing would be logged.',
         [
-          { text: 'Keep timing', style: 'cancel' },
+          { text: 'Keep timing', style: 'cancel', onPress: () => wasRunning && setRunning(true) },
           ...(cur.elapsedMs >= 60_000
             ? [
                 {
                   text: `Finish · log ${mins} min`,
                   onPress: () => {
-                    actions.logMind(cur.kind, mins);
+                    logOnce(cur.kind, mins);
                     leave();
                   },
                 },
@@ -70,8 +82,10 @@ export default function MindScreen() {
             : []),
           { text: 'Discard', style: 'destructive' as const, onPress: leave },
         ],
+        { cancelable: true, onDismiss: () => wasRunning && setRunning(true) },
       );
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigation, actions]);
 
   // The end bell is a scheduled notification, so it rings even if the screen locks mid-session.
@@ -104,24 +118,33 @@ export default function MindScreen() {
 
   useEffect(() => {
     if (!done) return;
-    actions.logMind(kind, Math.round(totalMs / 60_000));
+    logOnce(kind, Math.round(totalMs / 60_000));
     if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-  }, [done, actions, kind, totalMs]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [done, kind, totalMs]);
 
   const reset = (nextKind?: MindKind) => {
     const apply = () => {
       setRunning(false);
       setElapsedMs(0);
       setDone(false);
+      logged.current = false;
       if (nextKind) setKind(nextKind);
     };
     // A minute or more on the clock is worth a question before it is thrown away.
     if (!done && elapsedMs >= 60_000 && Platform.OS !== 'web') {
+      const wasRunning = running;
+      if (wasRunning) setRunning(false);
       const mins = Math.max(1, Math.round(elapsedMs / 60_000));
-      Alert.alert(nextKind ? 'Switch and discard?' : 'Reset the timer?', `${mins} min so far would not be logged.`, [
-        { text: 'Keep timing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: apply },
-      ]);
+      Alert.alert(
+        nextKind ? 'Switch and discard?' : 'Reset the timer?',
+        `${mins} min so far would not be logged.`,
+        [
+          { text: 'Keep timing', style: 'cancel', onPress: () => wasRunning && setRunning(true) },
+          { text: 'Discard', style: 'destructive', onPress: apply },
+        ],
+        { cancelable: true, onDismiss: () => wasRunning && setRunning(true) },
+      );
       return;
     }
     apply();
@@ -135,7 +158,7 @@ export default function MindScreen() {
   const finishEarly = () => {
     const mins = Math.max(1, Math.round(elapsedMs / 60_000));
     setRunning(false);
-    if (elapsedMs >= 60_000) actions.logMind(kind, mins);
+    if (elapsedMs >= 60_000) logOnce(kind, mins);
     leave();
   };
 

@@ -35,12 +35,13 @@ export function BackupSync() {
   useEffect(() => {
     if (!ready || Platform.OS === 'web') return;
     // maybeSnapshot queues itself; never wrap it in `enqueue` (that would wait on its own queue).
+    // It reads the state when its turn comes, so a write queued before an erase sees the erase.
     const run = () => {
-      const s = latest.current;
-      if (lastWritten.current === s) return;
-      maybeSnapshot(s)
+      if (lastWritten.current === latest.current) return;
+      let used: TrackerState | null = null;
+      maybeSnapshot(() => (used = latest.current))
         .then((written) => {
-          if (written) lastWritten.current = s;
+          if (written) lastWritten.current = used;
         })
         .catch((err) => console.warn('[backup]', err));
     };

@@ -25,7 +25,8 @@ export class ValidationError extends Error {
 /** Per-list ceiling; 20 years of logging every 5 minutes stays well under it. */
 export const MAX_ROWS = 500_000;
 /** Longest free-text field (a note). */
-const MAX_TEXT = 20_000;
+/** Longest text an export file may carry (a cycle note, a habit name…); the note editor stops at the same length. */
+export const MAX_TEXT = 20_000;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 type Check = (v: unknown, path: string) => void;
@@ -59,6 +60,10 @@ const numRange =
   };
 const nonNeg = numRange(0, 1e9);
 const minuteOfDay = numRange(0, 24 * 60, true);
+/** A clock time the planner can place: "07:30", never "25:99" or free text. */
+const clockTime: Check = (v, p) => {
+  if (typeof v !== 'string' || !HHMM.test(v)) fail(p, 'expected a time like 07:30');
+};
 const day: Check = (v, p) => {
   if (typeof v !== 'string' || !DAY.test(v)) fail(p, 'expected a day like 2026-01-31');
 };
@@ -95,7 +100,8 @@ const SNACK_TYPES = ['SQUATS', 'CALF_RAISES', 'WALK', 'STRETCH', 'PUSH_UPS', 'ST
 const SNACK_TRIGGERS = ['NUDGE', 'WIDGET', 'SUGAR_SHIELD', 'MANUAL'] as const;
 const MIND_KINDS = ['MEDITATION', 'BREATHING'] as const;
 const NUDGE_KINDS = ['INTERVAL', 'FIXED', 'ROTATION', 'EVENT', 'CYCLE', 'NONE'] as const;
-const NUDGE_EVENT_KINDS = ['FIRED', 'DONE', 'SNOOZED', 'SWAPPED', 'DISMISSED'] as const;
+const NUDGE_EVENT_KINDS = ['FIRED', 'DONE', 'SNOOZED', 'SWAPPED', 'DISMISSED', 'WATER'] as const;
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const habit = record({
   id,
@@ -123,7 +129,7 @@ const policy = record({
   habitId: id,
   kind: oneOf(NUDGE_KINDS),
   intervalMin: optional(numRange(1, 24 * 60, true)),
-  times: optional(listOf(str, 100)),
+  times: optional(listOf(clockTime, 100)),
   activeStartMin: optional(minuteOfDay),
   activeEndMin: optional(minuteOfDay),
   onlyWhenBehind: bool,

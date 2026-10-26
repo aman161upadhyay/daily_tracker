@@ -104,8 +104,9 @@ export function Heatmap26w({ values, today, createdDay }: Heatmap26wProps) {
                     justifyContent: 'center',
                   }}
                 >
-                  {/* Complete days carry a dot as well as the colour, so partial vs full never relies on hue alone. */}
-                  {complete && cell >= 8 ? <View style={{ width: Math.max(2, Math.round(cell * 0.3)), height: Math.max(2, Math.round(cell * 0.3)), borderRadius: 99, backgroundColor: withAlpha(c.text, 0.55) }} /> : null}
+                  {/* Complete days carry a dot as well as the colour, so partial vs full never relies on hue alone —
+                      at every phone width (a 360 dp screen gives 7 dp cells). */}
+                  {complete && cell >= 5 ? <View style={{ width: Math.max(2, Math.round(cell * 0.3)), height: Math.max(2, Math.round(cell * 0.3)), borderRadius: 99, backgroundColor: withAlpha(c.text, 0.55) }} /> : null}
                 </View>
               );
             })}
@@ -151,6 +152,7 @@ const styles = StyleSheet.create({
   legend: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 4,
     justifyContent: 'flex-end',
     marginTop: 8,

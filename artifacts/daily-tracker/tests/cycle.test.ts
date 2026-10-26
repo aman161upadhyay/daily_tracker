@@ -373,10 +373,12 @@ describe('cycle state', () => {
     assert.equal(s.settings.cycle.reminders.length, DEFAULT_SETTINGS.cycle.reminders.length, 'reminders survive a data wipe');
   });
 
-  it('feeds the planner cycle reminders, worded discreetly on request', () => {
+  it('feeds the planner cycle reminders, worded discreetly unless the person opts into names', () => {
     const zone = 'America/New_York';
     let s = buildEmptyState(TODAY);
-    s = reducer(s, { type: 'UPDATE_SETTINGS', patch: { cycleEnabled: true } });
+    // Discreet is the default (a lock screen names nothing); this test opts into names first.
+    assert.equal(s.settings.cycle.discreet, true);
+    s = reducer(s, { type: 'UPDATE_SETTINGS', patch: { cycleEnabled: true, cycle: { ...s.settings.cycle, discreet: false } } });
     for (const p of HISTORY.slice(0, 3)) s = reducer(s, { type: 'PERIOD_START', day: p.start, today: '2026-10-20' });
     const fires = cycleReminderFires(s, '2026-10-20');
     assert.deepEqual(

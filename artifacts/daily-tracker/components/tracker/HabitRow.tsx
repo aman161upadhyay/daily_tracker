@@ -25,7 +25,7 @@ export interface HabitRowProps {
 
 export function HabitRow({ view, onPress, onIncrement, onToggle, onTimer, nudgeText, last }: HabitRowProps) {
   const c = useColors();
-  const { habit, rule, todayValue, target, adherence, streak, periodDone, periodLabel } = view;
+  const { habit, rule, todayValue, target, adherence, streak, periodDone, periodQuota, periodLabel } = view;
   const done = view.todayRatio >= 1;
   const flow = adherence >= FLOW_THRESHOLD;
   const fillColor = adherenceColor(adherence);
@@ -33,7 +33,7 @@ export function HabitRow({ view, onPress, onIncrement, onToggle, onTimer, nudgeT
 
   const weekly = rule.cadence !== 'DAILY';
   const progressText = weekly
-    ? `${periodDone ?? 0} of ${rule.timesPerPeriod} ${periodLabel ?? 'this period'}`
+    ? `${periodDone ?? 0} of ${periodQuota ?? rule.timesPerPeriod} ${periodLabel ?? 'this period'}`
     : habit.type === 'YES_NO'
       ? done
         ? 'Done today'

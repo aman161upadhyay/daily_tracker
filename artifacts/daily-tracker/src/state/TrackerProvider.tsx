@@ -11,7 +11,8 @@ import { addDays, calendarDayOf, instantOf, minutesOfDay, trackingDayOf, weekSta
 import { PRESET_BY_ID } from '@/src/library/presets';
 import { reducer, type Action } from './reducer';
 import { buildEmptyState, buildSampleState, habitFromPreset } from './seed';
-import { latestRule } from './selectors';
+import { setLiveStore } from './liveStore';
+import { latestRule, ruleFor } from './selectors';
 import type { TrackerState } from './types';
 
 export interface TrackerContextValue {
@@ -28,6 +29,12 @@ export interface TrackerContextValue {
   nowMin: number;
   dispatch: React.Dispatch<Action>;
   actions: TrackerActions;
+  /**
+   * Resolves once everything dispatched so far is in the database (false when
+   * that save failed and is being retried). For callers that must not report
+   * "done" before the write is durable, such as a notification button.
+   */
+  commitPending(): Promise<boolean>;
 }
 
 export interface HabitDraft {
@@ -125,8 +132,21 @@ function nextPeriodStart(cadence: Cadence, day: string): string {
   return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-01`;
 }
 
+/** Bounds the Water habit's target shares with the `waterGoalMl` setting (see data/validate). */
+const WATER_GOAL_MIN_ML = 100;
+const WATER_GOAL_MAX_ML = 20_000;
+const clampWaterGoal = (ml: number) => Math.min(WATER_GOAL_MAX_ML, Math.max(WATER_GOAL_MIN_ML, Math.round(ml)));
+
 export function TrackerProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, PLACEHOLDER);
+  const [state, rawDispatch] = useReducer(reducer, PLACEHOLDER);
+  /** Dispatches so far. Bumped synchronously, so a reload can tell that something changed under it. */
+  const genRef = useRef(0);
+  const dispatch = useCallback((action: Action) => {
+    genRef.current += 1;
+    rawDispatch(action);
+  }, []);
+  /** Dispatches folded into the `state` being rendered. */
+  const renderGen = genRef.current;
   const [ready, setReady] = useState(false);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => now());
@@ -145,6 +165,18 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   const failuresRef = useRef(0);
   /** Headless revision we last loaded (see services/replan). */
   const seenRevisionRef = useRef<number | null>(null);
+  /** Dispatch generation of targetRef / committedRef, and who is waiting for a commit. */
+  const targetGenRef = useRef(0);
+  const committedGenRef = useRef(0);
+  const waitersRef = useRef<{ gen: number; resolve: (ok: boolean) => void }[]>([]);
+  const settleWaiters = (ok: boolean) => {
+    const rest: { gen: number; resolve: (ok: boolean) => void }[] = [];
+    for (const w of waitersRef.current) {
+      if (!ok || w.gen <= committedGenRef.current) w.resolve(ok);
+      else rest.push(w);
+    }
+    waitersRef.current = rest;
+  };
 
   /**
    * Write everything between the committed state and the newest state, in one
@@ -162,11 +194,14 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
         while (committedRef.current && targetRef.current && targetRef.current !== committedRef.current) {
           const base = committedRef.current;
           const target = targetRef.current;
+          const targetGen = targetGenRef.current;
           try {
             await store.persist(base, target);
             committedRef.current = target;
+            committedGenRef.current = Math.max(committedGenRef.current, targetGen);
             failuresRef.current = 0;
             setStorageError((e) => (e && e.startsWith('Could not save') ? null : e));
+            settleWaiters(true);
           } catch (err) {
             failuresRef.current += 1;
             console.error('Failed to save', err);
@@ -176,6 +211,8 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
                 retryRef.current = null;
                 void flush();
               }, SAVE_RETRY_MS);
+            } else if (failuresRef.current > MAX_SAVE_RETRIES) {
+              settleWaiters(false); // out of retries: nobody should wait for a save that is not coming
             }
             break;
           }
@@ -203,23 +240,36 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
     reloadingRef.current = true;
     try {
       // Our own pending writes first, then read; repeat if the user changed something meanwhile,
-      // so the reloaded state never hides a change that is already in the database.
+      // so the reloaded state never hides a change that is already in the database. "Changed"
+      // is judged by the dispatch counter (bumped synchronously at dispatch time), not only by
+      // the persisted target, which trails a dispatch by a render.
       for (let attempt = 0; attempt < 3; attempt++) {
+        const genBefore = genRef.current;
         if (!(await flush())) return;
         const before = targetRef.current;
         const fresh = await store.load();
         if (!fresh) return;
-        if (targetRef.current !== before) continue;
+        if (targetRef.current !== before || genRef.current !== genBefore || targetGenRef.current !== genBefore) continue;
         seenRevisionRef.current = revision;
         committedRef.current = fresh;
         targetRef.current = fresh;
         dispatch({ type: 'HYDRATE', state: fresh });
+        targetGenRef.current = genRef.current;
+        committedGenRef.current = genRef.current;
         return;
       }
     } finally {
       reloadingRef.current = false;
     }
-  }, [flush]);
+  }, [flush, dispatch]);
+
+  /** True once every dispatch so far has been written (false when the save gave up). */
+  const commitPending = useCallback((): Promise<boolean> => {
+    const gen = genRef.current;
+    if (committedGenRef.current >= gen) return Promise.resolve(true);
+    if (!storeRef.current) return Promise.resolve(false);
+    return new Promise((resolve) => waitersRef.current.push({ gen, resolve }));
+  }, []);
 
   // Open the store and hydrate. A fresh install starts empty (onboarding takes over).
   useEffect(() => {
@@ -242,6 +292,8 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
         committedRef.current = next;
         targetRef.current = next;
         dispatch({ type: 'HYDRATE', state: next });
+        targetGenRef.current = genRef.current;
+        committedGenRef.current = genRef.current;
       } catch (err) {
         console.error('Storage failed to open', err);
         if (!cancelled) setStorageError(describe(err));
@@ -252,15 +304,38 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
       if (retryRef.current !== null) clearTimeout(retryRef.current);
+      settleWaiters(false);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Persist every change after hydration, in order, writing only what changed.
   useEffect(() => {
     if (!storeRef.current || !committedRef.current || state === committedRef.current) return;
     targetRef.current = state;
+    targetGenRef.current = Math.max(targetGenRef.current, renderGen);
     void flush();
-  }, [state, flush]);
+  }, [state, renderGen, flush]);
+
+  // While this store is alive it is the only writer on this runtime: a widget tap or a
+  // notification button that runs here goes through the reducer instead of racing our saves.
+  useEffect(() => {
+    if (!ready || !storeRef.current) return;
+    setLiveStore({
+      apply: async (build) => {
+        const base = latest.current;
+        const built = build(base);
+        if (built.length === 0) return { next: base, applied: false, persisted: true };
+        let next = base;
+        for (const a of built) {
+          next = reducer(next, a);
+          dispatch(a);
+        }
+        return { next, applied: true, persisted: await commitPending() };
+      },
+    });
+    return () => setLiveStore(null);
+  }, [ready, dispatch, commitPending]);
 
   // Clock: refresh every 30 s and whenever the app returns to the foreground.
   // Headless writers (notification button, widget, background re-plan) are picked up on
@@ -470,7 +545,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
           dispatch({ type: 'SET_RULE', rule: { ...next, effectiveFrom: effectiveFrom < current.effectiveFrom ? current.effectiveFrom : effectiveFrom } });
         }
         if (habit.presetId === 'water' && next.target !== current.target) {
-          dispatch({ type: 'UPDATE_SETTINGS', patch: { waterGoalMl: Math.max(250, next.target) } });
+          dispatch({ type: 'UPDATE_SETTINGS', patch: { waterGoalMl: clampWaterGoal(next.target) } });
         }
       },
       updateHabit(id, patch) {
@@ -483,24 +558,32 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
         const { day } = stamp();
         const base = currentRule(habit, day);
         dispatch({ type: 'SET_RULE', rule: { ...base, effectiveFrom: day, target: Math.max(1, Math.round(target)) } });
-        if (habit.presetId === 'water') dispatch({ type: 'UPDATE_SETTINGS', patch: { waterGoalMl: Math.max(250, Math.round(target)) } });
+        if (habit.presetId === 'water') dispatch({ type: 'UPDATE_SETTINGS', patch: { waterGoalMl: clampWaterGoal(target) } });
       },
       setPolicy(policy) {
         dispatch({ type: 'SET_POLICY', policy });
       },
       updateSettings(patch) {
-        dispatch({ type: 'UPDATE_SETTINGS', patch });
         // The water goal lives twice: as a setting (Today's hydration card, the planner) and as the
-        // Water habit's versioned target (completion, streaks, the widget). Keep them one number.
+        // Water habit's versioned target (completion, streaks, the widget). Keep them one number,
+        // inside the bounds both sides accept.
         if (patch.waterGoalMl !== undefined) {
+          const goal = clampWaterGoal(patch.waterGoalMl);
+          patch = { ...patch, waterGoalMl: goal };
           const { day } = stamp();
-          const water = stateRef().habits.find((h) => h.presetId === 'water');
+          const s = stateRef();
+          const water = s.habits.find((h) => h.presetId === 'water');
           if (water) {
-            const base = currentRule(water, day);
-            const target = Math.max(1, Math.round(patch.waterGoalMl));
-            if (base.target !== target) dispatch({ type: 'SET_RULE', rule: { ...base, effectiveFrom: day, target } });
+            // Today's rule changes from today; a rhythm already scheduled for later keeps its start
+            // date and only takes the new number, so it does not start early or undo the goal later.
+            const todayRule = ruleFor(s, water.id, day) ?? currentRule(water, day);
+            if (todayRule.target !== goal) dispatch({ type: 'SET_RULE', rule: { ...todayRule, effectiveFrom: day, target: goal } });
+            for (const pending of s.rules.filter((r) => r.habitId === water.id && r.effectiveFrom > day && r.target !== goal)) {
+              dispatch({ type: 'SET_RULE', rule: { ...pending, target: goal } });
+            }
           }
         }
+        dispatch({ type: 'UPDATE_SETTINGS', patch });
       },
       completeOnboarding(choices) {
         const { day } = stamp();
@@ -598,8 +681,8 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   }, [stamp, zone, boundary]);
 
   const value = useMemo<TrackerContextValue>(
-    () => ({ state, ready, storageError, nowMs, zone, today, calendarToday, nowMin, dispatch, actions }),
-    [state, ready, storageError, nowMs, zone, today, calendarToday, nowMin, actions],
+    () => ({ state, ready, storageError, nowMs, zone, today, calendarToday, nowMin, dispatch, actions, commitPending }),
+    [state, ready, storageError, nowMs, zone, today, calendarToday, nowMin, dispatch, actions, commitPending],
   );
 
   return <TrackerContext.Provider value={value}>{children}</TrackerContext.Provider>;

@@ -9,14 +9,16 @@ import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
 import { createStore } from '@/src/data/createStore';
 import { reducer } from '@/src/state/reducer';
-import { applyAll, isNudgePayload, nudgeResponseActions, type CommandContext } from '@/src/state/commands';
+import { applyAll, firedActions, nudgeResponseActions, type CommandContext } from '@/src/state/commands';
 import type { NudgeActionKind } from '@/src/domain/nudges/planner';
+import { liveStore } from '@/src/state/liveStore';
 import type { TrackerState } from '@/src/state/types';
 import { performBodySync } from './bodySync';
 import { HEALTH_CONNECT_SUPPORTED } from './healthConnect';
 import { withHeadlessLock } from './headlessLock';
+import { parseResponse } from './notificationPayload';
 import { BACKGROUND_REPLAN_TASK, NUDGE_RESPONSE_TASK, beginHandling, endHandling } from './notifications';
-import { contextFor, markHeadlessWrite, replanHeadless } from './replan';
+import { contextFor, markHeadlessWrite, replanHeadless, syncStateToOs } from './replan';
 import { maybeSnapshot } from './snapshotSync';
 import { refreshWidgets } from './widget';
 
@@ -27,22 +29,28 @@ async function afterHeadlessWrite(next: TrackerState, ctx: CommandContext): Prom
   await maybeSnapshot(next, ctx.nowMs).catch((err) => console.warn('Snapshot after headless write failed', err));
 }
 
-interface ResponseData {
-  actionIdentifier?: string;
-  notification?: { request?: { identifier?: string; content?: { data?: unknown } }; date?: number };
-}
-
-async function handleHeadlessResponse(data: ResponseData): Promise<void> {
-  const payload = data.notification?.request?.content?.data;
-  if (!isNudgePayload(payload) || !data.actionIdentifier) return;
-  const action = data.actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER ? 'TAP' : (data.actionIdentifier as NudgeActionKind);
-  const key = `${data.notification?.request?.identifier ?? payload.nudgeId}|${action}|${data.notification?.date ?? ''}`;
+async function handleHeadlessResponse(raw: unknown): Promise<void> {
+  // Android hands a background task the raw bundle: the payload sits in `content.dataString`,
+  // not `content.data` (see notificationPayload). Reading only `data` here would drop every
+  // button pressed while the app is closed.
+  const parsed = parseResponse(raw);
+  if (!parsed) return;
+  const { payload, key } = parsed;
+  const action = parsed.action as NudgeActionKind | 'TAP';
   // Claim in memory first (the foreground listener may see the same press); the durable mark is
   // written only once the state write committed, so a crash in between replays rather than loses
   // the press — and the nudge-event ledger makes the replay a no-op.
   if (!(await beginHandling(key))) return;
   let committed = false;
   try {
+    // The app's own store is alive on this runtime: it is the only writer, and its components
+    // re-plan, redraw the widget and refresh the snapshot themselves.
+    const live = liveStore();
+    if (live) {
+      const { persisted } = await live.apply((state) => nudgeResponseActions(state, payload, action, contextFor(state)));
+      committed = persisted;
+      return;
+    }
     const written = await withHeadlessLock(async () => {
       const store = await createStore();
       const state = await store.load();
@@ -66,11 +74,10 @@ async function handleHeadlessResponse(data: ResponseData): Promise<void> {
 }
 
 TaskManager.defineTask(NUDGE_RESPONSE_TASK, async ({ data, error }) => {
-  if (error || !data) return;
-  const d = data as ResponseData;
-  if (!('actionIdentifier' in d)) return; // a received notification, not a button press
+  if (error || !data || typeof data !== 'object') return;
+  if (!('actionIdentifier' in data)) return; // a received notification, not a button press
   try {
-    await handleHeadlessResponse(d);
+    await handleHeadlessResponse(data);
   } catch (err) {
     console.error('Headless nudge response failed', err);
   }
@@ -78,6 +85,24 @@ TaskManager.defineTask(NUDGE_RESPONSE_TASK, async ({ data, error }) => {
 
 TaskManager.defineTask(BACKGROUND_REPLAN_TASK, async () => {
   try {
+    // The app is alive on this runtime (backgrounded, not closed): work from its newest state and
+    // apply through its store, so this never persists over a tap the screen just made.
+    const live = liveStore();
+    if (live) {
+      let base = (await live.apply(() => [])).next;
+      const ctx = contextFor(base);
+      const fired = await syncStateToOs(base, ctx);
+      base = (await live.apply((s) => [...firedActions(s, fired, ctx), { type: 'PRUNE_EVENTS', beforeMs: ctx.nowMs - 60 * 60_000 }])).next;
+      if (HEALTH_CONNECT_SUPPORTED && base.settings.healthConnectEnabled && base.body.sync.background) {
+        try {
+          const { actions } = await performBodySync(base, ctx);
+          await live.apply(() => actions);
+        } catch (err) {
+          console.warn('Background Health Connect sync failed', err);
+        }
+      }
+      return BackgroundTask.BackgroundTaskResult.Success;
+    }
     const written = await withHeadlessLock(async () => {
       const store = await createStore();
       const state = await store.load();

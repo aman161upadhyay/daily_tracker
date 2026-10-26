@@ -4,7 +4,8 @@
  * The file format itself is in transferFormat.ts (shared by both).
  */
 import type { TrackerState } from '@/src/state/types';
-import { exportFileName, serializeExport } from './transferFormat';
+import { secureRandomBytes } from './secureRandom';
+import { exportFileName, randomFileTag, serializeExport } from './transferFormat';
 
 export { describeImport, exportFileName, inspectExport, parseExport, serializeExport, unlockExport, type ExportFile, type InspectedExport } from './transferFormat';
 
@@ -14,7 +15,8 @@ export async function exportState(state: TrackerState, password?: string): Promi
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = exportFileName();
+  // Same name shape as the phone (date plus a short random tag), so the guide's one description fits both.
+  a.download = exportFileName(new Date(), randomFileTag(secureRandomBytes(6)));
   document.body.appendChild(a);
   a.click();
   a.remove();

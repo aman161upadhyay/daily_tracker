@@ -43,6 +43,12 @@ You need four things: **Android Studio** (makes Android apps), **Node** (runs th
    ```bash
    npm install -g pnpm@10
    ```
+   If that stops with `EACCES` or `permission denied` (common with the Node installer, which puts
+   its folder under the Mac's protection), run it once with `sudo` in front — it asks for your Mac
+   login password, and nothing shows while you type it:
+   ```bash
+   sudo npm install -g pnpm@10
+   ```
 5. **Tell the terminal where Android Studio put things.** Still in Terminal, paste these four
    lines one at a time (each adds a line to a settings file called `.zshrc`):
    ```bash
@@ -197,7 +203,7 @@ Then try the list in `docs/DEVICE_CHECKLIST.md` if you want to check every featu
    on a Mac (Finder → Go → Go to Folder…, paste exactly that, including the `~`) and
    `C:\dev\daily_tracker\artifacts\daily-tracker\android\app\build\outputs\apk\release\app-release.apk`
    on Windows (paste it into the File Explorer address bar).
-   Rename a copy to something like `DailyTracker-0.6.apk` if you like.
+   Rename a copy to something like `DailyTracker-0.7.apk` (the version number from `app.json`) if you like.
 2. Send it any way you want: Google Drive link, WhatsApp, email, AirDrop-style apps.
 3. On their phone they tap the file. Android asks to allow installing from that app (Files,
    Chrome, WhatsApp…) → **Allow** → **Install**. If *Play Protect* shows a warning, tap *More
@@ -224,8 +230,9 @@ pnpm exec expo run:android --variant release
 ```
 
 Your data stays on the phone; an update never erases it. (Each release raises the app's
-`versionCode` in `app.json`; the phone refuses an update whose number is not higher, which is why
-that number is part of every milestone.)
+`versionCode` in `app.json`. Android installs a build whose number is the same or higher over the
+old one — so a rebuild of the same version still installs — and refuses only a *lower* number;
+raising it on every release keeps everyone's phones moving forward.)
 
 ---
 
@@ -271,6 +278,7 @@ replaced computer. Do this once, before the first APK you hand out.
 | What you see | What it means | What to do |
 |---|---|---|
 | `command not found` / `not recognized` (pnpm, adb, java) | The terminal does not know the new settings yet | Close the terminal, open a new one, try again. On Mac also run `source ~/.zshrc`. |
+| `EACCES` / `permission denied` while installing pnpm (Mac) | npm's folder belongs to the system | `sudo npm install -g pnpm@10` (Part 1, Mac step 4). |
 | `SDK location not found` | The build cannot find Android Studio's SDK | Check Part 1 step 5 (`ANDROID_HOME`). Mac path `~/Library/Android/sdk`, Windows `%LOCALAPPDATA%\Android\Sdk`. |
 | `JAVA_HOME is not set` or `Unsupported class file major version` | Wrong or missing Java | Set `JAVA_HOME` to Android Studio's `jbr` folder as in Part 1 step 5. |
 | `adb devices` shows nothing | Phone not visible | Different cable/port, USB debugging on, choose *File transfer* on the phone, tap Allow. |

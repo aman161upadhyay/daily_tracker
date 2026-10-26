@@ -16,9 +16,10 @@
  * failed read can never make records "disappear".
  */
 import { isStrengthExercise } from '@/src/domain/body/exerciseTypes';
+import { mergeBody } from '@/src/domain/body/merge';
 import type { BodyBatch } from '@/src/domain/body/types';
 import type { HabitEntry, WaterEntry } from '@/src/domain/models';
-import { instantOf, trackingDayOf } from '@/src/domain/time/trackingDay';
+import { addDays, instantOf, trackingDayOf } from '@/src/domain/time/trackingDay';
 import type { CommandContext } from './commands';
 import type { Action } from './reducer';
 import { activeHabits } from './selectors';
@@ -37,7 +38,18 @@ export function autoTickActions(state: TrackerState, batch: BodyBatch, ctx: Comm
   const habits = activeHabits(state);
 
   const stepsHabit = habits.find((h) => h.presetId === 'steps');
-  const stepDays = batch.habitSteps ?? batch.steps;
+  let stepDays = batch.habitSteps ?? batch.steps;
+  if (stepDays && batch.window) {
+    // A complete read answers for every day of its window: a day it returned nothing for has no
+    // steps any more (the records were deleted, or their source app disconnected), so an automatic
+    // total still standing for it is cleared below instead of outliving the data it mirrored.
+    const returned = new Set(stepDays.map((d) => d.day));
+    const filled = [...stepDays];
+    for (let day = batch.window.fromDay; day <= batch.window.toDay; day = addDays(day, 1)) {
+      if (!returned.has(day)) filled.push({ day, steps: 0 });
+    }
+    stepDays = filled;
+  }
   if (stepsHabit && stepDays) {
     for (const day of stepDays) {
       const existing = state.entries.filter((e) => e.habitId === stepsHabit.id && e.day === day.day);
@@ -63,11 +75,21 @@ export function autoTickActions(state: TrackerState, batch: BodyBatch, ctx: Comm
   if (strength && batch.workouts) {
     // Hidden workouts are the user's "that was not a session": they neither tick nor keep a tick.
     const hidden = new Set(state.body.workouts.filter((w) => w.hidden).map((w) => w.id));
-    const qualifying = new Set(batch.workouts.filter((w) => !w.hidden && !hidden.has(w.id) && ticksStrength(w.type, w.minutes)).map((w) => w.day));
+    const qualifies = (w: { id: string; hidden?: boolean; type: number; minutes: number }) => !w.hidden && !hidden.has(w.id) && ticksStrength(w.type, w.minutes);
+    const qualifying = new Set(batch.workouts.filter(qualifies).map((w) => w.day));
+    // A workout whose date changed upstream (same record, new day) leaves its old day behind: that
+    // day is judged again, even outside the read window, against everything still known about it.
+    const byId = new Map(state.body.workouts.map((w) => [w.id, w]));
+    const movedFrom = new Set<string>();
+    for (const w of batch.workouts) {
+      const prev = byId.get(w.id);
+      if (prev && prev.day !== w.day) movedFrom.add(prev.day);
+    }
+    const stillQualifying = movedFrom.size > 0 ? new Set(mergeBody(state.body, batch).workouts.filter(qualifies).map((w) => w.day)) : qualifying;
     const ticked = new Set<string>();
     for (const e of state.entries) {
       if (e.habitId !== strength.id) continue;
-      if (e.source === 'AUTO_HC' && inWindow(e.day) && !qualifying.has(e.day)) {
+      if (e.source === 'AUTO_HC' && ((inWindow(e.day) && !qualifying.has(e.day)) || (movedFrom.has(e.day) && !stillQualifying.has(e.day)))) {
         actions.push({ type: 'REMOVE_LOG', log: 'entry', id: e.id });
         continue;
       }

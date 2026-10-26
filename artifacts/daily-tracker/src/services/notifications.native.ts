@@ -19,7 +19,8 @@ import * as TaskManager from 'expo-task-manager';
 import { Linking, Platform } from 'react-native';
 import type { MindKind } from '@/src/domain/models';
 import type { NudgeChannel, ScheduledNudge } from '@/src/domain/nudges/planner';
-import { isNudgePayload, type NudgePayload } from '@/src/state/commands';
+import type { NudgePayload } from '@/src/state/commands';
+import { parseResponse } from './notificationPayload';
 
 export type PermissionState = 'granted' | 'denied' | 'undetermined' | 'unsupported';
 
@@ -178,11 +179,33 @@ async function readLedger(): Promise<LedgerEntry[]> {
 }
 
 /**
+ * One schedule change at a time. Two syncs interleaving (a debounced re-plan and
+ * the foreground re-sync, or a headless re-plan on the same runtime) would each
+ * read the OS list, cancel and schedule against a stale picture, and the last
+ * ledger write would describe neither. A sync that was superseded while it
+ * waited is skipped: the newer one carries the newer plan.
+ */
+let syncQueue: Promise<unknown> = Promise.resolve();
+let syncGeneration = 0;
+
+function serialized<T>(job: () => Promise<T>, skipped: T): Promise<T> {
+  const mine = ++syncGeneration;
+  const run = async () => (mine === syncGeneration ? job() : skipped);
+  const out = syncQueue.then(run, run);
+  syncQueue = out.catch(() => undefined);
+  return out;
+}
+
+/**
  * Make the OS schedule match the plan. Returns what the OS delivered since the
  * previous sync (ledger entries whose time has passed), so the caller can record
- * FIRED events.
+ * FIRED events. A superseded call returns nothing: the newer sync reports it.
  */
-export async function syncPlan(plan: ScheduledNudge[], nowMs: number): Promise<FiredRecord[]> {
+export function syncPlan(plan: ScheduledNudge[], nowMs: number): Promise<FiredRecord[]> {
+  return serialized(() => syncPlanNow(plan, nowMs), []);
+}
+
+async function syncPlanNow(plan: ScheduledNudge[], nowMs: number): Promise<FiredRecord[]> {
   const ledger = await readLedger();
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   const pending = new Set(scheduled.map((r) => r.identifier));
@@ -212,6 +235,9 @@ export async function syncPlan(plan: ScheduledNudge[], nowMs: number): Promise<F
     ours.add(id);
   }
 
+  // The ledger lists what is really pending: kept alarms plus what scheduling accepted. A request
+  // the OS refused is not written down, so it is neither counted as fired nor marked delivered.
+  const accepted = new Set<string>(ours);
   for (const n of plan) {
     if (ours.has(n.id) || n.at <= nowMs) continue;
     const payload: NudgePayload = {
@@ -235,6 +261,7 @@ export async function syncPlan(plan: ScheduledNudge[], nowMs: number): Promise<F
         },
         trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: n.at, channelId: n.channel },
       });
+      accepted.add(n.id);
     } catch (err) {
       console.warn('Could not schedule', n.id, err);
     }
@@ -242,22 +269,23 @@ export async function syncPlan(plan: ScheduledNudge[], nowMs: number): Promise<F
 
   const nextLedger: LedgerEntry[] = [
     ...overdueKept,
-    ...plan.filter((n) => n.at > nowMs && !keep.has(n.id)).map((n) => ({ id: n.id, habitIds: n.habitIds, day: n.day, at: n.at, sig: signature(n) })),
+    ...plan.filter((n) => n.at > nowMs && !keep.has(n.id) && accepted.has(n.id)).map((n) => ({ id: n.id, habitIds: n.habitIds, day: n.day, at: n.at, sig: signature(n) })),
   ];
   await AsyncStorage.setItem(LEDGER_KEY, JSON.stringify(nextLedger));
   return fired;
 }
 
-export async function cancelAll(): Promise<void> {
-  await Notifications.cancelAllScheduledNotificationsAsync();
-  await AsyncStorage.setItem(LEDGER_KEY, '[]');
+export function cancelAll(): Promise<void> {
+  return serialized(async () => {
+    await Notifications.cancelAllScheduledNotificationsAsync();
+    await AsyncStorage.setItem(LEDGER_KEY, '[]');
+  }, undefined);
 }
 
+/** Foreground responses arrive mapped (`content.data`); the parser also accepts the raw bundle shape. */
 function toResponse(r: Notifications.NotificationResponse): NudgeResponse | null {
-  const data = r.notification.request.content.data;
-  if (!isNudgePayload(data)) return null;
-  const action = r.actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER ? 'TAP' : r.actionIdentifier;
-  return { payload: data, action, key: `${r.notification.request.identifier}|${action}|${r.notification.date}` };
+  const parsed = parseResponse(r);
+  return parsed ? { payload: parsed.payload, action: parsed.action, key: parsed.key } : null;
 }
 
 export function addResponseListener(onResponse: (r: NudgeResponse) => void): () => void {

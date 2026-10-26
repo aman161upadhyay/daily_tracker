@@ -15,7 +15,8 @@ import { withAlpha } from '@/src/domain/color/oklch';
 import { DEFAULT_SETTINGS, type Units } from '@/src/domain/models';
 import { formatClock, formatVolume } from '@/src/domain/time/format';
 import { CATEGORY_LABELS, CATEGORY_ORDER, PRESETS } from '@/src/library/presets';
-import { readSnapshot } from '@/src/services/backup';
+import { deleteSnapshot, readSnapshot } from '@/src/services/backup';
+import { afterSnapshots } from '@/src/services/snapshotSync';
 import { NOTIFICATIONS_SUPPORTED, getPermission, requestPermission, type PermissionState } from '@/src/services/notifications';
 import { useTracker } from '@/src/state/TrackerProvider';
 import type { TrackerState } from '@/src/state/types';
@@ -66,6 +67,13 @@ export default function OnboardingScreen() {
     router.replace('/');
   };
 
+  // "Start fresh" is a decision about that data: the old snapshot goes, so it cannot be offered
+  // again (or restored onto yet another phone) once this person said no to it.
+  const startFresh = () => {
+    setRestore(null);
+    afterSnapshots(deleteSnapshot).catch((err) => console.warn('[backup] could not remove the old snapshot', err));
+  };
+
   const toggle = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -97,7 +105,7 @@ export default function OnboardingScreen() {
           Daily Tracker
         </Txt>
         <Txt role="body" tone="secondary" style={{ marginTop: 6 }}>
-          Small habits, honest numbers. Everything stays on this phone.
+          Small habits, honest numbers. Your data lives on this phone — no account, no server.
         </Txt>
       </View>
 
@@ -114,7 +122,7 @@ export default function OnboardingScreen() {
           </Row>
           <Row gap={8} style={{ marginTop: 14, flexWrap: 'wrap' }}>
             <PillButton label="Restore it" Leading={UI.Check} onPress={restoreSnapshot} />
-            <PillButton label="Start fresh" kind="ghost" onPress={() => setRestore(null)} />
+            <PillButton label="Start fresh" kind="ghost" onPress={startFresh} />
           </Row>
         </Card>
       ) : null}
@@ -208,7 +216,11 @@ export default function OnboardingScreen() {
         ))}
       </Step>
 
-      <Step n={4} title="Cycle tracking" hint="Optional. Adds a Cycle tab with period logging and gentle predictions. Nothing leaves the phone.">
+      <Step
+        n={4}
+        title="Cycle tracking"
+        hint={`Optional. Adds a Cycle tab with period logging and gentle predictions. Stored only on this phone${Platform.OS === 'android' ? ' (and in your phone backup, if you turn that on below)' : ''}.`}
+      >
         <Row style={{ justifyContent: 'space-between' }}>
           <Txt role="body">Track my cycle</Txt>
           <Switch value={cycleEnabled} onValueChange={setCycleEnabled} trackColor={{ false: c.hairline, true: c.green }} thumbColor={c.text} accessibilityLabel="Track my cycle" />
@@ -221,8 +233,10 @@ export default function OnboardingScreen() {
           title="Phone backup"
           hint="If your phone's own backup is on, Android keeps a copy of your logs with your Google account so a new phone can restore them. It travels only encrypted with your screen lock (Android 9 or newer) and never goes to us — there is no server. Off means the data lives on this phone alone unless you export a file."
         >
-          <Row style={{ justifyContent: 'space-between' }}>
-            <Txt role="body">Include in Android phone backup</Txt>
+          <Row style={{ justifyContent: 'space-between' }} gap={12}>
+            <Txt role="body" style={{ flex: 1 }}>
+              Include in Android phone backup
+            </Txt>
             <Switch value={cloudBackup} onValueChange={setCloudBackup} trackColor={{ false: c.hairline, true: c.green }} thumbColor={c.text} accessibilityLabel="Include in Android phone backup" />
           </Row>
         </Step>

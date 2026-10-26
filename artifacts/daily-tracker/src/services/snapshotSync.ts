@@ -19,12 +19,16 @@ export const SNAPSHOT_MIN_AGE_MS = 60 * 60 * 1000;
 let queue: Promise<unknown> = Promise.resolve();
 
 /**
- * Write a snapshot of `state` when the policy says so and the last one is old
- * enough. Writes are queued so two callers never interleave on the file.
+ * Write a snapshot when the policy says so and the last one is old enough.
+ * Writes are queued so two callers never interleave on the file. Pass a getter
+ * from the running app so the state is read when the job runs, not when it was
+ * queued: a job queued before "Erase everything" then sees the erased state and
+ * writes nothing, instead of putting the old data back after the delete.
  * Resolves true when a snapshot was written.
  */
-export function maybeSnapshot(state: TrackerState, nowMs = Date.now()): Promise<boolean> {
+export function maybeSnapshot(source: TrackerState | (() => TrackerState), nowMs = Date.now()): Promise<boolean> {
   const job = async (): Promise<boolean> => {
+    const state = typeof source === 'function' ? source() : source;
     if (!shouldSnapshot(state)) return false;
     const writtenAt = await snapshotWrittenAt();
     if (writtenAt !== null && nowMs - writtenAt < SNAPSHOT_MIN_AGE_MS) return false;

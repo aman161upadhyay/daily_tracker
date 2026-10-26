@@ -15,9 +15,10 @@ import { EXPORT_SCRATCH_DIR } from '@/src/data/transferFormat';
 const KEEP_EXPORT_MS = 60 * 60 * 1000;
 
 const exportDirectory = () => new Directory(Paths.cache, EXPORT_SCRATCH_DIR);
+/** Where expo-document-picker leaves its copy of a picked file (an import that was cancelled or failed to parse stays there). */
+const pickerDirectory = () => new Directory(Paths.cache, 'DocumentPicker');
 
-export async function purgeTransferCache(opts: { all?: boolean } = {}): Promise<void> {
-  const dir = exportDirectory();
+function purgeDirectory(dir: Directory, opts: { all?: boolean }): void {
   if (!dir.exists) return;
   const cutoff = Date.now() - KEEP_EXPORT_MS;
   for (const item of dir.list()) {
@@ -31,5 +32,10 @@ export async function purgeTransferCache(opts: { all?: boolean } = {}): Promise<
       }
     }
   }
+}
+
+export async function purgeTransferCache(opts: { all?: boolean } = {}): Promise<void> {
+  purgeDirectory(exportDirectory(), opts);
+  purgeDirectory(pickerDirectory(), opts);
 }
 

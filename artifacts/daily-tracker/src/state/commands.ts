@@ -140,9 +140,13 @@ export function nudgeResponseActions(state: TrackerState, payload: NudgePayload,
       break;
     }
     case 'WATER': {
-      if (alreadyRecorded('DONE')) return out;
+      // The drink is recorded under its own ledger kind: a merged water + movement nudge ends in a
+      // SNOOZED event (so the movement half comes back), which alone could not tell a replay of
+      // this press from a plain snooze — and would log the drink again.
+      if (alreadyRecorded('DONE') || alreadyRecorded('WATER')) return out;
       const ml = payload.waterMl ?? state.settings.tapSizeMl;
       out.push({ type: 'ADD_WATER', entry: { id: ctx.newId(), at: ctx.nowMs, zone: ctx.zone, day: ctx.today, ml, source: 'MANUAL' } });
+      out.push(nudgeEventAction(payload, 'WATER', ctx));
       // Only the water half is done; the movement half (if merged) stays open via a short snooze.
       if (habits.some((h) => h.snackType)) out.push(nudgeEventAction(payload, 'SNOOZED', ctx, ctx.nowMs + SNOOZE_MINUTES * 60_000));
       else out.push(nudgeEventAction(payload, 'DONE', ctx));

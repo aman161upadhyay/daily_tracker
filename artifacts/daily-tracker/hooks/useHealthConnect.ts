@@ -41,6 +41,9 @@ export function useHealthConnect(): HealthConnectUi {
   const [busy, setBusy] = useState(false);
   const latest = useRef(state);
   latest.current = state;
+  // Bumped by Disconnect / Remove imported data: a read that was in flight when the user turned
+  // the import off must not land its rows (or its auto-ticks) afterwards.
+  const generation = useRef(0);
 
   const refreshStatus = useCallback(async () => {
     if (!HEALTH_CONNECT_SUPPORTED) return;
@@ -61,14 +64,17 @@ export function useHealthConnect(): HealthConnectUi {
     if (inflight) return inflight;
     lastAttemptAt = Date.now();
     setBusy(true);
+    const started = generation.current;
+    const stillWanted = () => started === generation.current && latest.current.settings.healthConnectEnabled;
     inflight = (async () => {
       try {
         const ctx = contextFor(latest.current, Date.now(), zone);
         const { actions: out } = await performBodySync(() => latest.current, ctx);
+        if (!stillWanted()) return;
         for (const a of out) dispatch(a);
       } catch (err) {
         console.warn('Health Connect sync failed', err);
-        dispatch({ type: 'BODY_SYNC', patch: { lastError: describeSyncError(err) } });
+        if (stillWanted()) dispatch({ type: 'BODY_SYNC', patch: { lastError: describeSyncError(err) } });
       }
     })();
     try {
@@ -101,10 +107,12 @@ export function useHealthConnect(): HealthConnectUi {
   }, [actions, dispatch, runSync]);
 
   const disconnect = useCallback(() => {
+    generation.current += 1;
     actions.updateSettings({ healthConnectEnabled: false });
   }, [actions]);
 
   const removeImported = useCallback(() => {
+    generation.current += 1;
     dispatch({ type: 'CLEAR_BODY' });
     actions.updateSettings({ healthConnectEnabled: false });
   }, [actions, dispatch]);

@@ -77,6 +77,10 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
 
   const periodNoun = d.cadence === 'WEEKLY' ? 'week' : 'month';
   const targetStep = d.type === 'AMOUNT' ? (d.unit === 'ml' ? 250 : 1) : d.type === 'TIMER' ? 5 : 1;
+  // The Water target is also the water goal setting; both sides accept 100 ml to 20 l a day.
+  const isWater = habit?.presetId === 'water';
+  const targetMin = isWater ? 100 : targetStep;
+  const targetMax = isWater ? 20_000 : 100_000;
   const targetLabel = d.type === 'YES_NO' ? '' : `${d.target} ${d.unit}`.trim();
   const perDay = d.cadence === 'DAILY' ? 'a day' : 'on each counted day';
   const canSave = d.name.trim().length > 0;
@@ -101,6 +105,7 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
             onChangeText={(name) => set({ name })}
             placeholder="Floss, read 10 pages…"
             placeholderTextColor={c.textTertiary}
+            maxLength={80}
             style={[TYPE.body, styles.input, { color: c.text, backgroundColor: c.surface, borderColor: c.hairline }]}
             accessibilityLabel="Habit name"
             returnKeyType="done"
@@ -124,7 +129,8 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
 
         {d.type !== 'YES_NO' ? (
           <Field label={`Target ${perDay}`}>
-            <Row style={{ justifyContent: 'space-between' }}>
+            {/* Wraps on narrow phones: the unit box and the stepper each keep their full width. */}
+            <Row style={{ justifyContent: 'space-between', flexWrap: 'wrap', rowGap: 10 }}>
               {preset || d.type === 'TIMER' ? (
                 <Txt role="body" tone="secondary">
                   {d.unit}
@@ -135,11 +141,12 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
                   onChangeText={(unit) => set({ unit })}
                   placeholder="unit"
                   placeholderTextColor={c.textTertiary}
+                  maxLength={12}
                   style={[TYPE.body, styles.input, styles.unitInput, { color: c.text, backgroundColor: c.surface, borderColor: c.hairline }]}
                   accessibilityLabel="Unit"
                 />
               )}
-              <Stepper value={d.target} onChange={(target) => set({ target })} step={targetStep} min={targetStep} max={100000} label="target" format={() => targetLabel} />
+              <Stepper value={d.target} onChange={(target) => set({ target })} step={targetStep} min={targetMin} max={targetMax} label="target" format={() => targetLabel} />
             </Row>
           </Field>
         ) : null}

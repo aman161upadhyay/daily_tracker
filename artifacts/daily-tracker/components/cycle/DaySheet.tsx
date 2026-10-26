@@ -10,6 +10,7 @@ import { displayPhase, PHASE_LABELS, type CycleTimeline } from '@/src/domain/cyc
 import type { CycleDayLog, Flow, Mood, Severity } from '@/src/domain/models';
 import { formatDayLong, formatDayShort } from '@/src/domain/time/format';
 import { dayDiff } from '@/src/domain/time/trackingDay';
+import { MAX_TEXT as MAX_NOTE_CHARS } from '@/src/data/validate';
 
 export interface DaySheetProps {
   day: string | null;
@@ -184,6 +185,7 @@ export function DaySheet({ day, today, timeline, birthControl, log, onClose, onS
         placeholder="Anything worth remembering"
         placeholderTextColor={c.textTertiary}
         multiline
+        maxLength={MAX_NOTE_CHARS}
         style={[TYPE.body, styles.input, { color: c.text, backgroundColor: c.surface, borderColor: c.hairline }]}
         accessibilityLabel="Note"
       />

@@ -10,7 +10,7 @@ import {
   sumValues,
   type DayRatio,
 } from '@/src/domain/habits/progress';
-import { evaluateStreak, periodStartOf, type PeriodResult } from '@/src/domain/habits/streaks';
+import { evaluateStreak, periodQuota, periodStartOf, type PeriodResult } from '@/src/domain/habits/streaks';
 import type { Cadence, Category, Habit, HabitRule, MovementSnack, NudgePolicy, SnackType } from '@/src/domain/models';
 import { SNACK_LABELS } from '@/src/domain/models';
 import { habitSymptomCorrelations, symptomPatterns, type CompletedCycle, type Correlation, type HabitPerCycle, type SymptomPattern } from '@/src/domain/cycle/insights';
@@ -135,7 +135,7 @@ export function habitRatios(state: TrackerState, habit: Habit, days: string[]): 
     const target = rule?.target ?? 1;
     const value = habitDayValue(state, habit, day);
     if (rule && rule.cadence !== 'DAILY') {
-      out.push({ day, value, target, ratio: ratioOf(periodDoneOn(state, habit, rule.cadence, day), rule.timesPerPeriod) });
+      out.push({ day, value, target, ratio: ratioOf(periodDoneOn(state, habit, rule.cadence, day), periodQuota(rule, day)) });
     } else {
       out.push({ day, value, target, ratio: ratioOf(value, target) });
     }
@@ -162,6 +162,8 @@ export interface HabitView {
   ratios14: DayRatio[];
   /** Period-to-date completed days for weekly / monthly habits. */
   periodDone?: number;
+  /** Days this period asks for (`timesPerPeriod`, capped at the period's length). */
+  periodQuota?: number;
   /** "this week" / "this month" for weekly / monthly habits. */
   periodLabel?: string;
 }
@@ -179,6 +181,7 @@ export function habitView(state: TrackerState, habit: Habit, today: string): Hab
   const todayRatio = ratios14[ratios14.length - 1]!;
   const weekly = rule.cadence !== 'DAILY';
   const periodDone = weekly ? periodDoneOn(state, habit, rule.cadence, today) : undefined;
+  const quota = weekly ? periodQuota(rule, today) : undefined;
   const periodLabel = rule.cadence === 'WEEKLY' ? 'this week' : rule.cadence === 'MONTHLY' ? 'this month' : undefined;
   const adherence = adherenceOf(ratios14, habit.createdDay, today);
   const streaks = evaluateStreak({
@@ -202,6 +205,7 @@ export function habitView(state: TrackerState, habit: Habit, today: string): Hab
     periods: streaks.periods,
     ratios14,
     periodDone,
+    periodQuota: quota,
     periodLabel,
   };
 }
@@ -459,7 +463,7 @@ export function lastLogMsToday(state: TrackerState, habit: Habit, today: string)
 function planHabitOf(state: TrackerState, view: HabitView, today: string): PlanHabit | null {
   const { habit, rule, policy } = view;
   if (!policy || policy.kind === 'NONE' || policy.kind === 'EVENT' || policy.kind === 'CYCLE') return null;
-  const donePeriod = rule.cadence !== 'DAILY' && (view.periodDone ?? 0) >= rule.timesPerPeriod;
+  const donePeriod = rule.cadence !== 'DAILY' && (view.periodDone ?? 0) >= periodQuota(rule, today);
   return compactPlanHabit({
     id: habit.id,
     name: habit.name,

@@ -414,7 +414,7 @@ account when it becomes required for sideloading to friends.
 - Remote: `origin` = https://github.com/aman161upadhyay/daily_tracker.git, branch `main`.
 - Commit in small, named steps (`feat(nudges): merge nudges within 5 min`); push after every
   milestone and at least at the end of each working session, and before any risky refactor.
-- Tags: `v0.0` M0 … `v0.6` M6; release builds carry `versionName` = tag.
+- Tags: `v0.0` M0 … `v0.6` M6, then one per council round that ships fixes (`v0.7` = round 3); release builds carry `versionName` = tag.
 - Never commit: keystores, `local.properties`, `android/`/`ios/` generated folders (we use Expo
   prebuild; the generated native projects are reproducible), `.env`, real health data (fixtures are synthetic).
 

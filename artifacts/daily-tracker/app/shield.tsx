@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { AppState, Platform, StyleSheet, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Stack, useRouter } from 'expo-router';
 import { Card } from '@/components/ui/Card';
@@ -36,6 +36,8 @@ export default function ShieldScreen() {
 
   // Only promise the walk reminder when one can actually arrive: notifications supported and
   // allowed, reminders switched on and not paused. Otherwise the screen says so instead.
+  // Re-checked whenever the app comes back to the front: the permission can be revoked in system
+  // settings while the timer runs, and the promise on screen must follow.
   const [permission, setPermission] = useState<'granted' | 'other' | 'unknown'>('unknown');
   useEffect(() => {
     let alive = true;
@@ -43,11 +45,17 @@ export default function ShieldScreen() {
       setPermission('other');
       return;
     }
-    getPermission()
-      .then((p) => alive && setPermission(p === 'granted' ? 'granted' : 'other'))
-      .catch(() => alive && setPermission('other'));
+    const check = () =>
+      getPermission()
+        .then((p) => alive && setPermission(p === 'granted' ? 'granted' : 'other'))
+        .catch(() => alive && setPermission('other'));
+    void check();
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') void check();
+    });
     return () => {
       alive = false;
+      sub.remove();
     };
   }, []);
   const paused = state.settings.offUntil !== undefined && state.settings.offUntil > now();
@@ -73,10 +81,12 @@ export default function ShieldScreen() {
 
   const pending = useMemo(() => state.events.filter((e) => e.id.startsWith('shield-') && e.at > now()), [state.events]);
 
-  const finish = () => {
+  const finish = async () => {
     const habit = state.habits.find((h) => h.presetId === 'sugar-shield');
     actions.logSnack('SQUATS', { habitId: habit?.id, trigger: 'SUGAR_SHIELD' });
-    if (canRemind) {
+    // One last look at the permission right before promising the walk reminder.
+    const allowed = canRemind && NOTIFICATIONS_SUPPORTED && (await getPermission().catch(() => 'other')) === 'granted';
+    if (allowed) {
       actions.scheduleEvent({
         id: `shield-${newId()}`,
         habitId: habit?.id ?? 'sugar-shield',
@@ -121,11 +131,11 @@ export default function ShieldScreen() {
 
         <Row gap={10} style={{ marginTop: 20, alignSelf: 'stretch' }}>
           {done ? (
-            <PillButton label={canRemind ? 'Log & set the walk reminder' : 'Log the squats'} Leading={UI.Check} color={c.gold} onPress={finish} style={{ flex: 1 }} />
+            <PillButton label={canRemind ? 'Log & set the walk reminder' : 'Log the squats'} Leading={UI.Check} color={c.gold} onPress={() => void finish()} style={{ flex: 1 }} />
           ) : (
             <>
               <PillButton label={running ? 'Pause' : elapsedMs > 0 ? 'Resume' : 'Start'} Leading={running ? UI.Pause : UI.Play} color={c.green} onPress={() => setRunning((r) => !r)} style={{ flex: 1 }} />
-              <PillButton label="Did it already" kind="ghost" onPress={finish} />
+              <PillButton label="Did it already" kind="ghost" onPress={() => void finish()} />
             </>
           )}
         </Row>

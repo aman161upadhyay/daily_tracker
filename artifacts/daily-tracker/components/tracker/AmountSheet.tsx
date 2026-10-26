@@ -34,6 +34,9 @@ export function quickValues(habit: Habit, target: number): number[] {
   return Array.from(new Set([Math.round(base / 4), Math.round(base / 2), base, base * 2].filter((v) => v > 0)));
 }
 
+/** Largest single amount accepted (a million of any unit), well inside what an export file allows. */
+export const MAX_AMOUNT = 1_000_000;
+
 export function AmountSheet({ visible, onClose, habit, mode = 'add', day, current = 0 }: AmountSheetProps) {
   const c = useColors();
   const { state, actions, today } = useTracker();
@@ -65,7 +68,7 @@ export function AmountSheet({ visible, onClose, habit, mode = 'add', day, curren
   };
 
   const commit = (value: number) => {
-    if (!Number.isFinite(value) || value < 0) return;
+    if (!Number.isFinite(value) || value < 0 || value > MAX_AMOUNT) return;
     if (mode === 'set') actions.setDayValue(habit, value, theDay);
     else if (value > 0) actions.logAmount(habit, value, theDay);
     onClose();
@@ -75,7 +78,8 @@ export function AmountSheet({ visible, onClose, habit, mode = 'add', day, curren
   // otherwise come back as 251 ml just from opening the sheet and pressing Set.
   const prefilled = mode === 'set' && current > 0 && text === String(toDisplay(current));
   const parsed = prefilled ? current : toStored(Number(text.replace(',', '.')));
-  const typedValid = text.trim().length > 0 && Number.isFinite(parsed) && parsed >= 0;
+  const tooLarge = Number.isFinite(parsed) && parsed > MAX_AMOUNT;
+  const typedValid = text.trim().length > 0 && Number.isFinite(parsed) && parsed >= 0 && !tooLarge;
   const title = mode === 'set' ? `Set ${habit.name}` : `Log ${habit.name}`;
   const subtitle = backfill ? formatDayLong(theDay) : 'Today';
 
@@ -105,6 +109,11 @@ export function AmountSheet({ visible, onClose, habit, mode = 'add', day, curren
         />
         <PillButton label={mode === 'set' ? 'Set' : 'Log'} onPress={() => commit(parsed)} disabled={!typedValid} />
       </Row>
+      {tooLarge ? (
+        <Txt role="caption" tone="tertiary" style={{ marginTop: 6 }}>
+          {`That is more than ${formatNumber(MAX_AMOUNT)} — check the number.`}
+        </Txt>
+      ) : null}
     </Sheet>
   );
 }

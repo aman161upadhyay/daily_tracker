@@ -25,7 +25,7 @@ import { useTracker } from '@/src/state/TrackerProvider';
  * notification button presses into state changes. Renders nothing.
  */
 export function NudgeScheduler() {
-  const { state, ready, nowMs, zone, today, dispatch } = useTracker();
+  const { state, ready, nowMs, zone, today, dispatch, commitPending } = useTracker();
   const router = useRouter();
   const latest = useRef({ state, today, nowMs, zone });
   latest.current = { state, today, nowMs, zone };
@@ -35,10 +35,11 @@ export function NudgeScheduler() {
   const handle = async (r: NudgeResponse) => {
     if (!(await beginHandling(r.key))) return;
     const c = ctx();
-    // Dispatching is synchronous and the provider persists in order; the press is as committed as
-    // any tap in the app once it is in the reducer (the ledger dedupes a replay either way).
+    // The durable "handled" mark is written only once the state write committed, so a crash in
+    // between replays the press rather than losing it (the ledger dedupes the replay). A save that
+    // gave up just releases the claim.
     for (const a of nudgeResponseActions(latest.current.state, r.payload, r.action as NudgeActionKind | 'TAP', c)) dispatch(a);
-    await endHandling(r.key, true);
+    await endHandling(r.key, await commitPending());
     if (r.action === 'TAP') {
       // Land where the notification is about: the cycle tab for cycle reminders, the habit page
       // when the habit still exists, Today otherwise (a Sugar Shield walk without the habit added

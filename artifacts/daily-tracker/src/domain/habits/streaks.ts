@@ -75,6 +75,12 @@ export function periodStartOf(cadence: Cadence, day: string): string {
   return periodBounds(cadence, day).start;
 }
 
+/** Days per period a rule really asks for: `timesPerPeriod`, capped at the length of the period `day` is in. */
+export function periodQuota(rule: Pick<HabitRule, 'cadence' | 'timesPerPeriod'>, day: string): number {
+  if (rule.cadence === 'DAILY') return 1;
+  return Math.max(1, Math.min(rule.timesPerPeriod, periodBounds(rule.cadence, day).length));
+}
+
 export function periodBounds(cadence: Cadence, day: string): { start: string; end: string; length: number } {
   if (cadence === 'DAILY') return { start: day, end: day, length: 1 };
   if (cadence === 'WEEKLY') {
@@ -134,7 +140,9 @@ export function evaluateStreak(input: StreakInput): StreakResult {
       // card and the charts use), so "3 of 4 this week" never disagrees with the streak.
       if (d <= input.today && input.valueOf(d) >= ruleOn(rules, d).target) done++;
     }
-    const required = rule.cadence === 'DAILY' ? 1 : Math.max(1, Math.round((rule.timesPerPeriod * available) / bounds.length));
+    // Prorated for days off, and never more than the days the period has (a "31 days a month"
+    // rhythm asks for every day of February, not for three days that do not exist).
+    const required = rule.cadence === 'DAILY' ? 1 : Math.min(available, Math.max(1, Math.round((periodQuota(rule, end) * available) / bounds.length)));
 
     let status: PeriodStatus;
     let freezeMonth: string | undefined;

@@ -62,12 +62,23 @@ function prune<T extends { day: string }>(prev: T[], incoming: T[] | undefined, 
   return kept.length === prev.length ? prev : kept;
 }
 
+/** The two heart reads (samples aggregate, resting records) each give one row per day; fold them into one. */
+function coalesceHeart(rows: HeartDay[] | undefined): HeartDay[] | undefined {
+  if (!rows) return rows;
+  const byDay = new Map<string, HeartDay>();
+  for (const r of rows) byDay.set(r.day, compact({ ...byDay.get(r.day), ...r }));
+  return [...byDay.values()];
+}
+
 export function mergeBody(body: BodyState, batch: BodyBatch): BodyState {
   const w = batch.window;
   const steps = prune(upsert(body.steps, batch.steps?.map(compact), STEP), batch.steps, STEP, w);
   const sleep = prune(upsert(body.sleep, batch.sleep?.map(compact), SLEEP), batch.sleep, SLEEP, w);
-  // Heart days come from two reads (samples aggregate, resting records); keep whichever fields each one has.
-  const heart = prune(upsert(body.heart, batch.heart?.map(compact), HEART, (old, next) => compact({ ...old, ...next })), batch.heart, HEART, w);
+  // A complete read says everything there is about a heart day, so its row replaces the stored one
+  // (a resting value deleted upstream goes away too). A partial read may lack one of the two heart
+  // reads and only fills in what it brought.
+  const heartRows = coalesceHeart(batch.heart);
+  const heart = prune(upsert(body.heart, heartRows, HEART, (old, next) => (w ? next : compact({ ...old, ...next }))), heartRows, HEART, w);
   const weight = prune(upsert(body.weight, batch.weight?.map(compact), WEIGHT), batch.weight, WEIGHT, w);
   // A hidden workout stays hidden when it is read again.
   const workouts = prune(upsert(body.workouts, batch.workouts?.map(compact), WORKOUT, (old, next) => ({ ...next, hidden: old.hidden })), batch.workouts, WORKOUT, w);
@@ -81,6 +92,10 @@ export function normalizeBody(raw: unknown): BodyState {
   const b = raw as Partial<BodyState>;
   const list = <T>(xs: T[] | undefined): T[] => (Array.isArray(xs) ? xs : []);
   const sync = b.sync && typeof b.sync === 'object' ? b.sync : EMPTY_BODY.sync;
+  // Sync metadata is shown on the Body tab; a file can carry anything, so only a sane time and a
+  // bounded message survive.
+  const lastSyncAt = typeof sync.lastSyncAt === 'number' && Number.isFinite(sync.lastSyncAt) && sync.lastSyncAt > 0 && sync.lastSyncAt < 4102444800000 ? sync.lastSyncAt : undefined;
+  const lastError = typeof sync.lastError === 'string' && sync.lastError.length > 0 ? sync.lastError.slice(0, 500) : undefined;
   return {
     steps: list(b.steps),
     sleep: list(b.sleep),
@@ -88,8 +103,8 @@ export function normalizeBody(raw: unknown): BodyState {
     weight: list(b.weight),
     workouts: list(b.workouts).map((w) => ({ ...w, hidden: w.hidden === true })),
     sync: {
-      ...(sync.lastSyncAt !== undefined ? { lastSyncAt: sync.lastSyncAt } : {}),
-      ...(sync.lastError !== undefined ? { lastError: sync.lastError } : {}),
+      ...(lastSyncAt !== undefined ? { lastSyncAt } : {}),
+      ...(lastError !== undefined ? { lastError } : {}),
       granted: Array.isArray(sync.granted) ? sync.granted.filter((g): g is BodyRecordType => (BODY_RECORD_TYPES as readonly string[]).includes(g)) : [],
       background: sync.background === true,
     },

@@ -134,8 +134,12 @@ export interface MindSession {
   minutes: number;
 }
 
-/** What happened to a scheduled nudge; kept for 7 days to drive caps, snoozes and "already fired" slots. */
-export type NudgeEventKind = 'FIRED' | 'DONE' | 'SNOOZED' | 'SWAPPED' | 'DISMISSED';
+/**
+ * What happened to a scheduled nudge; kept for 7 days to drive caps, snoozes and "already fired"
+ * slots. WATER marks the drink half of a merged water + movement nudge as logged (the snooze that
+ * follows it keeps the movement half open), so a replayed press never logs the drink twice.
+ */
+export type NudgeEventKind = 'FIRED' | 'DONE' | 'SNOOZED' | 'SWAPPED' | 'DISMISSED' | 'WATER';
 
 export interface NudgeEvent {
   id: string;
@@ -294,7 +298,8 @@ export const DEFAULT_SETTINGS: Settings = {
   cycleEnabled: false,
   pinned: ['water', 'snacks', 'mind'],
   sampleData: false,
-  cycle: { avgCycleDays: 28, periodDays: 5, lutealDays: 14, birthControl: false, discreet: false, reminders: DEFAULT_CYCLE_REMINDERS, history: [] },
+  // Discreet by default: a cycle reminder on a lock screen names nothing until the person turns that on.
+  cycle: { avgCycleDays: 28, periodDays: 5, lutealDays: 14, birthControl: false, discreet: true, reminders: DEFAULT_CYCLE_REMINDERS, history: [] },
   onboardingDone: false,
   tapSizeMl: 250,
   remindersEnabled: true,

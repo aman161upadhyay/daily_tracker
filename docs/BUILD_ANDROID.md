@@ -43,8 +43,9 @@ What to expect:
   lost on the next `--clean`). It may also touch `package.json` to list `expo`/`react`/`react-native`
   under `dependencies` — they already are, so the tree should stay clean.
 - The first Gradle run downloads 1–2 GB: Gradle, the Android Gradle plugin, and — because React
-  Native 0.81 builds its native core from source — the **NDK and CMake** (the SDK manager fetches
-  the versions the project asks for; accept the licences when prompted). Later runs are incremental.
+  Native 0.86 (the version `package.json` pins for Expo SDK 57) builds its native core from
+  source — the **NDK and CMake** (the SDK manager fetches the versions the project asks for; accept
+  the licences when prompted). Later runs are incremental.
 - `run:android` leaves Metro running; the phone loads JavaScript from the laptop over USB
   (`adb reverse`), so edits reload live. Quit with Ctrl-C; the installed app keeps the last bundle
   it loaded and will try to reconnect to Metro on the next launch — for a build that works without
@@ -53,9 +54,12 @@ What to expect:
 
 ## A standalone APK (no laptop needed after install)
 
+Every block in this file starts from the **repository root** (the `daily_tracker` folder) unless it
+says otherwise; `cd` back there first if the previous block left you deeper.
+
 ```bash
-cd artifacts/daily-tracker/android
-./gradlew assembleRelease
+cd artifacts/daily-tracker/android       # Windows PowerShell: cd artifacts\daily-tracker\android
+./gradlew assembleRelease                # Windows PowerShell: .\gradlew.bat assembleRelease
 adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
@@ -72,11 +76,16 @@ switching to your own key later means uninstalling once (export first).
 `android/app/build.gradle` that reads four Gradle properties. Nothing secret lives in the repo and
 the block survives every `--clean` prebuild.
 
-1. Create the key once and back it up twice (a lost key means a new package name for everyone):
+1. Create the key once and back it up twice (a lost key means a new package name for everyone).
+   Mac / Linux:
    ```bash
    mkdir -p ~/keystores
-   keytool -genkeypair -v -storetype PKCS12 -keystore ~/keystores/daily-tracker-release.jks \
-     -alias daily-tracker -keyalg RSA -keysize 2048 -validity 10000
+   keytool -genkeypair -v -storetype PKCS12 -keystore ~/keystores/daily-tracker-release.jks -alias daily-tracker -keyalg RSA -keysize 2048 -validity 10000
+   ```
+   Windows PowerShell (one line; no `\` continuation, no `&&`):
+   ```powershell
+   mkdir $HOME\keystores
+   keytool -genkeypair -v -storetype PKCS12 -keystore $HOME\keystores\daily-tracker-release.jks -alias daily-tracker -keyalg RSA -keysize 2048 -validity 10000
    ```
 2. Put the credentials in `~/.gradle/gradle.properties` (your home directory, never the repo):
    ```
@@ -89,13 +98,24 @@ the block survives every `--clean` prebuild.
    the key — `keytool` warns that different ones are not supported. When the properties are absent
    the release build type falls back to the template's public debug keystore, so the command below
    always works; only the signature differs (and Gradle prints a warning).
-3. Build, verify the signature, install:
+3. Build, verify the signature, install (from the repository root). Mac / Linux:
    ```bash
    cd artifacts/daily-tracker
    pnpm exec expo prebuild --platform android --clean
-   cd android && ./gradlew assembleRelease
+   cd android
+   ./gradlew assembleRelease
    "$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"/apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
    adb install -r app/build/outputs/apk/release/app-release.apk
+   ```
+   Windows PowerShell:
+   ```powershell
+   cd artifacts\daily-tracker
+   pnpm exec expo prebuild --platform android --clean
+   cd android
+   .\gradlew.bat assembleRelease
+   $tools = Get-ChildItem "$env:ANDROID_HOME\build-tools" | Sort-Object { [version]$_.Name } | Select-Object -Last 1
+   & "$($tools.FullName)\apksigner.bat" verify --print-certs app\build\outputs\apk\release\app-release.apk
+   adb install -r app\build\outputs\apk\release\app-release.apk
    ```
    `apksigner` must print the certificate you created (CN from the `keytool` prompts), not
    `CN=Android Debug`. Switching an installed debug-key build to the release key means
@@ -103,9 +123,11 @@ the block survives every `--clean` prebuild.
    Settings → Your data, install, then import it. Friends install the same APK from any shared
    file; later versions update in place as long as they come from this key.
 
-`versionCode` discipline: every install that should update an existing one needs a higher
-`expo.android.versionCode` in `app.json` (M3 shipped 3, M4 4, M5 5, M6 6); `version` follows the
-tag (`0.6.0` = `v0.6`).
+`versionCode` discipline: Android installs a same-signer build whose `versionCode` is equal **or**
+higher over the existing one and rejects only a lower one (`INSTALL_FAILED_VERSION_DOWNGRADE`).
+This project still raises `expo.android.versionCode` in `app.json` on every release (M3 shipped 3,
+M4 4, M5 5, M6 6, round 3 7) so that "which build is this phone on" has one answer; `version`
+follows the tag (`0.7.0` = `v0.7`).
 
 Google Play is deliberately not part of this recipe; `./gradlew bundleRelease` produces the AAB if
 that day comes, and the remaining items (feature graphic, privacy policy, Health Connect
@@ -128,13 +150,16 @@ Two independent mechanisms, both leaving the live SQLite database alone:
   AES-256-GCM with a PBKDF2-SHA256 key (200,000 iterations, 16-byte salt, 12-byte IV, all written in
   the file, tag appended to the ciphertext). It opens without this app, for example in Python:
   ```python
-  import json, base64, hashlib
+  import json, base64, hashlib, unicodedata
   from cryptography.hazmat.primitives.ciphers.aead import AESGCM   # pip install cryptography
-  f = json.load(open('daily-tracker-2026-10-26.json'))
-  key = hashlib.pbkdf2_hmac('sha256', 'your password'.encode(), base64.b64decode(f['salt']), f['iterations'], 32)
+  f = json.load(open('daily-tracker-2026-10-26-k3f9a2.json'))
+  password = unicodedata.normalize('NFKC', 'your password')      # the app normalises the same way
+  key = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), base64.b64decode(f['salt']), f['iterations'], 32)
   print(AESGCM(key).decrypt(base64.b64decode(f['iv']), base64.b64decode(f['ciphertext']), None).decode())
   ```
-  Passwords are NFKC-normalised before hashing. There is no recovery for a forgotten password.
+  Passwords are NFKC-normalised before hashing (so a password typed with a full-width or decomposed
+  character still opens the file); the recipe above does the same. There is no recovery for a
+  forgotten password.
 
 ## After installing: the device checklist
 

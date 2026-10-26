@@ -174,8 +174,10 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
   for (let i = 0; i < 3; i++) days.push(addDays(firstDay, i));
 
   const candidates: Candidate[] = [];
+  /** Inside the pause-aware window the OS will actually be asked to ring in. */
+  const placeable = (at: number) => at >= earliest && at <= horizonEnd;
   const push = (c: Candidate) => {
-    if (c.at < earliest || c.at > horizonEnd) return;
+    if (!placeable(c.at)) return;
     candidates.push(c);
   };
 
@@ -216,6 +218,9 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
         const id = `rot:${day}:${minute}`;
         const when = effectiveAt(id, Math.max(at, snoozedUntil));
         if (when === null) continue;
+        // A slot inside a pause (or past the horizon) is never offered, so it neither spends the
+        // habit's daily budget nor advances the rotation: the first real slot matches the card.
+        if (!placeable(when)) continue;
         const history = latest.get(id);
         let item: PlanHabit | undefined;
         if (history?.kind === 'SNOOZED') {
@@ -277,9 +282,13 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
           if (h.todayRatio >= elapsed) continue;
         }
         const id = `int:${h.id}:${day}:${minutesOfDay(at, zone)}`;
-        n += 1;
         const when = effectiveAt(id, at);
-        if (when === null) continue;
+        if (when === null) {
+          n += 1; // already fired, done or dismissed today: it counts against the cap
+          continue;
+        }
+        if (!placeable(when)) continue; // paused or beyond the horizon: not offered, not counted
+        n += 1;
         push({
           id,
           at: when,
@@ -303,13 +312,18 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
       let n = 0;
       for (const hhmm of h.policy.times) {
         const [hh, mm] = hhmm.split(':').map(Number);
-        if (hh === undefined || mm === undefined || Number.isNaN(hh) || Number.isNaN(mm)) continue;
+        // Stored times are validated on the way in; a bad one from an old file is skipped, never placed.
+        if (!Number.isInteger(hh) || !Number.isInteger(mm) || hh! < 0 || hh! > 23 || mm! < 0 || mm! > 59) continue;
         if (n >= h.policy.maxPerDay) break;
-        const at = instantOf(day, hh * 60 + mm, zone);
+        const at = instantOf(day, hh! * 60 + mm!, zone);
         const id = `fix:${h.id}:${day}:${hhmm}`;
-        n += 1;
         const when = effectiveAt(id, at);
-        if (when === null) continue;
+        if (when === null) {
+          n += 1;
+          continue;
+        }
+        if (!placeable(when)) continue;
+        n += 1;
         push({
           id,
           at: when,
