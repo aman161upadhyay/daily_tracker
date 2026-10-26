@@ -75,8 +75,10 @@ describe('widget model', () => {
     assert.equal(shortVolume(1250, 'ml'), '1.3 L');
     assert.equal(shortVolume(2000, 'ml'), '2 L');
     assert.equal(shortVolume(1183, 'oz'), '40 oz');
+    assert.equal(shortVolume(250, 'oz'), '8.5 oz');
+    assert.equal(shortVolume(3000, 'oz'), '101 oz');
     const state = reducer(fresh(), { type: 'UPDATE_SETTINGS', patch: { units: 'oz' } });
-    assert.match(widgetModel(state, TODAY, NOW, ZONE).tiles[0]!.caption, /^of \d+ oz$/);
+    assert.match(widgetModel(state, TODAY, NOW, ZONE).tiles[0]!.caption, /^of \d+(\.\d)? oz$/);
   });
 
   it('the key changes when a value changes and not otherwise', () => {

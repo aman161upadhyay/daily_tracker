@@ -47,10 +47,10 @@ count/timer habit, "done" for a yes/no habit); tap the name = open that habit; t
 |---|---|---|---|
 | W1 | Add widget | Long-press home screen → Widgets → Daily Tracker → place it at 4×2 | Three tiles with rings, values and names in the app's fonts/colours (Manrope, teal/green/violet on the dark card with the gold hairline); the preview in the picker matches |
 | W2 | Sizes | Resize to 2×2, then to 4×1 | 2×2: one big ring (the first habit); 4×1: three small rings beside their text. Nothing clipped or overlapping; names truncate with "…" |
-| W3 | Tap to log, app in background | Home button; tap the water ring twice, then the movement ring | Water value rises by one tap size each time (e.g. 0 ml → 250 ml → 500 ml) within a second; movement count +1 and the tile's name changes to the next snack in the rotation; open the app → Today shows the same numbers (source "widget") |
+| W3 | Tap to log, app in background | Home button; tap the water ring twice, then the movement ring | Water value rises by one tap size each time (e.g. 0 ml → 250 ml → 500 ml) within a few seconds (the first tap after the app was swiped away starts a background runtime, 2–3 s on a mid-range phone; later taps are quicker); movement count +1 and the tile's name changes to the next snack in the rotation; open the app → Today shows the same numbers (source "widget") |
 | W4 | Tap with the app swiped away | Swipe the app from Recents; tap a ring | Same as W3 (headless task, no app window opens). If the value does not change, note the Android version and whether battery optimisation is on for the app |
 | W5 | Tap the name / background | Tap "Water"; go back; tap the empty card area | Name opens the app on that habit's page; background opens the app on Today |
-| W6 | Stays in sync | In the app, log water, archive a habit, change the widget picks in Settings, change units to oz | Widget redraws within a second each time; after a notification "Done" with the app closed the widget also updates |
+| W6 | Stays in sync | In the app, log water, archive a habit, change the widget picks in Settings, change units to oz | Widget redraws within a few seconds each time (the app's own redraw is debounced, 400 ms after the last change); after a notification "Done" with the app closed the widget also updates |
 | W7 | Day rollover & reboot | Leave it overnight (3 am boundary); reboot the phone | Morning: zeros again by the next periodic update (≤ 30 min after 3 am) or immediately after opening the app; after reboot: current values, not an empty card |
 | W8 | Yes/no habit | Choose a yes/no habit in Settings; tap its ring twice | First tap: ring full, "✓", caption "Done"; second tap: nothing changes (no double log) |
 
@@ -180,6 +180,22 @@ cycle (phases, calendar, day sheet, insights) was verified in the web preview an
 | V10 | 1:30 am reminder on the night the clocks go back (1 Nov 2026) | Set a fixed reminder at 01:30 on a habit, mark the habit done at 00:30 | No 01:30 reminder that night (the slot belongs to the tracking day already done); the 9:00 reminder next morning arrives once |
 | V11 | Two runtimes at once (residual risk, deferred) | Swipe the app away; tap a widget tile and, within the same second, open the app from the launcher and log something else on Today | Both logs survive a reload. Known residual risk: the headless writer and the app can be two separate JavaScript runtimes with no shared lock; a stale write would show as one of the two logs missing. Report it with `adb logcat` if it happens |
 
+## X — Council round 7 follow-ups (2026-10-26)
+
+| # | Scenario | Steps | Expect |
+|---|---|---|---|
+| X1 | Exact-alarm status (Android 14+) | Fresh install → allow notifications → Settings → Reminders | A gold line "Android is delivering reminders late…" and an **Allow exact timing** button; tap → the system "Alarms & reminders" page for this app (not the list of every app); allow; back in the app the line and the button are gone without restarting |
+| X2 | Exact grant repairs pending alarms | With exact timing still off, set a fixed reminder 10 minutes ahead; then allow exact timing and return to the app | `adb shell dumpsys alarm \| grep -A3 dailytracker` shows the alarm re-registered as exact (type RTC_WAKEUP with no window); it rings at the minute |
+| X3 | Exact revoke | Allow exact timing, schedule a reminder, revoke it in system settings, reopen the app | The reminder is re-submitted inexact and still arrives (late is acceptable); nothing is silently lost |
+| X4 | Offline for a day and a half | Airplane mode on; leave the app closed for > 36 h (or set the device clock forward in steps of a few hours and wait for the 3-hourly task) | Reminders keep coming after the 36-hour horizon: the background task runs without a network (patched `expo-background-task`); `adb shell dumpsys jobscheduler \| grep -B2 -A8 dailytracker` shows no `Requires: net` constraint |
+| X5 | Bell after returning from settings | Start a 5-minute meditation, go to the Alarms & reminders page, allow, come back | One bell at the end (the bell is re-submitted on return, same id, no duplicate) |
+| X6 | Sheets in a short window | Split-screen the app with another app (or a tablet / foldable in landscape); open the habit editor and a cycle day sheet | The sheet's header and close button stay inside the window; the body scrolls |
+| X7 | Today without the trio | Onboarding with only "Steps" and "Journal" selected (deselect water, movement, meditate) | Today shows the rings card, no Water / Movement / Mind cards, one line saying they appear once added; adding Water from the Library brings its card back |
+| X8 | Cycle off → link | Cycle tracking off; open `adb shell am start -a android.intent.action.VIEW -d daily-tracker://cycle` | A "Cycle tracking is off" card with Turn on / Back to Today, no blank or broken page |
+| X9 | Cycle hidden from Today | Cycle on; Settings → Day & cycle → Show on Today off | The Cycle card leaves Today; the Cycle tab stays |
+| X10 | Long habit name in a notification | Name a habit 70 characters, give it a fixed time | The notification title is cut with "…" at about 40 characters; the body is intact |
+| X11 | Quick Log ceiling | Today → + → water → type 50000 | The field refuses it (hint shows the 20,000 ml / 676 oz ceiling); 20000 is accepted |
+
 ## Recording results
 
-Add a dated line under the milestone in `docs/IMPLEMENTATION_PLAN.md` ("Device run YYYY-MM-DD, Pixel 7 / Android 15: N1–N17 pass except …") and open follow-ups for anything that failed.
+Add a dated line under the milestone in `docs/IMPLEMENTATION_PLAN.md` ("Device run YYYY-MM-DD, Pixel 7 / Android 15: N1–N17, X1–X11 pass except …") and open follow-ups for anything that failed.

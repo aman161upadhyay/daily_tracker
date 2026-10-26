@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { AppState, Platform } from 'react-native';
 import { cleanupPending, deleteSnapshot, markCleanupPending } from '@/src/services/backup';
 import { afterSnapshots, maybeSnapshot } from '@/src/services/snapshotSync';
@@ -28,7 +28,9 @@ export { hasUserData, shouldSnapshot } from '@/src/data/backupPolicy';
 export function BackupSync() {
   const { state, ready } = useTracker();
   const latest = useRef(state);
-  latest.current = state;
+  useLayoutEffect(() => {
+    latest.current = state;
+  });
   const lastWritten = useRef<TrackerState | null>(null);
   const enqueue = (job: () => Promise<void>) => {
     afterSnapshots(job).catch((err) => console.warn('[backup]', err));

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { WIDGET_SUPPORTED, refreshWidgets } from '@/src/services/widget';
 import { useTracker } from '@/src/state/TrackerProvider';
 import { widgetModel, widgetModelKey } from '@/src/widget/model';
@@ -11,7 +11,11 @@ import { widgetModel, widgetModelKey } from '@/src/widget/model';
 export function WidgetSync() {
   const { state, ready, today, nowMs, zone } = useTracker();
   const latest = useRef({ state, today, nowMs, zone });
-  latest.current = { state, today, nowMs, zone };
+  // Committed values only (a render-phase ref write makes the compiler skip the component); the
+  // timer below fires long after commit.
+  useLayoutEffect(() => {
+    latest.current = { state, today, nowMs, zone };
+  });
 
   const key = ready && WIDGET_SUPPORTED ? widgetModelKey(widgetModel(state, today, nowMs, zone)) : '';
 

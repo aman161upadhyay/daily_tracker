@@ -84,6 +84,26 @@ export default function CycleScreen() {
         : `Next period ${formatDayShort(prediction.nextStart)} · in ${until} ${until === 1 ? 'day' : 'days'} · ±${prediction.rangeDays}`
     : null;
 
+  // Reachable with tracking off only through a link or a stale history entry: offer the switch
+  // instead of a tab the person turned off.
+  if (!state.settings.cycleEnabled) {
+    return (
+      <Screen>
+        <ScreenHeader title="Cycle" subtitle={formatDayLong(calendarToday)} />
+        <Card>
+          <Txt role="title2">Cycle tracking is off</Txt>
+          <Txt role="body" tone="secondary" style={{ marginTop: 6 }}>
+            {cycle.history.length > 0 || state.cycleLogs.length > 0 ? 'Your periods and day logs are kept. Turn tracking on to see them again.' : 'Turn it on to log periods, see your phase and set cycle reminders. Off by default; nothing is shared.'}
+          </Txt>
+          <Row gap={8} style={{ marginTop: 14, flexWrap: 'wrap' }}>
+            <PillButton label="Turn on" color={color} onPress={() => actions.updateSettings({ cycleEnabled: true })} />
+            <PillButton label="Back to Today" kind="ghost" onPress={() => router.replace('/')} />
+          </Row>
+        </Card>
+      </Screen>
+    );
+  }
+
   return (
     <Screen>
       <ScreenHeader title="Cycle" subtitle={formatDayLong(calendarToday)} />
@@ -277,7 +297,7 @@ export default function CycleScreen() {
 
       <Card>
         <Txt role="footnote" tone="tertiary">
-          {`${NOT_CONTRACEPTION} Everything here stays on this phone.`}
+          {`${NOT_CONTRACEPTION} Everything here is kept inside the app on this phone; if Android phone backup is on (Settings → Backup), it is part of that encrypted backup too.`}
         </Txt>
       </Card>
 

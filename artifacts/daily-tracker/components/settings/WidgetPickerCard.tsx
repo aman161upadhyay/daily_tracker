@@ -55,7 +55,11 @@ export function WidgetPickerCard() {
         <Txt role="caption" tone="secondary">
           {chosen.length >= WIDGET_MAX ? `That is the limit of ${WIDGET_MAX}; deselect one to pick another. ` : ''}
           Tap a ring on the widget to log; tap its name to open the habit. A small widget shows the first
-          habit only. Expo Go and the web preview have no widget.
+          habit only.
+        </Txt>
+        <Txt role="caption" tone="tertiary">
+          To add it: long-press an empty spot on the home screen → Widgets → Daily Tracker, then drag it out
+          (Samsung: pinch the home screen → Widgets). Expo Go and the web preview have no widget.
         </Txt>
       </View>
     </Card>

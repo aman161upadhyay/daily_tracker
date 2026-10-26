@@ -8,7 +8,7 @@ import colors from '@/constants/colors';
 import type { Habit } from '@/src/domain/models';
 import { SNACK_LABELS } from '@/src/domain/models';
 import { nextRotationItem } from '@/src/domain/nudges/nextNudge';
-import { formatNumber } from '@/src/domain/time/format';
+import { formatNumber, formatOneDecimal, mlToOz } from '@/src/domain/time/format';
 import { activeHabits, habitView, rotationItems, todaySummary, waterHabit } from '@/src/state/selectors';
 import type { TrackerState } from '@/src/state/types';
 
@@ -41,9 +41,12 @@ function clamp01(n: number): number {
   return Math.max(0, Math.min(1, Number.isFinite(n) ? n : 0));
 }
 
-/** "750 ml", "1.3 L", "42 oz" — short enough for a ring. */
+/** "750 ml", "1.3 L", "8.5 oz", "42 oz" — short enough for a ring (ounces keep one decimal under 100). */
 export function shortVolume(ml: number, units: 'ml' | 'oz'): string {
-  if (units === 'oz') return `${formatNumber(ml / 29.5735)} oz`;
+  if (units === 'oz') {
+    const oz = mlToOz(ml);
+    return `${oz >= 100 ? formatNumber(oz) : formatOneDecimal(oz)} oz`;
+  }
   if (ml >= 1000) {
     const litres = Math.round(ml / 100) / 10;
     return `${litres % 1 === 0 ? litres.toFixed(0) : litres.toFixed(1)} L`;

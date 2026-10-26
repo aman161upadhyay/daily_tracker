@@ -170,8 +170,10 @@ Do these once, in the app and in the phone's Settings:
 1. **Onboarding.** Open the app, enter your name, pick your habits, choose whether to track your
    cycle. Nothing leaves the phone.
 2. **Notifications.** In the app: Settings (the letter in the top-right of Today) → *Reminders* →
-   **Allow notifications** → Allow on the system box. Then tap **Exact timing** → on the Android
-   screen that opens, allow *Alarms & reminders*. Without this, reminders can arrive minutes late.
+   **Allow notifications** → Allow on the system box. If the card then shows **Allow exact
+   timing** (Android 14 and newer start with it off), tap it and allow *Alarms & reminders* on the
+   Android screen that opens; the button disappears once it is on. Without it, reminders arrive
+   minutes late — longer while the phone sleeps — and the meditation bell can be late too.
 3. **Battery.** Phone Settings → Apps → Daily Tracker → *Battery* → **Unrestricted** (Samsung:
    also Settings → Battery → Background usage limits → make sure Daily Tracker is not in
    "Sleeping apps"). Otherwise the phone may silence reminders after a few days.

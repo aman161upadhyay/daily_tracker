@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { NudgeEvent, NudgePolicy } from '../src/domain/models';
-import { planNudges, type PlanHabit, type PlanInput, type ScheduledNudge } from '../src/domain/nudges/planner';
+import { planNudges, shortName, type PlanHabit, type PlanInput, type ScheduledNudge } from '../src/domain/nudges/planner';
 import { instantOf, minutesOfDay } from '../src/domain/time/trackingDay';
 
 const ZONE = 'America/New_York';
@@ -147,6 +147,28 @@ describe('planNudges — caps, merges and history', () => {
     assert.equal(three.length, 1);
     assert.deepEqual(three[0]!.habitIds, ['squats', 'stairs']);
     assert.equal(three[0]!.title, 'Time for a break');
+    // The body names both habits, so a Done on the merged card is an informed one.
+    assert.match(three[0]!.body, /squats/i);
+    assert.match(three[0]!.body, /Stair sprint/);
+    assert.equal('line' in three[0]!, false);
+  });
+
+  it('a long habit name is cut for the one-line title', () => {
+    const long = 'Walk to the far end of the office and back without the phone';
+    const h = habit({ id: 'long', name: long, policy: policy({ habitId: 'long', kind: 'FIXED', times: ['16:00'], maxPerDay: 1 }) });
+    const n = todayOnly(planNudges(input({ habits: [h] }))).find((x) => x.habitIds.includes('long'))!;
+    assert.equal(n.title.length <= 40, true);
+    assert.ok(n.title.endsWith('…'));
+    assert.equal(shortName('Short'), 'Short');
+  });
+
+  it('two timed reminders merged keep both names (not "Time for it · Time for it")', () => {
+    const a = habit({ id: 'a', name: 'Vitamins', policy: policy({ habitId: 'a', kind: 'FIXED', times: ['15:00'], maxPerDay: 1 }) });
+    const b = habit({ id: 'b', name: 'Call mum', policy: policy({ habitId: 'b', kind: 'FIXED', times: ['15:02'], maxPerDay: 1 }) });
+    const plan = todayOnly(planNudges(input({ habits: [a, b] })));
+    const merged = plan.find((n) => n.habitIds.length === 2)!;
+    assert.ok(merged);
+    assert.equal(merged.body, 'Vitamins · Call mum');
   });
 
   it('does not re-plan a slot that already fired, and moves a snoozed slot only', () => {

@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { createStore } from '@/src/data/createStore';
-import { WATER_GOAL_MAX_ML, WATER_GOAL_MIN_ML } from '@/src/data/validate';
+import { MAX_WATER_LOG_ML, WATER_GOAL_MAX_ML, WATER_GOAL_MIN_ML } from '@/src/data/validate';
 import { withHeadlessLock } from '@/src/services/headlessLock';
 import { headlessRevision, onHeadlessWrite } from '@/src/services/replan';
 import type { TrackerStore } from '@/src/data/store';
@@ -135,6 +135,12 @@ function describe(err: unknown): string {
 
 /** The Water habit's target and the `waterGoalMl` setting are one number, inside the bounds both sides accept. */
 const clampWaterGoal = (ml: number) => Math.min(WATER_GOAL_MAX_ML, Math.max(WATER_GOAL_MIN_ML, Math.round(ml)));
+/** A drink as a whole number of ml inside the shared ceiling, or null for anything that is not a drink. */
+const drinkMl = (ml: number): number | null => {
+  if (!Number.isFinite(ml)) return null;
+  const whole = Math.round(ml);
+  return whole >= 1 && whole <= MAX_WATER_LOG_ML ? whole : null;
+};
 
 export function TrackerProvider({ children }: { children: React.ReactNode }) {
   const [state, setRendered] = useState(PLACEHOLDER);
@@ -428,7 +434,10 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
     const logFor = (habit: Habit, value: number, day?: string) => {
       const { at, zone: z, day: d } = stamp(day);
       if (habit.presetId === 'water') {
-        dispatch({ type: 'ADD_WATER', entry: { id: newId(), at, zone: z, day: d, ml: Math.round(value), source: 'MANUAL' } });
+        // The sheets refuse above the ceiling before this; a caller that did not is refused here,
+        // so no path writes a drink the notification buttons and the import would not accept.
+        const ml = drinkMl(value);
+        if (ml !== null) dispatch({ type: 'ADD_WATER', entry: { id: newId(), at, zone: z, day: d, ml, source: 'MANUAL' } });
         return;
       }
       if (habit.snackType) {
@@ -497,8 +506,10 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
         if (value > 0) logFor(habit, value, day);
       },
       addWater(ml, source = 'MANUAL') {
+        const whole = drinkMl(ml);
+        if (whole === null) return;
         const { at, zone: z, day } = stamp();
-        dispatch({ type: 'ADD_WATER', entry: { id: newId(), at, zone: z, day, ml, source } });
+        dispatch({ type: 'ADD_WATER', entry: { id: newId(), at, zone: z, day, ml: whole, source } });
       },
       undoWater() {
         dispatch({ type: 'UNDO_WATER', day: stamp().day });

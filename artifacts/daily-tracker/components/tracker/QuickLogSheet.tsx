@@ -4,7 +4,8 @@ import { useRouter } from 'expo-router';
 import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
 import { SNACK_LABELS, type MindKind, type SnackType } from '@/src/domain/models';
-import { formatVolume } from '@/src/domain/time/format';
+import { MAX_WATER_LOG_ML } from '@/src/data/validate';
+import { formatVolume, parseVolumeInput } from '@/src/domain/time/format';
 import { useTracker } from '@/src/state/TrackerProvider';
 import { rotationItems, snackSuggestion } from '@/src/state/selectors';
 import { Sheet } from '../ui/Sheet';
@@ -14,7 +15,6 @@ import { UI } from '../ui/icons';
 
 const WATER_ML = [150, 250, 350, 500];
 const MIND_MIN = [5, 10, 13, 20];
-const ML_PER_OZ = 29.5735;
 
 /** Bottom sheet for logging: water amounts, movement snacks, the Sugar Shield, mind sessions. */
 export function QuickLogSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
@@ -34,13 +34,16 @@ export function QuickLogSheet({ visible, onClose }: { visible: boolean; onClose:
     if (visible) setCustom('');
   }, [visible]);
 
-  const logWater = (ml: number) => {
-    if (!Number.isFinite(ml) || ml <= 0) return;
-    actions.addWater(Math.round(ml));
+  const logWater = (ml: number | null) => {
+    if (ml === null || ml <= 0 || ml > MAX_WATER_LOG_ML) return;
+    actions.addWater(ml);
     onClose();
   };
-  const customMl = Number(custom.replace(',', '.')) * (units === 'oz' ? ML_PER_OZ : 1);
-  const customValid = custom.trim().length > 0 && Number.isFinite(customMl) && customMl > 0;
+  // The same parser as every other volume field: "1,850" is 1,850 ml, "8,5" on a decimal-comma keyboard is 8.5.
+  const customMl = parseVolumeInput(custom, units);
+  const tooLarge = customMl !== null && customMl > MAX_WATER_LOG_ML;
+  const customValid = customMl !== null && customMl > 0 && !tooLarge;
+  const ceiling = formatVolume(MAX_WATER_LOG_ML, units);
 
   return (
     <Sheet visible={visible} title="Log" onClose={onClose}>
@@ -63,6 +66,11 @@ export function QuickLogSheet({ visible, onClose }: { visible: boolean; onClose:
           />
           <PillButton label="Log" compact onPress={() => logWater(customMl)} disabled={!customValid} />
         </Row>
+        {tooLarge ? (
+          <Txt role="caption" tone="danger" style={{ marginTop: 6 }} accessibilityLiveRegion="polite">
+            {`That is more than ${ceiling.value} ${ceiling.unit} in one go — check the number.`}
+          </Txt>
+        ) : null}
       </Group>
       <Group title="Movement snack" color={c.cat.movement}>
         {allSnacks.map((t) => (

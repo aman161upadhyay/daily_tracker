@@ -129,8 +129,28 @@ export function weekStartOf(day: string): string {
   return addDays(day, -weekdayOf(day));
 }
 
-export function compareDays(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
+/**
+ * Bounds for an epoch-ms instant this app will format: from 1970 to the end of year 9999. A finite
+ * number outside them (an imported `at` of 1e300, a forged timer payload) is still a "number", but
+ * `new Date(ms)` is invalid and every Intl call on it throws — so the bound is checked wherever a
+ * timestamp enters from outside (import files, notification payloads).
+ */
+export const MIN_INSTANT_MS = 0;
+export const MAX_INSTANT_MS = Date.UTC(9999, 11, 31, 23, 59, 59, 999);
+
+export function isInstantMs(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v) && v >= MIN_INSTANT_MS && v <= MAX_INSTANT_MS;
+}
+
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A real calendar day as this app writes it: "2026-02-28" yes, "2026-02-30" or "2026-99-99" no. */
+export function isCalendarDay(v: unknown): v is string {
+  if (typeof v !== 'string' || !DAY_RE.test(v)) return false;
+  const { year, month, day } = parseDay(v);
+  if (year < 1970 || month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  return dt.getUTCFullYear() === year && dt.getUTCMonth() === month - 1 && dt.getUTCDate() === day;
 }
 
 /** Offset of `zone` from UTC at an instant, in ms (local − UTC). */

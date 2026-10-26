@@ -139,3 +139,16 @@ Hermes compiler path for bundle checks: `node_modules/.pnpm/hermes-compiler@*/no
   shell/PowerShell text with `$'` spliced the rest of `docs/BUILD_ANDROID.md` into itself (round 4; repaired in
   round 5). Always pass a function replacer: `src.replace(a, () => b)`. Also: no backticks inside JS template
   literals in CodeExecution blocks.
+
+## Local native module + pnpm patches (round 7, 2026-10-26)
+- A local Expo module lives in `artifacts/daily-tracker/modules/<name>/` (expo-module.config.json, android/build.gradle,
+  Kotlin, index.ts); autolinking picks up `./modules` by default, no app.json entry. Import through
+  `requireOptionalNativeModule` from 'expo' so Expo Go / a build without it degrade to null instead of throwing.
+  **Nothing here can compile Kotlin** (no Android SDK): such code is reviewed, not verified — say so in the docs and
+  give an escape hatch (delete the folder). `expo export --platform android` only proves the JS side resolves.
+- Patching a dependency: `pnpm patch <pkg>@<ver>` → edit → `pnpm patch-commit`; the patch lands in `patches/` at
+  the repo root and `pnpm-workspace.yaml` gets `patchedDependencies`. Verify with grep in `node_modules/<pkg>` after
+  install. Read the installed native source before trusting a library's documented default (the background-task
+  scheduler's hidden network constraint was only visible in `BackgroundTaskScheduler.kt`).
+- `CI=1 pnpm exec expo install <pkg>` for new Expo packages (non-interactive); the workflow's Metro picks them up
+  without a restart, but `expo export` is the real check.

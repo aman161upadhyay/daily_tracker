@@ -24,7 +24,7 @@ const message = (err: unknown) => (err instanceof Error ? err.message : String(e
  */
 export function BackupCard({ confirm }: { confirm: Confirm }) {
   const c = useColors();
-  const { state, actions, storageError } = useTracker();
+  const { state, actions, storageError, commitPending } = useTracker();
   const s = state.settings;
   const [transfer, setTransfer] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -68,11 +68,22 @@ export function BackupCard({ confirm }: { confirm: Confirm }) {
     }
   };
 
+  // "Imported" is said once the import is on disk, and the kept copy goes only then: a save that
+  // gives up (storage full) must not end with the only copy of that data deleted.
   const offerImport = (incoming: TrackerState, onDone?: () => void) => {
     confirm('Replace everything with this backup?', `It holds ${describeImport(incoming)}. Your current data on this phone is replaced.`, 'Import', () => {
       actions.importState(incoming);
-      setTransfer({ tone: 'ok', text: `Imported ${describeImport(incoming)}.` });
-      onDone?.();
+      setBusy(true);
+      commitPending()
+        .then((persisted) => {
+          if (persisted) {
+            setTransfer({ tone: 'ok', text: `Imported ${describeImport(incoming)}.` });
+            onDone?.();
+          } else {
+            setTransfer({ tone: 'error', text: 'The backup is loaded on screen but could not be saved to this phone yet. Free up some storage; the app keeps retrying.' });
+          }
+        })
+        .finally(() => setBusy(false));
     });
   };
 

@@ -22,7 +22,7 @@ export function contextFor(state: TrackerState, nowMs = now(), zone = currentZon
 /** Push the plan for `state` to the OS; returns the nudges that fired since the last sync. */
 export async function syncStateToOs(state: TrackerState, ctx: CommandContext): Promise<FiredRecord[]> {
   const plan = state.settings.remindersEnabled ? nudgePlan(state, ctx.today, ctx.nowMs, ctx.zone) : [];
-  await prepare(state.settings.tapSizeMl);
+  await prepare(state.settings.tapSizeMl, state.settings.units);
   return syncPlan(plan, ctx.nowMs);
 }
 

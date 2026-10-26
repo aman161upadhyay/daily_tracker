@@ -170,6 +170,13 @@ function firedPerHabit(latest: Map<string, NudgeEvent>, day: string): Map<string
   return out;
 }
 
+/** Notification titles get one line in the shade; a long habit name (up to 80 characters in the editor) is cut with an ellipsis. */
+export const TITLE_MAX = 40;
+export function shortName(name: string): string {
+  const t = name.trim();
+  return t.length <= TITLE_MAX ? t : `${t.slice(0, TITLE_MAX - 1).trimEnd()}…`;
+}
+
 function snackLine(type: SnackType | undefined, name: string): string {
   if (!type) return name;
   const meta = SNACK_LABELS[type];
@@ -184,6 +191,8 @@ function snackLine(type: SnackType | undefined, name: string): string {
 interface Candidate extends ScheduledNudge {
   /** Automatic cadences count against the daily cap; events and summaries do not. */
   counted: boolean;
+  /** One short line naming what this is, for the body of a merged notification. */
+  line: string;
 }
 
 export function planNudges(input: PlanInput): ScheduledNudge[] {
@@ -289,7 +298,8 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
           day,
           habitIds: [item.id],
           title: 'Movement snack',
-          body: `${snackLine(item.snackType, item.name)} — ${item.name.toLowerCase()}`,
+          body: `${snackLine(item.snackType, item.name)} — ${shortName(item.name).toLowerCase()}`,
+          line: `${snackLine(item.snackType, item.name)} (${shortName(item.name)})`,
           channel: 'nudges',
           kind: 'ROTATION',
           actions: eligible.length > 1 ? ['DONE', 'SNOOZE', 'SWAP'] : ['DONE', 'SNOOZE'],
@@ -328,8 +338,9 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
           at: when,
           day,
           habitIds: [h.id],
-          title: h.name,
+          title: shortName(h.name),
           body: 'Time for it — tap Done when you have.',
+          line: shortName(h.name),
           channel: 'nudges',
           kind: 'INTERVAL',
           actions: ['DONE', 'SNOOZE'],
@@ -363,8 +374,9 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
           at: when,
           day,
           habitIds: [h.id],
-          title: h.name,
+          title: shortName(h.name),
           body: h.movement ? snackLine(h.snackType, h.name) : 'Scheduled reminder — tap Done when you have.',
+          line: h.movement && h.snackType ? `${snackLine(h.snackType, h.name)} (${shortName(h.name)})` : shortName(h.name),
           channel: 'nudges',
           kind: 'FIXED',
           actions: ['DONE', 'SNOOZE'],
@@ -397,6 +409,7 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
             habitIds: [water.habitId],
             title: 'Water',
             body: behind > 0 ? `About ${Math.ceil(behind / 50) * 50} ml behind pace — a glass now keeps you on track.` : 'A glass now keeps you on pace.',
+            line: behind > 0 ? `Water (about ${Math.ceil(behind / 50) * 50} ml behind pace)` : 'Water',
             channel: 'water',
             kind: 'WATER',
             actions: ['WATER', 'SNOOZE'],
@@ -419,6 +432,7 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
           habitIds: [],
           title: input.weekSummary.title,
           body: input.weekSummary.body,
+          line: input.weekSummary.title,
           channel: 'summary',
           kind: 'SUMMARY',
           actions: ['OPEN'],
@@ -440,6 +454,7 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
           habitIds: [],
           title: discreet ? DISCREET_TITLE : 'Cycle',
           body: discreet ? DISCREET_BODY : 'Around the expected day — log it when it starts.',
+          line: discreet ? DISCREET_TITLE : 'Cycle',
           channel: 'cycle',
           kind: 'CYCLE',
           actions: ['OPEN'],
@@ -459,6 +474,7 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
         habitIds: [],
         title: discreet ? DISCREET_TITLE : r.label,
         body: discreet ? DISCREET_BODY : 'A cycle reminder you set.',
+        line: discreet ? DISCREET_TITLE : r.label,
         channel: 'cycle',
         kind: 'CYCLE',
         actions: ['OPEN'],
@@ -483,6 +499,7 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
       habitIds: [e.habitId],
       title: e.title,
       body: e.body,
+      line: e.title,
       channel: 'nudges',
       kind: 'EVENT',
       actions: ['DONE', 'SNOOZE'],
@@ -514,23 +531,26 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
       if (n >= settings.dailyNudgeCap) continue;
       used.set(c.day, n + 1);
     }
-    const { counted: _counted, ...nudge } = c;
+    const { counted: _counted, line: _line, ...nudge } = c;
     out.push(nudge);
   }
   return out;
 }
 
+/** Two nudges within the merge window become one; the body names each habit so a Done on it is informed. */
 function mergeTwo(a: Candidate, b: Candidate): Candidate {
   const habitIds = [...a.habitIds, ...b.habitIds.filter((id) => !a.habitIds.includes(id))];
-  const lines = [a.body, b.body].map((x) => x.split(' — ')[0]!.replace(/\.$/, ''));
   const hasWater = a.kind === 'WATER' || b.kind === 'WATER';
+  const movement = (c: Candidate) => c.kind === 'ROTATION' || (!!c.snackType && c.kind !== 'WATER');
   const actions: NudgeActionKind[] = ['DONE', 'SNOOZE'];
   if (hasWater) actions.splice(1, 0, 'WATER');
+  const title = hasWater ? (movement(a) || movement(b) ? 'Water & a movement snack' : 'Water & a reminder') : 'Time for a break';
   return {
     ...a,
     habitIds,
-    title: hasWater ? 'Water & a movement snack' : 'Time for a break',
-    body: lines.join(' · '),
+    title,
+    body: `${a.line} · ${b.line}`,
+    line: `${a.line} · ${b.line}`,
     channel: a.channel === 'water' ? b.channel : a.channel,
     actions,
     snackType: a.snackType ?? b.snackType,

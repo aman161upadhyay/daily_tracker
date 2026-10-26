@@ -56,11 +56,6 @@ export function normalizeHistory(history: readonly PeriodSpan[]): PeriodSpan[] {
   return [...byStart.values()].sort((a, b) => (a.start < b.start ? -1 : 1));
 }
 
-export function lastPeriodStart(history: readonly PeriodSpan[]): string | null {
-  const h = normalizeHistory(history);
-  return h.length === 0 ? null : h[h.length - 1]!.start;
-}
-
 export function isPeriodOpen(history: readonly PeriodSpan[]): boolean {
   const h = normalizeHistory(history);
   const last = h[h.length - 1];

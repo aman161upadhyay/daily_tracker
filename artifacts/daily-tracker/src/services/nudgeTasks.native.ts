@@ -14,7 +14,7 @@ import type { NudgeActionKind } from '@/src/domain/nudges/planner';
 import { bodyEpoch } from '@/src/state/epochs';
 import { liveStore, type LiveStore } from '@/src/state/liveStore';
 import type { TrackerState } from '@/src/state/types';
-import { performBodySync } from './bodySync';
+import { describeSyncError, performBodySync } from './bodySync';
 import { HEALTH_CONNECT_SUPPORTED } from './healthConnect';
 import { withHeadlessLock } from './headlessLock';
 import { parseResponse } from './notificationPayload';
@@ -137,7 +137,12 @@ TaskManager.defineTask(BACKGROUND_REPLAN_TASK, async () => {
           const { build } = await performBodySync(() => live.current(), ctx);
           await live.apply((s) => (bodyEpoch() === epoch && s.settings.healthConnectEnabled ? build(s) : []));
         } catch (err) {
+          // The Body tab shows the last failure inline (no toast): a background read that threw
+          // (Health Connect disabled, uninstalled, access withdrawn) must leave the same mark the
+          // foreground read would, or the tab keeps claiming the old connection and last success.
           console.warn('Background Health Connect sync failed', err);
+          const lastError = describeSyncError(err);
+          await live.apply((s) => (bodyEpoch() === epoch && s.settings.healthConnectEnabled ? [{ type: 'BODY_SYNC', patch: { lastError } }] : []));
         }
       }
       const next = live.current();
@@ -158,6 +163,7 @@ TaskManager.defineTask(BACKGROUND_REPLAN_TASK, async () => {
           next = applyAll(next, build(next), reducer);
         } catch (err) {
           console.warn('Background Health Connect sync failed', err);
+          next = applyAll(next, [{ type: 'BODY_SYNC', patch: { lastError: describeSyncError(err) } }], reducer);
         }
       }
       // The app came alive meanwhile: it is the writer now; its own scheduler and sync take over.

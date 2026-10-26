@@ -15,10 +15,10 @@ Last updated: 2026-10-26, autonomous session (council rounds 1–6 fixed; see jo
 |---|---|
 | App | Daily Tracker — private Android tracker: habits · water · movement snacks · meditation · opt-in cycle · home-screen widget · configurable nudges · Health Connect import · app lock · encrypted backups |
 | Code | `artifacts/daily-tracker/` — Expo SDK 57, React Native 0.86, TypeScript, Expo Router, expo-sqlite |
-| Version | `app.json` `version 0.10.0`, `versionCode 10`, tag `v0.10` (M6 complete + council rounds 1–6) |
+| Version | `app.json` `version 0.11.0`, `versionCode 11`, tag `v0.11` (M6 complete + council rounds 1–7) |
 | Repo | https://github.com/aman161upadhyay/daily_tracker.git, branch `main`, commits authored as Aman |
 | Milestones | M0 skeleton ✅ · M1 storage/streaks/onboarding ✅ · M2 nudges/notifications ✅ · M3 widget ✅ · M4 Health Connect/Body ✅ · M5 cycle ✅ · M6 theme/lock/backup/signing ✅ (`docs/IMPLEMENTATION_PLAN.md`) |
-| Verified here | type-check (three packages), 269 unit tests, Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks (incl. the Health Connect rationale activity), web walkthroughs by a browser-driving tester |
+| Verified here | type-check (three packages), 285 unit tests, Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks (incl. the Health Connect rationale activity), web walkthroughs by a browser-driving tester |
 | Never run yet | a real Android device. Everything native (widget taps, notification buttons with the app closed, Health Connect, app lock, Auto Backup, signed APK) is coded and reviewed but untested on hardware — `docs/DEVICE_CHECKLIST.md` lists the exact rows |
 | User's next step | `docs/GET_IT_ON_YOUR_PHONE.md` (plain-language build guide) |
 
@@ -172,6 +172,29 @@ contradicts one, write down why.
     pending cleanup. **Why:** a newer phone's restored snapshot was the only copy of that data and a
     fresh install would have replaced it within the hour; an erase interrupted by process death left
     the old snapshot eligible for Android backup for ever.
+28. **Local-only work never carries a network constraint, and a library's defaults are read in its
+    source, not assumed.** The background re-plan (and the background Health Connect read) touch
+    nothing outside the phone, so the "network connected" constraint the installed
+    `expo-background-task` puts on every job is removed by a maintained pnpm patch
+    (`patches/`, listed in `pnpm-workspace.yaml`). **Why:** an offline phone would have stopped
+    getting reminders 36 hours after the app was last opened — the planner's horizon — with
+    nothing in the app able to explain it.
+29. **What the OS decided when a request was submitted is part of that request's identity.**
+    expo-notifications picks exact or inexact alarms at scheduling time and never revisits them, so
+    the exact-alarm capability is folded into the notification ledger signature: when the person
+    allows or revokes "Alarms & reminders", the next sync re-submits every future request, and the
+    meditation bell is re-submitted when the screen comes back to the foreground. The capability
+    itself is read through a 30-line local native module (`modules/exact-alarms/`) rather than by
+    declaring `USE_EXACT_ALARM`, which Play reserves for alarm-clock apps. **Why:** on Android 14+
+    the permission starts off, so without this a reminder set before the grant stays inexact for
+    ever and one set before a revoke is silently gone.
+30. **Privacy copy describes where the bytes can actually go, not where we would like them to
+    stay.** With Android backup on by default and the hourly snapshot carrying the whole state,
+    "stays on this phone" is false; every such line now says "kept inside the app (and in the phone
+    backup, if that is on)" and the health rationale names the backup as the one copy that can
+    leave. **Why:** the rationale is what Health Connect shows people before they grant access; an
+    absolute claim there that the same screen's own promises contradict is the kind of thing a
+    reviewer — or a friend — notices first.
 
 ### How council findings are judged
 - Accept when: evidence is concrete (file:line, reproducible), it violates a paradigm or a user constraint,
@@ -220,6 +243,10 @@ Dates are America/New_York. Commits are on `main`.
 | 2026-10-26 afternoon | **Council round 6** — five new lenses (time/DST/calendar arithmetic, first-build/release, accessibility, upgrade/data-migration, scale/performance) over the round-5 result. Theme: the planner reasoned in calendar days where the user lives in tracking days; the Auto Backup lifecycle had two unrecoverable moments; typed input trusted blur ordering and the stored unit; four palette tokens missed AA; one water tap recomputed every habit's lifetime. Triage in §6 | — |
 | 2026-10-26 afternoon | **Round-6 fixes:** `instantOf` DST-gap fix; planner tracking-day slot checks (`boundaryHour`), duplicate-minute dedupe, terminal-event ranking, orphan one-off events skipped (`eventHabitIds`), plan cache keyed on day and zone; archive/delete drop a habit's scheduled events; `LOG_SNACKS` bulk action with a 100-snack ceiling in the sheet and at the command boundary; heart history counts as data worth backing up; unreadable snapshots set aside (`snapshot.kept.json`) with onboarding and Settings cards; durable cleanup marker for erase / opt-out; `habitView` cached per state, cadence segments cached per rule history, cycle insights keyed on their inputs with an empty fast path; stepper applies each keystroke (Save right after typing keeps the value) and takes a `parse` so the water goal is typed in the unit shown (`parseVolumeInput`); tertiary inks and the light primary green moved to ≥ 4.5:1 (contrast regression test over `constants/colors.ts`); font-scale caps raised (callout/caption 2×, title2 1.8×, title1 1.6×); widget rings and names labelled for TalkBack; Health Connect privacy rationale: `plugins/withHealthRationale.js` adds `HealthRationaleActivity` (both rationale intents → `daily-tracker://health-privacy`) and `app/health-privacy.tsx`; `SYSTEM_ALERT_WINDOW` removed from release builds (`blockedPermissions`; the debug source set keeps it); guides: Play Protect vs unknown-source prompts, properties-file escaping and the `ORG_GRADLE_PROJECT_*` alternative, version table; checklist H2 tightened, rows V1–V11; version 0.10.0 / versionCode 10 | this commit |
 | 2026-10-26 afternoon | Verification: tsc clean, 269 tests (24 new in `tests/round6.test.ts`), Android Metro bundle 200 (12.9 MB dev), `expo prebuild` in a scratch copy: manifest shows the rationale activity, the retargeted alias, no rationale filter on MainActivity, `SYSTEM_ALERT_WINDOW` with `tools:node="remove"`; the Kotlin trampoline generated | this commit |
+
+| 2026-10-26 evening | **Council round 7** — five lenses (Android platform sources, resilience / failure injection, code quality with a React Compiler probe, attack surface with scripted payloads, product copy and flows) over the round-6 result, plus a browser e2e pass. Theme: two library defaults nobody had read (a network constraint on background work; exact alarms silently off on Android 14+), four places that trusted a finite number to be a sane one, and privacy copy that the backup setting made false. Triage in §6 | — |
+| 2026-10-26 evening | **Round-7 fixes:** pnpm patch on `expo-background-task` (background work needs no network); `modules/exact-alarms` + `exactAlarmsAllowed()` / `openExactAlarmSettings()` (per-app intent via expo-intent-launcher), Reminders card status line and button, capability folded into the ledger signature, bell re-armed on foreground; Sheet bounded to the window height; `isInstantMs` / `isCalendarDay` on every imported timestamp and day, `projectRecords` strips unknown fields on import, `parsePayload` bounds `mind.startAt`, `isOwnTrigger` ignores a response whose trigger is not our date trigger (forged push responses); BODY_SYNC errors from the background job reach the card; NudgeScheduler derives its command context from the newest state and one captured instant; the mind screen cancels only a bell it set and reports a bell it could not set; BackupCard's "try to restore" waits for the write to commit before forgetting the kept copy; onboarding offers any snapshot with user data and confirms before deleting one; Quick Log shares `MAX_WATER_LOG_ML` (20,000 ml) with the command boundary; one volume parser everywhere (comma is thousands only when grouping three digits); ounces to one decimal across Today, notifications and the widget; merged notifications keep both habit names; long names cut at 40 characters in titles; `snackCountsFor` shared by selectors and reducer; dead exports removed; Today hides the Water / Movement / Mind cards for habits the person does not have, the Cycle card has its own "Show on Today" switch, `/cycle` with tracking off shows a turn-on card; "How it works" on every Health Connect card; widget card says how to add the widget; privacy copy corrected (paradigm 30); version 0.11.0 / versionCode 11 | this commit |
+| 2026-10-26 evening | Verification: tsc clean, 285 tests (15 new: 13 in `tests/round7.test.ts`, two planner tests for merged names and long titles), `expo export --platform android` → 5.9 MB Hermes bytecode (the local module's JS import resolves), web preview renders; `modules/exact-alarms` Kotlin is **not** compile-verified here (no Android SDK) — `docs/BUILD_ANDROID.md` gives the escape hatch | this commit |
 
 (Entries for each council round follow below as they happen.)
 
@@ -505,6 +532,52 @@ Five lenses not used before (time arithmetic, first build, accessibility, upgrad
 - SCALE6-03 med · weekly/monthly charts replayed the cadence history twice per plotted day; cold cycle insights 203 ms even with no cycle logs · **fixed** — `segmentFrom` cached per rule-history key with a fast path when one cadence covers the history; `cycleInsights` keyed on the slices it reads (not water) and returns `NO_INSIGHTS` immediately when there are no cycle logs.
 - SCALE6-04 med · the 30-second clock tick re-renders every context consumer · **deferred** — the expensive consumers are now served from caches (SCALE6-02/03), so a tick costs a few hundred microseconds of selectors; splitting the context is a larger refactor to do with device profiling in hand.
 
+### Round 7 (2026-10-26 evening)
+
+Five lenses over the round-6 result, each a fresh read-only session with its own scratch scripts (Babel probe with the installed React Compiler, hostile import files, forged notification payloads, SQLite failure injection, a browser e2e pass). Ids are theirs.
+
+**Android platform lens** (read the installed native sources: expo-notifications 57.0.24, expo-background-task 57.0.21, react-native-android-widget 0.24.0, react-native-health-connect 4.1.3)
+- PLAT7-01 high · the background re-plan job carried `NetworkType.CONNECTED` (`BackgroundTaskScheduler.kt:107–127`): offline for more than the 36-hour planning horizon, reminders stop, and so does the background Health Connect read · **fixed** — pnpm patch `patches/expo-background-task@57.0.21.patch` (NOT_REQUIRED), registered in `pnpm-workspace.yaml`, verified applied in `node_modules`; paradigm 28; checklist X4; build guide explains how to re-create it if the package moves.
+- PLAT7-02 med · exact-alarm denial was invisible (only POST_NOTIFICATIONS was checked) and the "Exact timing" button sent `REQUEST_SCHEDULE_EXACT_ALARM` without the package as data, which shows the list of every app on some phones; expo-notifications falls back to `setAndAllowWhileIdle` (`ExpoSchedulingDelegate.kt:105–119`), so Android 14+ installs run inexact by default · **fixed** — local module `modules/exact-alarms/` (`canScheduleExactAlarms()`, true below API 31, `requireOptionalNativeModule` so a build without it degrades to "unknown"); `exactAlarmsAllowed()` re-read on foreground; Reminders card shows a gold status line and **Allow exact timing** only when it is off; `openExactAlarmSettings()` uses expo-intent-launcher with `package:<id>` and falls back to app settings; copy says "minutes late, longer while the phone sleeps"; phone guide updated; checklist X1. `USE_EXACT_ALARM` deliberately not declared (Play restricts it to alarm-clock apps).
+- PLAT7-03 med · granting or revoking exact access did not touch already-submitted requests (Expo returns its own store, not AlarmManager's registrations, and does not listen for the permission-changed broadcast) · **fixed** — the capability is part of the ledger signature, so the next sync (foreground, 3-hourly job, any state change) cancels and re-submits every future request; the mind screen re-submits its bell on foreground; paradigm 29; checklist X2, X3, X5.
+- PLAT7-04 med · bottom sheets had a fixed 560 dp body with no window bound: in a ~400 dp split-screen or freeform window the header and close button left the usable area · **fixed** — `Sheet` max height = window height − top inset − 24, body `flexShrink`; checklist X6.
+- Checked and clean: BOOT_COMPLETED re-schedules stored triggers; no-open notification actions use broadcasts (no trampoline); the headless task loads the JS app directly (no foreground service); channels and importance coherent; FCM default-channel metadata is inert without Firebase.
+
+**Resilience / failure-injection lens**
+- RES7-01 high · onboarding offered a restore only when the snapshot had habits; a heart-only, cycle-only or water-only snapshot was read, not offered, and then overwritten by the hourly writer · **fixed** — eligibility is the shared `hasUserData` (or habits); test.
+- RES7-02 high · "Try to restore it" forgot the kept snapshot right after dispatching the import, before the database write committed; SQLITE_FULL or process death between the two lost the only copy · **fixed** — the card awaits `commitPending()` and forgets the kept file only after a successful commit; a failed commit says so and keeps the file.
+- RES7-03 med · an accepted import kept unknown fields on every record (25 KB of junk per row round-tripped into every later export and the backup) · **fixed** — `projectRecords` keeps the known keys of every list on import; `parseState` hands the reducer a projected state; tests.
+- RES7-04 med · notification responses combined a fresh `Date.now()` with the rendered tracking day, so a tap in the seconds after 03:00 (or after a zone change) logged the new instant under the old day · **fixed** — `NudgeScheduler` builds the command context inside the newest-state callback from one captured instant and `currentZone()`.
+- RES7-05 med · the background Health Connect job swallowed exceptions with `console.warn`, so the card promised a "last error" it never showed · **fixed** — both paths write `BODY_SYNC.lastError` (epoch-checked, only while the connection is still on).
+- Checked, degraded gracefully, left as is: SQLite open failure at cold start (red banner, no writes), interrupted migrations (transactional), SQLITE_FULL mid-session (five retries then a persistent banner), zone/clock change (next tick), Clear cache (scratch files only), restored stale Health Connect grants (re-checked 1.5 s after start). Drafts in sheets are lost on process death · **accepted** (a draft is not a record; a sheet-level autosave would write half-typed numbers).
+
+**Code-quality lens**
+- CODE7-01 high · Quick Log accepted any positive finite water amount while the sheets and the import had ceilings; one 1e12 ml drink made a backup the import then refused · **fixed** — `MAX_WATER_LOG_ML = 20,000` exported by `validate.ts`, enforced in Quick Log (hint, button disabled), the amount sheet, the command boundary and the import; test; checklist X11.
+- CODE7-02 med · three volume parsers disagreed ("1,850" was 1,850 ml in Settings and 1.85 in the sheets) · **fixed** — one `parseVolumeInput`: a comma is a thousands separator only when it groups exactly three digits and there is no point; otherwise decimal; tests.
+- CODE7-03 med · `scheduleMindEnd(...).catch(() => {})` made a bell the OS refused indistinguishable from one it accepted · **fixed** — the screen shows "The end bell could not be set…" and the session still counts; the discard path cancels only a bell this screen set (also SURF7-04).
+- CODE7-04 low · React Compiler bails out of `TrackerProvider`, `NudgeScheduler`, `mind.tsx` (exhaustive-deps suppressions) and `WidgetSync` / `BackupSync` (render-time ref writes) · **partly fixed** — the system bridges update their "latest" refs in `useLayoutEffect`; the provider's render-time ref reads and the suppressed effects stay (they are correct and the bail-out costs nothing measurable; a rewrite to satisfy the compiler is a refactor for a quieter day).
+- CODE7-05 low · `isNudgePayload` claimed the original object was a `NudgePayload` while judging the sanitized copy · **fixed** — removed; callers use `parsePayload` and act on its result.
+- CODE7-06 low · the Sugar Shield / type / trigger ownership rule lived in three places · **fixed** — `src/domain/habits/snackMatch.ts` serves the selectors and the reducer's undo and clear; tests pin the three cases.
+
+**Attack-surface lens** (scripted payloads against `parsePayload`, the import validator and the exported activity)
+- SURF7-01 high · any app can start the exported `MainActivity` with an Expo *push* response whose data looks like one of ours, and log a meditation while the app is locked · **fixed at the JS boundary** — `isOwnTrigger` accepts only responses whose trigger is our local date trigger (or absent, as Expo reports some cold-start responses); forged shapes are dropped before `parsePayload`; test. The activity stays exported (Android needs it for the launcher and our own deep links).
+- SURF7-02 med · a finite but absurd timestamp (`1e300`) passed the import and made Today throw in `Intl` for ever · **fixed** — `isInstantMs` (within ±200 years of now, integer) and `isCalendarDay` (a real date, 1970–2200) on every record, setting and period span; imports name the field they refused; tests.
+- SURF7-03 med · the same number in a timer-bell payload crashed `trackingDayOf` · **fixed** — `parsePayload` bounds `mind.startAt` and its minutes; test.
+- SURF7-04 med · opening `/mind` (deep link, behind the lock) cancelled the global bell of a session the app had been killed in · **fixed** — see CODE7-03.
+- Checked and clean: > 50 habit ids rejected, unknown kinds rejected, `__proto__` keys stripped (no pollution), negative sizes dropped, duplicate ids handled, 64 MiB import ceiling intact.
+
+**Product lens**
+- PROD7-01 med · two timed reminders at the same minute merged into "Time for a break / Scheduled reminder", losing both habit names · **fixed** — planner candidates carry a `line`; a merge joins "A · B" and titles "Water & a reminder" when water meets a timed habit; tests.
+- PROD7-02 med · onboarding promised notifications "only inside your active hours" while the selected-by-default Meditate rings at 07:30; two presets promised weekday selection the editor does not offer · **fixed** — onboarding and preset copy say what the planner does (automatic nudges inside the hours; a fixed time rings at that time; "until your weekly target is met").
+- PROD7-03 med · "stays on this phone" on the health rationale, the Cycle tab, Settings and the Body connection card, with cloud backup on by default · **fixed** — paradigm 30.
+- PROD7-04 med · "Start empty" and a cycle-only setup still landed on three empty tracker cards; the Cycle card could not be hidden from Today on its own · **fixed** — Today shows Water / Movement / Mind cards only for habits the person has (or logged today), with one explanatory line when none apply; `settings.cycle.showOnToday`; `/cycle` with tracking off shows a turn-on card instead of a blank tab; checklist X7–X9.
+- PROD7-05 med · ounces rounded to whole numbers on Today ("+8 oz" for 250 ml) and to one decimal elsewhere · **fixed** — one decimal everywhere, ml stays whole; tests in domain and widget updated.
+- PROD7-06 med · "Start fresh" on the onboarding restore card deleted the backup with no confirmation · **fixed** — "Start fresh and delete the backup?" with Keep / Delete; the card leaves only after the delete succeeds, and a failed delete is shown.
+- PROD7-07 low · the widget card never said how to add the widget · **fixed** — "To add it: long-press an empty spot → Widgets → Daily Tracker" (Samsung variant noted).
+- Also this round (own findings while editing): long habit names are cut at 40 characters in notification titles (`shortName`, test); every Health Connect card state has a "How it works" button (the e2e pass found the web branch without one).
+
+**Browser e2e (round-6 build, before the fixes):** onboarding → Today → Habits → Mind timer → Settings → Body → Cycle all passed; the one failure was the missing "How it works" button on the web Health Connect card (fixed above).
+
 ## 7. Backlog and open questions
 
 ### For the user (never blocking)
@@ -518,6 +591,7 @@ Five lenses not used before (time arithmetic, first build, accessibility, upgrad
 - Steps and cycle tiles in the widget; sleep-stages chart; write-back of water/mind sessions to Health Connect (v2).
 
 ### Device verification owed
-- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10, T1–T11, U1–U11, V1–V11 have never been run on hardware. First build on the laptop is the next real milestone.
+- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10, T1–T11, U1–U11, V1–V11, X1–X11 have never been run on hardware. First build on the laptop is the next real milestone.
 - Residual risk carried knowingly: two JavaScript runtimes writing SQLite at once (UPG6-03, row V11). If the device run shows a lost write there, the fix is a database revision compared inside the write transaction.
-- Rows added this round: R9 and S6 now test both sides of the 3 am boundary; W4/W6/N-rows exercise the live-store path (app open vs swiped away) — both paths must log exactly once.
+- Rows added in round 7: X1–X5 (exact alarms and the offline re-plan — the two library defaults the platform lens read in the sources), X6 (sheets in a short window), X7–X9 (Today without the trio, cycle off / hidden), X10–X11 (long titles, the drink ceiling).
+- Not compile-verified here: `modules/exact-alarms/` (Kotlin) — the first laptop build either compiles it or deletes the folder (the app degrades to "exact timing unknown").

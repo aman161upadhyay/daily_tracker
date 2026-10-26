@@ -21,6 +21,7 @@ import { planNudges, type PlanHabit, type PlanInput, type ScheduledNudge } from 
 import { addDays, calendarDayOf, dayDiff, lastNDays, minutesOfDay } from '@/src/domain/time/trackingDay';
 import { waterStatus, type WaterStatus } from '@/src/domain/water/pace';
 import type { TrackerState } from './types';
+import { snackCountsFor } from '@/src/domain/habits/snackMatch';
 
 // ── Rules & policies ───────────────────────────────────────────────────────
 
@@ -68,11 +69,7 @@ function isSugarShield(habit: Habit): boolean {
   return habit.presetId === 'sugar-shield';
 }
 
-export function snackCountsFor(habit: Habit, snack: MovementSnack): boolean {
-  if (!habit.snackType) return false;
-  if (isSugarShield(habit)) return snack.trigger === 'SUGAR_SHIELD';
-  return snack.type === habit.snackType && snack.trigger !== 'SUGAR_SHIELD';
-}
+export { snackCountsFor };
 
 /** day → value for one habit, from whichever log it lives in (cached per state). */
 export function dayValues(state: TrackerState, habit: Habit): Map<string, number> {

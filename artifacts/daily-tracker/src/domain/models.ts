@@ -215,6 +215,8 @@ export interface CycleSettings {
   birthControl: boolean;
   /** Cycle notifications say only "You have a reminder", in the shade as well as on the lock screen. */
   discreet: boolean;
+  /** The "Cycle" card on Today (day and phase). Off keeps the cycle to its own tab, e.g. on a shared screen. */
+  showOnToday: boolean;
   reminders: CycleReminder[];
   history: PeriodSpan[];
 }
@@ -302,7 +304,7 @@ export const DEFAULT_SETTINGS: Settings = {
   pinned: ['water', 'snacks', 'mind'],
   sampleData: false,
   // Discreet by default: a cycle reminder on a lock screen names nothing until the person turns that on.
-  cycle: { avgCycleDays: 28, periodDays: 5, lutealDays: 14, birthControl: false, discreet: true, reminders: DEFAULT_CYCLE_REMINDERS, history: [] },
+  cycle: { avgCycleDays: 28, periodDays: 5, lutealDays: 14, birthControl: false, discreet: true, showOnToday: true, reminders: DEFAULT_CYCLE_REMINDERS, history: [] },
   onboardingDone: false,
   tapSizeMl: 250,
   remindersEnabled: true,

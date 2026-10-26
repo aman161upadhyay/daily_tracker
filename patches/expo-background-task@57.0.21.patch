@@ -1,0 +1,16 @@
+diff --git a/android/src/main/java/expo/modules/backgroundtask/BackgroundTaskScheduler.kt b/android/src/main/java/expo/modules/backgroundtask/BackgroundTaskScheduler.kt
+index 74c5719139a2dd00300e36af02c9b2b685bf9519..7645d59c957044f9be45dc79c8fdf4b396b87162 100644
+--- a/android/src/main/java/expo/modules/backgroundtask/BackgroundTaskScheduler.kt
++++ b/android/src/main/java/expo/modules/backgroundtask/BackgroundTaskScheduler.kt
+@@ -104,8 +104,10 @@ object BackgroundTaskScheduler {
+     val data = Data.Builder()
+       .putString("appScopeKey", appScopeKey)
+       .build()
++    // Daily Tracker: the background task is local work (re-plan notifications, read Health
++    // Connect); it must run on a phone that is offline overnight too. Upstream requires a network.
+     val constraints = Constraints.Builder()
+-      .setRequiredNetworkType(NetworkType.CONNECTED)
++      .setRequiredNetworkType(NetworkType.NOT_REQUIRED)
+       .build()
+ 
+     // Get Work manager

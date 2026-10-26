@@ -50,6 +50,12 @@ export default function TodayScreen() {
   const shield = state.habits.find((h) => h.presetId === 'sugar-shield' && !h.archived);
   const lastSnack = state.snacks.filter((x) => x.day === today).sort((a, b) => b.at - a.at)[0];
   const lastMind = state.mind.filter((x) => x.day === today).sort((a, b) => b.endAt - a.endAt)[0];
+  // A pinned card only for a habit the person actually has (or logged today): someone tracking
+  // vitamins and steps is not shown "0 of 0 snacks" and an empty Mind card.
+  const active = state.habits.filter((h) => !h.archived);
+  const showWater = active.some((h) => h.presetId === 'water') || water.loggedMl > 0;
+  const showMovement = active.some((h) => h.snackType) || summary.snacksDone > 0;
+  const showMind = active.some((h) => h.mindKind) || summary.mindMinutes > 0;
 
   const beforeNoon = nowMin < 12 * 60;
   const centerValue = beforeNoon ? remaining.value : String(summary.snacksDone);
@@ -111,53 +117,67 @@ export default function TodayScreen() {
 
       <SectionHeader title="Pinned" action="Show all" onAction={() => router.push('/habits')} />
 
-      <SummaryCard
-        title="Water"
-        color={c.cat.hydration}
-        icon="drop"
-        value={logged.value}
-        unit={logged.unit}
-        detail={waterDetail}
-        timestamp={lastWater ? formatClock(minutesOfDay(lastWater.at, zone)) : undefined}
-        chart={{ values: waterSeries(state, today, 7), goal: s.waterGoalMl }}
-        onPress={() => {
-          const h = state.habits.find((x) => x.presetId === 'water');
-          if (h) router.push({ pathname: '/habit/[id]', params: { id: h.id } });
-        }}
-        footer={
-          <Row gap={8}>
-            <PillButton label={`+${formatVolume(250, units).value} ${units}`} Leading={UI.Drop} color={c.green} onPress={() => actions.addWater(250)} style={{ flex: 1 }} />
-            <IconButton Glyph={UI.Undo} label="Undo last water entry" onPress={() => actions.undoWater()} size={48} color={c.text} />
-          </Row>
-        }
-      />
+      {!showWater && !showMovement && !showMind ? (
+        <Card>
+          <Txt role="body" tone="secondary">
+            Water, movement snacks and Mind get a card here once you add them from the Library.
+          </Txt>
+        </Card>
+      ) : null}
 
-      <SummaryCard
-        title="Movement snacks"
-        color={c.cat.movement}
-        icon="squat"
-        value={String(summary.snacksDone)}
-        unit={`of ${summary.snacksTarget}`}
-        detail={lastSnack ? `Last: ${snackSuggestion(lastSnack.type)}` : 'None yet today'}
-        timestamp={lastSnack ? formatClock(minutesOfDay(lastSnack.at, zone)) : undefined}
-        chart={{ values: snackSeries(state, today, 7), goal: summary.snacksTarget }}
-        onPress={() => router.push('/habits')}
-        footer={<PillButton label={shield ? 'Sugar Shield — squats before something sweet' : 'Something sweet coming? Start the Sugar Shield'} Leading={UI.Cookie} color={c.gold} kind="ghost" onPress={() => router.push('/shield')} />}
-      />
+      {showWater ? (
+        <SummaryCard
+          title="Water"
+          color={c.cat.hydration}
+          icon="drop"
+          value={logged.value}
+          unit={logged.unit}
+          detail={waterDetail}
+          timestamp={lastWater ? formatClock(minutesOfDay(lastWater.at, zone)) : undefined}
+          chart={{ values: waterSeries(state, today, 7), goal: s.waterGoalMl }}
+          onPress={() => {
+            const h = state.habits.find((x) => x.presetId === 'water');
+            if (h) router.push({ pathname: '/habit/[id]', params: { id: h.id } });
+          }}
+          footer={
+            <Row gap={8}>
+              <PillButton label={`+${formatVolume(250, units).value} ${units}`} Leading={UI.Drop} color={c.green} onPress={() => actions.addWater(250)} style={{ flex: 1 }} />
+              <IconButton Glyph={UI.Undo} label="Undo last water entry" onPress={() => actions.undoWater()} size={48} color={c.text} />
+            </Row>
+          }
+        />
+      ) : null}
 
-      <SummaryCard
-        title="Mind"
-        color={c.cat.mind}
-        icon="lotus"
-        value={formatNumber(summary.mindMinutes)}
-        unit={`of ${formatNumber(summary.mindTarget)} min`}
-        detail={lastMind ? (lastMind.kind === 'MEDITATION' ? 'Meditation' : 'Breathing') : 'Open the timer to start'}
-        timestamp={lastMind ? formatClock(minutesOfDay(lastMind.endAt, zone)) : undefined}
-        chart={{ values: mindSeries(state, today, 7), goal: summary.mindTarget, kind: 'line' }}
-        onPress={() => router.push('/mind')}
-      />
+      {showMovement ? (
+        <SummaryCard
+          title="Movement snacks"
+          color={c.cat.movement}
+          icon="squat"
+          value={String(summary.snacksDone)}
+          unit={`of ${summary.snacksTarget}`}
+          detail={lastSnack ? `Last: ${snackSuggestion(lastSnack.type)}` : 'None yet today'}
+          timestamp={lastSnack ? formatClock(minutesOfDay(lastSnack.at, zone)) : undefined}
+          chart={{ values: snackSeries(state, today, 7), goal: summary.snacksTarget }}
+          onPress={() => router.push('/habits')}
+          footer={<PillButton label={shield ? 'Sugar Shield — squats before something sweet' : 'Something sweet coming? Start the Sugar Shield'} Leading={UI.Cookie} color={c.gold} kind="ghost" onPress={() => router.push('/shield')} />}
+        />
+      ) : null}
 
-      {s.cycleEnabled ? <CycleSummary /> : null}
+      {showMind ? (
+        <SummaryCard
+          title="Mind"
+          color={c.cat.mind}
+          icon="lotus"
+          value={formatNumber(summary.mindMinutes)}
+          unit={`of ${formatNumber(summary.mindTarget)} min`}
+          detail={lastMind ? (lastMind.kind === 'MEDITATION' ? 'Meditation' : 'Breathing') : 'Open the timer to start'}
+          timestamp={lastMind ? formatClock(minutesOfDay(lastMind.endAt, zone)) : undefined}
+          chart={{ values: mindSeries(state, today, 7), goal: summary.mindTarget, kind: 'line' }}
+          onPress={() => router.push('/mind')}
+        />
+      ) : null}
+
+      {s.cycleEnabled && s.cycle.showOnToday ? <CycleSummary /> : null}
 
       {highlights.length > 0 ? (
         <>

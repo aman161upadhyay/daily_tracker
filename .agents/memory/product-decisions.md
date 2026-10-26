@@ -127,6 +127,38 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   the invisible plan as a failed save). **Why:** round 5 showed round 4's shared formula and tightened
   parser each broke a caller that was not updated with them. Dispositions in `docs/RUNNING_CONTEXT.md`
   §6 Round 5.
+- Council-round-6 decisions (2026-10-26 afternoon): planner slots are judged by the *tracking day they fall in*
+  (`PlanInput.boundaryHour` → `trackingDayOf(slot)`) for FIXED and custom-window INTERVAL; rotation and water keep
+  calendar-day `isToday` (windows start ≥ 5:00). `instantOf` sends a skipped DST minute forward (02:30 → 03:30),
+  repeated minute → first pass; one slot per minute id (second dropped). DONE/DISMISSED outrank SNOOZED/SWAPPED
+  regardless of timestamps, but WATER is *not* terminal (merged nudge: WATER then SNOOZED keeps the movement half
+  open — round-3 design). Planner's one-off events are filtered by `eventHabitIds` (active habits + the
+  `SHIELD_EVENT_HABIT_ID` placeholder), never by `input.habits` — the Sugar Shield habit has an EVENT policy and is
+  not a planner habit (first attempt broke a planner test). Snack logs cap at `MAX_SNACKS_PER_LOG = 100` via one
+  `LOG_SNACKS`. Unreadable snapshots are set aside (`snapshot.kept.json`), never overwritten; erase/opt-out write a
+  cleanup marker first and start-up finishes it. `habitView` is cached per state+day for stored habit objects
+  only (drafts bypass). Health Connect rationale = native trampoline activity → `daily-tracker://health-privacy`;
+  the plugin must be listed *before* `react-native-health-connect` in app.json (Expo runs a later plugin's
+  manifest mod first). `SYSTEM_ALERT_WINDOW` is blocked (`android.blockedPermissions`) — the debug source-set
+  manifest still declares it, so only release loses it. Deferred knowingly: cross-runtime SQLite CAS (row V11),
+  context split for the 30-s tick. **Why:** round 6's lenses (time, build, a11y, upgrade, scale) found the
+  planner reasoning in calendar days and the backup lifecycle unrecoverable in two places. Dispositions in
+  `docs/RUNNING_CONTEXT.md` §6 Round 6.
+- Council-round-7 decisions (2026-10-26 evening): background work must run offline (pnpm patch removes the
+  network constraint); exact-alarm status comes from a local native module, never `USE_EXACT_ALARM` (Play policy),
+  and the capability is part of the notification ledger signature so a grant/revoke re-submits every request;
+  the mind bell is re-submitted on foreground. Imports: every timestamp through `isInstantMs` (±200 y, integer),
+  every day through `isCalendarDay`, unknown record fields projected away; one drink ≤ `MAX_WATER_LOG_ML`
+  (20,000 ml) at every entry point. Forged notification responses are dropped at the JS boundary (`isOwnTrigger`:
+  trigger type 'date' or absent) — MainActivity stays exported. Volume parsing: a comma is thousands only when it
+  groups exactly three digits with no '.'; ounces show one decimal everywhere. Privacy copy never says "stays on
+  this phone" — the backup can carry it ("kept inside the app (and in the phone backup, if that is on)"). Today
+  shows Water/Movement/Mind cards only for habits the person has; cycle has `settings.cycle.showOnToday`; `/cycle`
+  with tracking off renders a turn-on card. Notification titles cut at 40 chars (`shortName`); merged nudges keep
+  both names via the candidate `line`. Left alone knowingly: React Compiler bail-outs in the provider / scheduler /
+  mind screen (correct code, no measurable cost), sheet drafts lost on process death. **Why:** round 7's platform
+  lens read the installed native sources and found two defaults (network constraint, inexact alarms) that no test
+  here could reveal; the surface lens showed finite ≠ sane. Dispositions in `docs/RUNNING_CONTEXT.md` §6 Round 7.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app

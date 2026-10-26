@@ -14,12 +14,16 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as BackgroundTask from 'expo-background-task';
+import Constants from 'expo-constants';
+import * as IntentLauncher from 'expo-intent-launcher';
 import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
 import { Linking, Platform } from 'react-native';
-import type { MindKind } from '@/src/domain/models';
+import type { MindKind, Units } from '@/src/domain/models';
+import { formatVolume } from '@/src/domain/time/format';
 import type { NudgeChannel, ScheduledNudge } from '@/src/domain/nudges/planner';
 import { MIND_END_ID, mindEndPayload, type NudgePayload } from '@/src/state/commands';
+import { canScheduleExactAlarms } from '@/modules/exact-alarms';
 import { parseResponse } from './notificationPayload';
 
 export type PermissionState = 'granted' | 'denied' | 'undetermined' | 'unsupported';
@@ -45,10 +49,16 @@ const LEDGER_KEY = 'dailytracker.nudges.ledger.v1';
 const HANDLED_KEY = 'dailytracker.nudges.handled.v1';
 const ANDROID = Platform.OS === 'android';
 
-/** What we last handed to the OS; `sig` changes when the time or the text changes. */
+/** What we last handed to the OS; `sig` changes when the time, the text or the alarm precision changes. */
 type LedgerEntry = FiredRecord & { sig: string };
 
-const signature = (n: ScheduledNudge) => `${n.at}|${n.habitIds.join(',')}|${n.title}|${n.body}`;
+/**
+ * expo-notifications decides exact vs inexact when a request is submitted and never revisits it,
+ * so a request made before the person allowed "Alarms & reminders" stays inexact (and one made
+ * before they revoked it is gone at the OS level while still listed as pending). Folding the
+ * capability into the signature re-submits every future request on either transition.
+ */
+const signature = (n: ScheduledNudge, exact: boolean | null) => `${n.at}|${n.habitIds.join(',')}|${n.title}|${n.body}|${exact === null ? '?' : exact ? 'x' : 'i'}`;
 
 const CHANNELS: Record<NudgeChannel, { name: string; description: string; importance: Notifications.AndroidImportance; lockscreenVisibility?: Notifications.AndroidNotificationVisibility }> = {
   nudges: { name: 'Movement & habit nudges', description: 'Snack-sized reminders during your active hours.', importance: Notifications.AndroidImportance.DEFAULT },
@@ -95,11 +105,25 @@ export async function openNotificationSettings(): Promise<void> {
   await Linking.openSettings();
 }
 
-/** Android 12+: the per-app "Alarms & reminders" screen. Elsewhere falls back to app settings. */
+/**
+ * Android 12+: whether reminders can fire at their exact minute. `null` where the phone cannot
+ * tell us (Expo Go, a build without the local module); `true` on older Android.
+ */
+export function exactAlarmsAllowed(): boolean | null {
+  if (!ANDROID) return true;
+  if (Number(Platform.Version) < 31) return true;
+  return canScheduleExactAlarms();
+}
+
+/**
+ * Android 12+: this app's own "Alarms & reminders" screen. The intent needs the package as its
+ * data, otherwise some phones show the list of every app (or nothing). Falls back to app settings.
+ */
 export async function openExactAlarmSettings(): Promise<void> {
   if (ANDROID && Number(Platform.Version) >= 31) {
+    const pkg = Constants.expoConfig?.android?.package;
     try {
-      await Linking.sendIntent('android.settings.REQUEST_SCHEDULE_EXACT_ALARM');
+      await IntentLauncher.startActivityAsync(IntentLauncher.ActivityAction.REQUEST_SCHEDULE_EXACT_ALARM, pkg ? { data: `package:${pkg}` } : undefined);
       return;
     } catch {
       // fall through
@@ -109,9 +133,12 @@ export async function openExactAlarmSettings(): Promise<void> {
 }
 
 /** Channels and action categories; cheap to call again (re-registers only when the tap size changes). */
-export async function prepare(tapMl: number): Promise<void> {
-  const signature = `${tapMl}`;
+export async function prepare(tapMl: number, units: Units = 'ml'): Promise<void> {
+  const signature = `${tapMl}|${units}`;
   if (prepared === signature) return;
+  // The button says what it logs in the unit the app shows: "+8.5 oz" for a 250 ml tap in ounces.
+  const tap = formatVolume(tapMl, units);
+  const tapLabel = `+${tap.value} ${tap.unit}`;
   if (ANDROID) {
     await Promise.all(
       (Object.keys(CHANNELS) as NudgeChannel[]).map((id) =>
@@ -138,12 +165,12 @@ export async function prepare(tapMl: number): Promise<void> {
       { identifier: 'SNOOZE', buttonTitle: 'In 15 min', options: noOpen },
     ]),
     Notifications.setNotificationCategoryAsync('water', [
-      { identifier: 'WATER', buttonTitle: `+${tapMl} ml`, options: noOpen },
+      { identifier: 'WATER', buttonTitle: tapLabel, options: noOpen },
       { identifier: 'SNOOZE', buttonTitle: 'In 15 min', options: noOpen },
     ]),
     Notifications.setNotificationCategoryAsync('water-move', [
       { identifier: 'DONE', buttonTitle: 'Done', options: noOpen },
-      { identifier: 'WATER', buttonTitle: `+${tapMl} ml`, options: noOpen },
+      { identifier: 'WATER', buttonTitle: tapLabel, options: noOpen },
       { identifier: 'SNOOZE', buttonTitle: 'In 15 min', options: noOpen },
     ]),
     Notifications.setNotificationCategoryAsync('event', [
@@ -218,6 +245,7 @@ async function syncPlanNow(plan: ScheduledNudge[], nowMs: number): Promise<Fired
   const wanted = new Map(plan.map((n) => [n.id, n]));
   const ours = new Set<string>();
   const ledgerSig = new Map(ledger.map((e) => [e.id, e.sig]));
+  const exact = exactAlarmsAllowed();
 
   for (const req of scheduled) {
     const id = req.identifier;
@@ -227,7 +255,7 @@ async function syncPlanNow(plan: ScheduledNudge[], nowMs: number): Promise<Fired
       continue;
     }
     const want = wanted.get(id);
-    if (!want || ledgerSig.get(id) !== signature(want)) {
+    if (!want || ledgerSig.get(id) !== signature(want, exact)) {
       await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
       continue;
     }
@@ -268,7 +296,7 @@ async function syncPlanNow(plan: ScheduledNudge[], nowMs: number): Promise<Fired
 
   const nextLedger: LedgerEntry[] = [
     ...overdueKept,
-    ...plan.filter((n) => n.at > nowMs && !keep.has(n.id) && accepted.has(n.id)).map((n) => ({ id: n.id, habitIds: n.habitIds, day: n.day, at: n.at, sig: signature(n) })),
+    ...plan.filter((n) => n.at > nowMs && !keep.has(n.id) && accepted.has(n.id)).map((n) => ({ id: n.id, habitIds: n.habitIds, day: n.day, at: n.at, sig: signature(n, exact) })),
   ];
   await AsyncStorage.setItem(LEDGER_KEY, JSON.stringify(nextLedger));
   return fired;

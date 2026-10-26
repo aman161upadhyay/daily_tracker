@@ -12,7 +12,7 @@ import { useBackOrHome } from '@/hooks/useBackOrHome';
 const READS: { title: string; why: string }[] = [
   { title: 'Steps', why: 'Daily totals fill the Steps habit, so a day you walked counts without typing.' },
   { title: 'Sleep', why: 'Each night’s length and stages, filed under the morning it ended, for the Body page.' },
-  { title: 'Heart rate', why: 'A resting figure per day for the Body page. Individual readings are not kept.' },
+  { title: 'Heart rate', why: 'One row per day for the Body page: the resting rate plus the day’s lowest, average and highest. Individual readings are not kept.' },
   { title: 'Workouts', why: 'Strength sessions tick the Strength habit; other workouts are listed.' },
   { title: 'Weight', why: 'Readings from a scale app, shown on the Body page.' },
   { title: 'Water', why: 'Drinks logged in other apps join the water log once, so the goal counts them.' },
@@ -49,8 +49,9 @@ export default function HealthPrivacyScreen() {
           </View>
         </Row>
         <Txt role="body" style={{ marginTop: 14 }}>
-          Daily Tracker reads a few health figures so the habits you track can tick themselves. Everything it reads stays on this phone, inside
-          the app, and is used only to show you your own numbers.
+          Daily Tracker reads a few health figures so the habits you track can tick themselves. What it reads is kept inside the app on this
+          phone and used only to show you your own numbers. The one copy that can leave is Android's phone backup, if you left that on in
+          Settings → Backup (encrypted with your screen lock); the app itself sends nothing anywhere.
         </Txt>
       </Card>
 
@@ -86,8 +87,9 @@ export default function HealthPrivacyScreen() {
       <SectionHeader title="Your control" />
       <Card>
         <Txt role="body">
-          Allow or remove any type at any time in Health Connect; the app reads only what is ticked there. Disconnecting in Body → Health
-          Connect stops all reading, and Settings → Your data → Erase everything deletes what was read.
+          Allow or remove any type at any time in Health Connect; the app reads only what is ticked there. Settings → Connections → Health
+          Connect → Pause imports stops all reading, "Remove imported data" there deletes what was read, and Settings → Your data → Erase
+          everything deletes it along with everything else.
         </Txt>
         <Row gap={8} style={{ marginTop: 12, flexWrap: 'wrap' }}>
           {hc.supported && hc.status === 'available' ? <PillButton label="Open Health Connect" kind="ghost" Leading={UI.External} onPress={() => void hc.openSettings()} /> : null}

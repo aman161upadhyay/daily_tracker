@@ -74,10 +74,6 @@ export function bestStreak(ratiosAsc: DayRatio[]): number {
   return best;
 }
 
-export function daysCompleted(ratiosAsc: DayRatio[]): number {
-  return ratiosAsc.filter((r) => r.ratio >= 1).length;
-}
-
 /** Sum of values over a slice of days (for charts and highlights). */
 export function sumValues(ratios: DayRatio[]): number {
   return ratios.reduce((acc, r) => acc + r.value, 0);

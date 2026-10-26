@@ -4,6 +4,7 @@ import { isEmptyLog } from '@/src/domain/cycle/symptoms';
 import { applyPeriodEnd, applyPeriodStart, closeOlderOpenSpans, normalizeHistory } from '@/src/domain/cycle/timeline';
 import type { CycleDayLog, Habit, HabitEntry, HabitRule, MindSession, MovementSnack, NudgeEvent, NudgePolicy, PeriodSpan, ScheduledEvent, Settings, WaterEntry } from '@/src/domain/models';
 import type { TrackerState } from './types';
+import { snackCountsFor } from '@/src/domain/habits/snackMatch';
 
 export type Action =
   | { type: 'HYDRATE'; state: TrackerState }
@@ -110,18 +111,16 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
     case 'LOG_SNACKS':
       return action.snacks.length === 0 ? state : { ...state, snacks: [...state.snacks, ...action.snacks] };
 
-    case 'UNDO_SNACK': {
-      const h = action.habit;
-      const sugar = h.presetId === 'sugar-shield';
+    case 'UNDO_SNACK':
+      // The same ownership rule as the count: the undo removes the newest snack the habit counts.
       return {
         ...state,
         snacks: removeLast(
           state.snacks,
-          (s) => s.day === action.day && (sugar ? s.trigger === 'SUGAR_SHIELD' : s.type === h.snackType && s.trigger !== 'SUGAR_SHIELD'),
+          (s) => s.day === action.day && snackCountsFor(action.habit, s),
           (s) => s.at,
         ),
       };
-    }
 
     case 'LOG_MIND':
       return { ...state, mind: [...state.mind, action.session] };
@@ -145,13 +144,7 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
       const h = action.habit;
       const day = action.day;
       if (h.presetId === 'water') return { ...state, water: state.water.filter((w) => w.day !== day) };
-      if (h.snackType) {
-        const sugar = h.presetId === 'sugar-shield';
-        return {
-          ...state,
-          snacks: state.snacks.filter((s) => !(s.day === day && (sugar ? s.trigger === 'SUGAR_SHIELD' : s.type === h.snackType && s.trigger !== 'SUGAR_SHIELD'))),
-        };
-      }
+      if (h.snackType) return { ...state, snacks: state.snacks.filter((s) => !(s.day === day && snackCountsFor(h, s))) };
       if (h.mindKind) return { ...state, mind: state.mind.filter((m) => !(m.day === day && m.kind === h.mindKind)) };
       return { ...state, entries: state.entries.filter((e) => !(e.day === day && e.habitId === h.id)) };
     }
@@ -294,6 +287,21 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
     case 'BODY_SYNC': {
       const merged = { ...state.body.sync, ...action.patch };
       for (const k of Object.keys(merged) as (keyof BodySync)[]) if (merged[k] === undefined) delete merged[k];
+      // A patch that changes nothing (the same error from every 3-hourly background read) is a
+      // no-op, so it neither bumps the generation nor rewrites the database.
+      const before = state.body.sync as unknown as Record<string, unknown>;
+      const after = merged as unknown as Record<string, unknown>;
+      const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+      let same = true;
+      for (const k of keys) {
+        const a = before[k];
+        const b = after[k];
+        if (Array.isArray(a) && Array.isArray(b)) {
+          if (a.length !== b.length || a.some((x, i) => x !== b[i])) same = false;
+        } else if (a !== b) same = false;
+        if (!same) break;
+      }
+      if (same) return state;
       return { ...state, body: { ...state.body, sync: merged } };
     }
 

@@ -93,21 +93,48 @@ export function ozToMl(oz: number): number {
   return oz * 29.5735;
 }
 
+/** A number with at most one decimal, thousands grouped: 8.5, 12, 1,850.3. */
+export function formatOneDecimal(n: number): string {
+  const tenths = Math.round(n * 10);
+  const whole = Math.trunc(tenths / 10);
+  const frac = Math.abs(tenths % 10);
+  const sign = tenths < 0 && whole === 0 ? '-' : '';
+  return frac === 0 ? `${sign}${formatNumber(whole)}` : `${sign}${formatNumber(whole)}.${frac}`;
+}
+
+/**
+ * A volume in the display unit. Ounces keep one decimal (250 ml is 8.5 oz, not "8"): a glass
+ * rounded to the ounce drifts by up to 15 ml every time it is shown, logged or offered as a button.
+ */
 export function formatVolume(ml: number, units: 'ml' | 'oz'): { value: string; unit: string } {
-  if (units === 'oz') return { value: formatNumber(Math.round(mlToOz(ml))), unit: 'oz' };
+  if (units === 'oz') return { value: formatOneDecimal(mlToOz(ml)), unit: 'oz' };
   return { value: formatNumber(ml), unit: 'ml' };
 }
 
 /**
+ * A typed number, however the keyboard wrote it: "64", "8.5", "1,850", "1,5" (a decimal-comma
+ * keyboard), "1,850.5". A comma is a thousands separator when it groups exactly three digits with
+ * no point in sight — "1,850" is a volume in ml far more often than 1.85 of anything — and a decimal
+ * point otherwise. A stray unit word is ignored. Returns null when nothing numeric was typed.
+ * Every sheet and stepper parses through here, so the same text means the same number everywhere.
+ */
+export function parseDecimalInput(text: string): number | null {
+  let t = text.replace(/[^\d.,]/g, '');
+  if (!/\d/.test(t)) return null; // "oz", "", "  ": nothing typed yet, keep the current value
+  if (t.includes('.')) t = t.replace(/,/g, '');
+  else if (/^\d{1,3}(,\d{3})+$/.test(t)) t = t.replace(/,/g, '');
+  else t = t.replace(',', '.').replace(/,/g, '');
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
  * A typed volume in the display unit, as ml: "64", "64 oz", "1,850 ml". The number is read in the
- * unit the stepper shows (ounces when the app is in ounces), a stray unit word is ignored.
- * Returns null for anything that is not a number.
+ * unit the stepper shows (ounces when the app is in ounces).
  */
 export function parseVolumeInput(text: string, units: 'ml' | 'oz'): number | null {
-  const digits = text.replace(/,/g, '').replace(/[^\d.]/g, '');
-  if (!/\d/.test(digits)) return null; // "oz", "", "  ": nothing typed yet, keep the current value
-  const n = Number(digits);
-  if (!Number.isFinite(n)) return null;
+  const n = parseDecimalInput(text);
+  if (n === null) return null;
   return units === 'oz' ? Math.round(ozToMl(n)) : Math.round(n);
 }
 

@@ -16,7 +16,7 @@ import { SNOOZE_MINUTES } from '../src/domain/nudges/planner';
 import { addDays, instantOf } from '../src/domain/time/trackingDay';
 import { PRESET_BY_ID } from '../src/library/presets';
 import { parseResponse } from '../src/services/notificationPayload';
-import { applyAll, isNudgePayload, nudgeResponseActions, parsePayload, type CommandContext, type NudgePayload } from '../src/state/commands';
+import { applyAll, nudgeResponseActions, parsePayload, type CommandContext, type NudgePayload } from '../src/state/commands';
 import { bodyEpoch, bumpBodyEpoch } from '../src/state/epochs';
 import { reducer } from '../src/state/reducer';
 import { buildEmptyState, buildSampleState, habitFromPreset } from '../src/state/seed';
@@ -45,8 +45,11 @@ describe('notification payloads are checked field by field', () => {
     assert.equal(parsePayload({ ...good, habitIds: 'h-1' }), null);
     assert.equal(parsePayload({ ...good, nudgeId: '' }), null);
     assert.equal(parsePayload({ ...good, habitIds: Array.from({ length: 51 }, (_, i) => `h-${i}`) }), null);
-    assert.equal(isNudgePayload(null), false);
-    assert.equal(isNudgePayload('rot'), false);
+    assert.equal(parsePayload(null), null);
+    assert.equal(parsePayload('rot'), null);
+    // A day that matches the pattern but is not a date; a timer bell whose end no formatter can place.
+    assert.equal(parsePayload({ ...good, day: '2026-02-30' }), null);
+    assert.equal(parsePayload({ ...good, mind: { kind: 'MEDITATION', minutes: 5, startAt: 1e300 } })!.mind, undefined);
   });
 
   it('leaves out an optional field that is wrong instead of acting on it', () => {

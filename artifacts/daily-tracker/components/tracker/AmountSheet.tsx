@@ -3,14 +3,13 @@ import { StyleSheet, TextInput, View } from 'react-native';
 import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
 import type { Habit } from '@/src/domain/models';
-import { formatDayLong, formatNumber, formatVolume } from '@/src/domain/time/format';
+import { MAX_WATER_LOG_ML } from '@/src/data/validate';
+import { formatDayLong, formatNumber, formatVolume, mlToOz, ozToMl, parseDecimalInput } from '@/src/domain/time/format';
 import { MAX_SNACKS_PER_LOG, useTracker } from '@/src/state/TrackerProvider';
 import { UI } from '../ui/icons';
 import { Chip, PillButton, Row } from '../ui/primitives';
 import { Sheet } from '../ui/Sheet';
 import { Txt } from '../ui/Txt';
-
-const ML_PER_OZ = 29.5735;
 
 export interface AmountSheetProps {
   visible: boolean;
@@ -37,9 +36,14 @@ export function quickValues(habit: Habit, target: number): number[] {
 /** Largest single amount accepted (a million of any unit), well inside what an export file allows. */
 export const MAX_AMOUNT = 1_000_000;
 
-/** Snack habits store one row per snack, so their cap is the per-log row limit, not a million. */
+/**
+ * Snack habits store one row per snack, so their cap is the per-log row limit, not a million; a
+ * drink stops at the shared single-drink ceiling (the same one the notification buttons keep).
+ */
 export function maxAmountFor(habit: Habit): number {
-  return habit.snackType ? MAX_SNACKS_PER_LOG : MAX_AMOUNT;
+  if (habit.snackType) return MAX_SNACKS_PER_LOG;
+  if (habit.presetId === 'water') return MAX_WATER_LOG_ML;
+  return MAX_AMOUNT;
 }
 
 export function AmountSheet({ visible, onClose, habit, mode = 'add', day, current = 0 }: AmountSheetProps) {
@@ -55,8 +59,8 @@ export function AmountSheet({ visible, onClose, habit, mode = 'add', day, curren
   const backfill = theDay !== today;
 
   // Typed values are in the display unit; water is stored in ml.
-  const toStored = (v: number) => (isWater && units === 'oz' ? Math.round(v * ML_PER_OZ) : v);
-  const toDisplay = (v: number) => (isWater && units === 'oz' ? Math.round((v / ML_PER_OZ) * 10) / 10 : v);
+  const toStored = (v: number) => (isWater && units === 'oz' ? Math.round(ozToMl(v)) : v);
+  const toDisplay = (v: number) => (isWater && units === 'oz' ? Math.round(mlToOz(v) * 10) / 10 : v);
   const typedUnit = isWater ? units : habit.unit;
 
   useEffect(() => {
@@ -83,7 +87,7 @@ export function AmountSheet({ visible, onClose, habit, mode = 'add', day, curren
   // An untouched prefill keeps the exact stored value: 250 ml shows as 8.5 oz, and 8.5 oz would
   // otherwise come back as 251 ml just from opening the sheet and pressing Set.
   const prefilled = mode === 'set' && current > 0 && text === String(toDisplay(current));
-  const parsed = prefilled ? current : toStored(Number(text.replace(',', '.')));
+  const parsed = prefilled ? current : toStored(parseDecimalInput(text) ?? NaN);
   const tooLarge = Number.isFinite(parsed) && parsed > maxAmount;
   const typedValid = text.trim().length > 0 && Number.isFinite(parsed) && parsed >= 0 && !tooLarge;
   const title = mode === 'set' ? `Set ${habit.name}` : `Log ${habit.name}`;

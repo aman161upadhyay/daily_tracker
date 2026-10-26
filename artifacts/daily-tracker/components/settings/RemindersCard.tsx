@@ -9,19 +9,24 @@ import type { ScheduledNudge } from '@/src/domain/nudges/planner';
 import { now } from '@/src/domain/time/clock';
 import { formatClock, parseClockInput } from '@/src/domain/time/format';
 import { calendarDayOf, instantOf, minutesOfDay } from '@/src/domain/time/trackingDay';
-import { NOTIFICATIONS_SUPPORTED, getPermission, openExactAlarmSettings, openNotificationSettings, requestPermission, type PermissionState } from '@/src/services/notifications';
+import { NOTIFICATIONS_SUPPORTED, exactAlarmsAllowed, getPermission, openExactAlarmSettings, openNotificationSettings, requestPermission, type PermissionState } from '@/src/services/notifications';
 import { nudgePlan } from '@/src/state/selectors';
 import { useTracker } from '@/src/state/TrackerProvider';
 
-function useNotificationPermission(): [PermissionState, () => Promise<void>] {
+/** Notification permission and exact-alarm access, re-read whenever the app comes back from Settings. */
+function useNotificationPermission(): [PermissionState, boolean | null, () => Promise<void>] {
   const [perm, setPerm] = useState<PermissionState>(NOTIFICATIONS_SUPPORTED ? 'undetermined' : 'unsupported');
-  const refresh = useCallback(async () => setPerm(await getPermission()), []);
+  const [exact, setExact] = useState<boolean | null>(null);
+  const refresh = useCallback(async () => {
+    setPerm(await getPermission());
+    setExact(exactAlarmsAllowed());
+  }, []);
   useEffect(() => {
     void refresh();
     const sub = AppState.addEventListener('change', (s) => s === 'active' && void refresh());
     return () => sub.remove();
   }, [refresh]);
-  return [perm, refresh];
+  return [perm, exact, refresh];
 }
 
 const OFF_CHOICES: { label: string; hours: number | 'day' | null }[] = [
@@ -40,7 +45,7 @@ export function RemindersCard() {
   const c = useColors();
   const { state, actions, today, nowMs, zone } = useTracker();
   const s = state.settings;
-  const [perm, refresh] = useNotificationPermission();
+  const [perm, exact, refresh] = useNotificationPermission();
   const plan = nudgePlan(state, today, nowMs, zone);
   const paused = s.offUntil !== undefined && s.offUntil > nowMs;
 
@@ -64,7 +69,7 @@ export function RemindersCard() {
           <Txt role="body" style={{ flex: 1 }}>
             Notifications allowed
           </Txt>
-          {Platform.OS === 'android' ? <PillButton label="Exact timing" kind="ghost" onPress={() => void openExactAlarmSettings()} /> : null}
+          {Platform.OS === 'android' && exact !== true ? <PillButton label={exact === false ? 'Allow exact timing' : 'Exact timing'} kind="ghost" onPress={() => void openExactAlarmSettings()} /> : null}
         </Row>
       );
     }
@@ -104,9 +109,16 @@ export function RemindersCard() {
           <Switch value={s.remindersEnabled} onValueChange={(remindersEnabled) => actions.updateSettings({ remindersEnabled, offUntil: undefined })} trackColor={{ false: c.hairline, true: c.green }} thumbColor={c.text} accessibilityLabel="Reminders" />
         </Row>
         {s.remindersEnabled ? permissionRow() : null}
-        {perm === 'granted' && Platform.OS === 'android' ? (
+        {perm === 'granted' && Platform.OS === 'android' && exact === false ? (
+          <Row gap={8} style={{ alignItems: 'center' }}>
+            <UI.Info size={16} color={c.gold} weight="bold" />
+            <Txt role="caption" tone="secondary" style={{ flex: 1 }}>
+              Android is delivering reminders late: minutes, longer while the phone sleeps. Turn on "Alarms & reminders" for this app and they ring at the planned minute.
+            </Txt>
+          </Row>
+        ) : perm === 'granted' && Platform.OS === 'android' && exact === null ? (
           <Txt role="caption" tone="secondary">
-            Exact timing lets Android ring at the planned minute; without it nudges can arrive a few minutes late.
+            Exact timing lets Android ring at the planned minute; without it nudges can arrive minutes late, longer while the phone sleeps.
           </Txt>
         ) : null}
       </View>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Platform, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { Alert, AppState, Platform, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { EvidencePill } from '@/components/tracker/EvidenceBlock';
 import { Card } from '@/components/ui/Card';
@@ -10,6 +10,7 @@ import { Screen } from '@/components/ui/Screen';
 import { Txt } from '@/components/ui/Txt';
 import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
+import { hasUserData } from '@/src/data/backupPolicy';
 import { describeImport, inspectExport } from '@/src/data/transfer';
 import { withAlpha } from '@/src/domain/color/oklch';
 import { DEFAULT_SETTINGS, type Units } from '@/src/domain/models';
@@ -44,8 +45,16 @@ export default function OnboardingScreen() {
   /** A restored snapshot this build cannot open (made by a newer app, or damaged). */
   const [unreadable, setUnreadable] = useState<{ reason: string; writtenAt: number | null } | null>(null);
 
+  // Asked once, and again whenever the app comes back: the person may have flipped the permission
+  // in the system settings sheet the "denied" text sends them to, and the label must follow.
   useEffect(() => {
-    if (NOTIFICATIONS_SUPPORTED) getPermission().then(setPerm).catch(() => {});
+    if (!NOTIFICATIONS_SUPPORTED) return;
+    const check = () => getPermission().then(setPerm).catch(() => {});
+    void check();
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') void check();
+    });
+    return () => sub.remove();
   }, []);
 
   // A snapshot left by Android Auto Backup (or a previous install) means this is a returning user.
@@ -56,7 +65,9 @@ export default function OnboardingScreen() {
         if (!snap || !alive) return;
         try {
           const inspected = inspectExport(snap.text);
-          if (inspected.kind === 'plain' && inspected.state.habits.length > 0) setRestore({ state: inspected.state, writtenAt: snap.writtenAt });
+          // The same test the hourly snapshot uses to decide the state is worth keeping: a file with
+          // logs but no habit beyond Water (all archived, or a body-only import) is still a return.
+          if (inspected.kind === 'plain' && (inspected.state.habits.length > 0 || hasUserData(inspected.state))) setRestore({ state: inspected.state, writtenAt: snap.writtenAt });
         } catch (err) {
           // Never silently overwritten: the user decides, and until then the first hourly write moves it aside.
           console.warn('[backup] snapshot unreadable', err);
@@ -75,18 +86,51 @@ export default function OnboardingScreen() {
     router.replace('/');
   };
 
+  const [snapshotBusy, setSnapshotBusy] = useState(false);
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
+
   // "Start fresh" is a decision about that data: the old snapshot goes, so it cannot be offered
-  // again (or restored onto yet another phone) once this person said no to it.
+  // again (or restored onto yet another phone) once this person said no to it. It is the only copy,
+  // so the question is asked twice, and the card leaves only once the delete went through.
   const startFresh = () => {
-    setRestore(null);
-    setUnreadable(null);
-    afterSnapshots(deleteSnapshot).catch((err) => console.warn('[backup] could not remove the old snapshot', err));
+    const run = () => {
+      setSnapshotBusy(true);
+      setSnapshotError(null);
+      afterSnapshots(deleteSnapshot)
+        .then(() => {
+          setRestore(null);
+          setUnreadable(null);
+        })
+        .catch((err) => {
+          console.warn('[backup] could not remove the old snapshot', err);
+          setSnapshotError('The old backup could not be removed just now. You can try again, or restore it.');
+        })
+        .finally(() => setSnapshotBusy(false));
+    };
+    const title = restore ? 'Start fresh and delete the backup?' : 'Delete the backup?';
+    const body = restore ? `The backup with ${describeImport(restore.state)} is removed from this phone for good. Nothing else is deleted.` : 'The copy this version cannot open is removed from this phone for good.';
+    if (Platform.OS === 'web') {
+      // eslint-disable-next-line no-alert
+      if (typeof window !== 'undefined' && !window.confirm(`${title}\n\n${body}`)) return;
+      return run();
+    }
+    Alert.alert(title, body, [
+      { text: 'Keep it', style: 'cancel' },
+      { text: restore ? 'Delete and start fresh' : 'Delete', style: 'destructive', onPress: run },
+    ]);
   };
 
   // The unreadable copy is kept under another name: Settings offers it again once the app is newer.
   const keepUnreadable = () => {
-    setUnreadable(null);
-    afterSnapshots(setAsideSnapshot).catch((err) => console.warn('[backup] could not set the old snapshot aside', err));
+    setSnapshotBusy(true);
+    setSnapshotError(null);
+    afterSnapshots(setAsideSnapshot)
+      .then(() => setUnreadable(null))
+      .catch((err) => {
+        console.warn('[backup] could not set the old snapshot aside', err);
+        setSnapshotError('The backup could not be set aside just now. Try again in a moment.');
+      })
+      .finally(() => setSnapshotBusy(false));
   };
 
   const toggle = (id: string) =>
@@ -136,9 +180,14 @@ export default function OnboardingScreen() {
             </View>
           </Row>
           <Row gap={8} style={{ marginTop: 14, flexWrap: 'wrap' }}>
-            <PillButton label="Keep it for later" Leading={UI.Check} onPress={keepUnreadable} />
-            <PillButton label="Delete it" kind="ghost" onPress={startFresh} />
+            <PillButton label="Keep it for later" Leading={UI.Check} onPress={keepUnreadable} disabled={snapshotBusy} />
+            <PillButton label="Delete it" kind="ghost" onPress={startFresh} disabled={snapshotBusy} />
           </Row>
+          {snapshotError ? (
+            <Txt role="footnote" tone="danger" style={{ marginTop: 8 }} accessibilityLiveRegion="polite">
+              {snapshotError}
+            </Txt>
+          ) : null}
         </Card>
       ) : null}
 
@@ -154,9 +203,14 @@ export default function OnboardingScreen() {
             </View>
           </Row>
           <Row gap={8} style={{ marginTop: 14, flexWrap: 'wrap' }}>
-            <PillButton label="Restore it" Leading={UI.Check} onPress={restoreSnapshot} />
-            <PillButton label="Start fresh" kind="ghost" onPress={startFresh} />
+            <PillButton label="Restore it" Leading={UI.Check} onPress={restoreSnapshot} disabled={snapshotBusy} />
+            <PillButton label="Start fresh" kind="ghost" onPress={startFresh} disabled={snapshotBusy} />
           </Row>
+          {snapshotError ? (
+            <Txt role="footnote" tone="danger" style={{ marginTop: 8 }} accessibilityLiveRegion="polite">
+              {snapshotError}
+            </Txt>
+          ) : null}
         </Card>
       ) : null}
 
@@ -276,7 +330,7 @@ export default function OnboardingScreen() {
       ) : null}
 
       {NOTIFICATIONS_SUPPORTED ? (
-        <Step n={Platform.OS === 'android' ? 6 : 5} title="Reminders" hint="Nudges arrive as notifications with Done, Snooze and Swap buttons, only inside your active hours and never more than a few a day. Optional — the app works without them.">
+        <Step n={Platform.OS === 'android' ? 6 : 5} title="Reminders" hint="Nudges arrive as notifications with Done, Snooze and Swap buttons. Automatic ones stay inside your active hours and under a daily cap you set; a habit with a fixed time rings at that time. Optional — the app works without them.">
           {perm === 'granted' ? (
             <Row gap={8}>
               <UI.Check size={18} color={c.greenBright} weight="bold" />

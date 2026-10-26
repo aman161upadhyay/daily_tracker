@@ -5,7 +5,7 @@ import { adherenceColor, adherenceStage, ADHERENCE_LUT_OUTPUT, FLOW_THRESHOLD } 
 import { averageCycleLength, cycleDay, isPeriodOpen, predictedNextStart } from '../src/domain/cycle/timeline';
 import { adherenceOf, bestStreak, currentStreak, percentChange, ratioOf, type DayRatio } from '../src/domain/habits/progress';
 import { nextNudge, nextSlotMin, swapRotation, type RotationItem } from '../src/domain/nudges/nextNudge';
-import { formatClock, formatIn, formatVolume } from '../src/domain/time/format';
+import { formatOneDecimal, parseDecimalInput, parseVolumeInput, formatClock, formatIn, formatVolume } from '../src/domain/time/format';
 import { lastNDays } from '../src/domain/time/trackingDay';
 import { catchUpMl, expectedIntakeMl, isOnPace, waterStatus } from '../src/domain/water/pace';
 
@@ -155,6 +155,26 @@ describe('formatting', () => {
     assert.equal(formatIn(24), 'in 24 min');
     assert.equal(formatIn(90), 'in 1 h 30 min');
     assert.deepEqual(formatVolume(1500, 'ml'), { value: '1,500', unit: 'ml' });
-    assert.deepEqual(formatVolume(1500, 'oz'), { value: '51', unit: 'oz' });
+    // Ounces keep one decimal (a glass rounded to the ounce drifts by up to 15 ml each time).
+    assert.deepEqual(formatVolume(1500, 'oz'), { value: '50.7', unit: 'oz' });
+    assert.deepEqual(formatVolume(250, 'oz'), { value: '8.5', unit: 'oz' });
+    assert.deepEqual(formatVolume(2957, 'oz'), { value: '100', unit: 'oz' });
+    assert.equal(formatOneDecimal(1850.26), '1,850.3');
+    assert.equal(formatOneDecimal(12), '12');
+    assert.equal(formatOneDecimal(0.04), '0');
+  });
+
+  it('reads typed numbers the way keyboards write them', () => {
+    assert.equal(parseDecimalInput('64'), 64);
+    assert.equal(parseDecimalInput('8.5'), 8.5);
+    assert.equal(parseDecimalInput('1,850'), 1850); // thousands
+    assert.equal(parseDecimalInput('12,000 ml'), 12000);
+    assert.equal(parseDecimalInput('1,5'), 1.5); // a decimal-comma keyboard
+    assert.equal(parseDecimalInput('1,850.5'), 1850.5);
+    assert.equal(parseDecimalInput('oz'), null);
+    assert.equal(parseDecimalInput(''), null);
+    assert.equal(parseVolumeInput('1,850', 'ml'), 1850);
+    assert.equal(parseVolumeInput('8,5', 'oz'), 251);
+    assert.equal(parseVolumeInput('64 oz', 'oz'), 1893);
   });
 });

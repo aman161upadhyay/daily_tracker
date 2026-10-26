@@ -13,6 +13,7 @@ import type { HabitIcon } from '@/src/domain/models';
 import { HabitGlyph, UI, type Icon } from './icons';
 import { PressableScale } from './PressableScale';
 import { Txt } from './Txt';
+import { parseDecimalInput } from '@/src/domain/time/format';
 
 // ── IconTile ───────────────────────────────────────────────────────────────
 
@@ -242,7 +243,7 @@ export function Stepper({
   const [typed, setTyped] = useState<string | null>(null);
   const apply = (text: string) => {
     if (text.trim() === '') return;
-    const n = parse ? parse(text) : Number(text.replace(/[^\d.]/g, ''));
+    const n = parse ? parse(text) : parseDecimalInput(text);
     if (n === null || !Number.isFinite(n)) return;
     const next = Math.min(max, Math.max(min, Math.round(n)));
     if (next !== value) onChange(next);

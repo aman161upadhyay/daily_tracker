@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Platform, StyleSheet, View } from 'react-native';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Alert, AppState, Platform, StyleSheet, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Stack, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useBackOrHome } from '@/hooks/useBackOrHome';
@@ -40,7 +40,9 @@ export default function MindScreen() {
   // dropping the minutes and the bell. Finish / Done / Discard set `leaving` and pass through.
   const navigation = useNavigation();
   const latest = useRef({ elapsedMs, done, kind, running, leaving: false });
-  latest.current = { ...latest.current, elapsedMs, done, kind, running };
+  useLayoutEffect(() => {
+    latest.current = { ...latest.current, elapsedMs, done, kind, running };
+  });
   // One session is logged once, whichever path gets there first (the clock running out, Finish,
   // or the leave dialog); a dialog answered after the bell must not add a second entry.
   const logged = useRef(false);
@@ -92,15 +94,47 @@ export default function MindScreen() {
   }, [navigation, actions]);
 
   // The end bell is a scheduled notification, so it rings even if the screen locks mid-session.
+  // Only a bell this screen set is ever cancelled: opening the screen idle must leave alone the
+  // bell of a session the app was killed in the middle of — that bell (tapped later) is the one
+  // thing that still logs those minutes.
+  const bellSet = useRef(false);
+  /** The instant the running session's bell is set for (fixed for the session: the clock runs on wall time). */
+  const bellAt = useRef(0);
+  const [bellError, setBellError] = useState<string | null>(null);
   useEffect(() => {
     if (!running) {
-      void cancelMindEnd();
+      if (bellSet.current) {
+        bellSet.current = false;
+        void cancelMindEnd();
+      }
       return;
     }
-    void scheduleMindEnd(now() + remainingMs, Math.round(totalMs / 60_000), kind).catch(() => {});
-    return () => void cancelMindEnd();
+    bellSet.current = true;
+    bellAt.current = now() + remainingMs;
+    setBellError(null);
+    scheduleMindEnd(bellAt.current, Math.round(totalMs / 60_000), kind).catch((err) => {
+      console.warn('Could not schedule the end bell', err);
+      setBellError('The end bell could not be set, so the phone will not ring when time is up. Keep the screen on, or check notification permission in Settings.');
+    });
+    return () => {
+      if (bellSet.current) {
+        bellSet.current = false;
+        void cancelMindEnd();
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running]);
+
+  // Coming back mid-session (typically from the "Alarms & reminders" settings page) re-submits the
+  // bell, so it is set with the precision the phone allows now rather than the one it had before.
+  useEffect(() => {
+    if (!running || Platform.OS === 'web') return;
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st !== 'active' || !bellSet.current || bellAt.current - now() < 1000) return;
+      scheduleMindEnd(bellAt.current, Math.round(totalMs / 60_000), kind).catch(() => {});
+    });
+    return () => sub.remove();
+  }, [running, totalMs, kind]);
 
   useEffect(() => {
     if (!running) return;
@@ -243,6 +277,11 @@ export default function MindScreen() {
             {elapsedMs >= 60_000
               ? `Finishing now logs ${Math.max(1, Math.round(elapsedMs / 60_000))} min.`
               : 'Sessions under a minute are not logged — finishing now keeps today as it was.'}
+          </Txt>
+        ) : null}
+        {bellError && running ? (
+          <Txt role="caption" tone="gold" align="center" style={{ marginTop: 10 }} accessibilityLiveRegion="polite">
+            {bellError}
           </Txt>
         ) : null}
       </Card>

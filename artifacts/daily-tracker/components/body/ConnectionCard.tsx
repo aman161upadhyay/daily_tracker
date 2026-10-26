@@ -54,8 +54,11 @@ export function ConnectionCard({ hc, nowMs, zone, sample, hasData }: Props) {
             ? 'These are sample numbers. On the installed Android build this card connects to Health Connect and the real ones from Samsung Health, Fitbit or Google Fit replace them.'
             : 'Samsung Health, Fitbit and Google Fit data arrive through Android’s Health Connect. That needs the installed build of this app, not Expo Go or the web preview, so nothing is shown here rather than made-up numbers.'}
         </Txt>
+        <Row gap={8} style={{ marginTop: 12, flexWrap: 'wrap' }}>
+          <PillButton label="How it works" kind="ghost" Leading={UI.Info} onPress={() => router.push('/body/setup')} />
+        </Row>
         <Txt role="footnote" tone="tertiary" style={{ marginTop: 10 }}>
-          Import is read-only and stays on this phone. Manual entries always win over imported ones.
+          Import is read-only; what is read is kept inside the app (and in the phone backup, if that is on). Manual entries always win over imported ones.
         </Txt>
       </Card>
     );
@@ -130,7 +133,7 @@ export function ConnectionCard({ hc, nowMs, zone, sample, hasData }: Props) {
           <PillButton label="How it works" kind="ghost" Leading={UI.Info} onPress={() => router.push('/body/setup')} />
         </Row>
         <Txt role="footnote" tone="tertiary" style={{ marginTop: 10 }}>
-          Read-only. Nothing is written back and nothing leaves this phone.
+          Read-only. Nothing is written back to Health Connect; what is read is kept inside the app (and in the phone backup, if that is on).
         </Txt>
       </Card>
     );

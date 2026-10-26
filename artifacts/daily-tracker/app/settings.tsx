@@ -160,7 +160,7 @@ export default function SettingsScreen() {
           <View style={{ flex: 1 }}>
             <Txt role="title2">Cycle tracking</Txt>
             <Txt role="footnote" tone="secondary">
-              Adds the Cycle tab. Off by default; nothing leaves the phone.
+              Adds the Cycle tab. Off by default; kept inside the app (and in the phone backup, if that is on).
             </Txt>
           </View>
           <Switch value={s.cycleEnabled} onValueChange={(cycleEnabled) => actions.updateSettings({ cycleEnabled })} trackColor={{ false: c.hairline, true: c.green }} thumbColor={c.text} accessibilityLabel="Cycle tracking" />
@@ -196,6 +196,16 @@ export default function SettingsScreen() {
                 </Txt>
               </View>
               <Switch value={s.cycle.discreet} onValueChange={(discreet) => actions.updateCycle({ discreet })} trackColor={{ false: c.hairline, true: c.green }} thumbColor={c.text} accessibilityLabel="Discreet cycle notifications" />
+            </Row>
+            <Divider />
+            <Row style={{ justifyContent: 'space-between', paddingVertical: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Txt role="title2">Show on Today</Txt>
+                <Txt role="footnote" tone="secondary">
+                  A small Cycle card (day and phase) on the Today tab. Off keeps it to the Cycle tab.
+                </Txt>
+              </View>
+              <Switch value={s.cycle.showOnToday} onValueChange={(showOnToday) => actions.updateCycle({ showOnToday })} trackColor={{ false: c.hairline, true: c.green }} thumbColor={c.text} accessibilityLabel="Show cycle on Today" />
             </Row>
           </>
         ) : null}

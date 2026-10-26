@@ -44,15 +44,11 @@ export const MOODS: readonly { value: Mood; label: string }[] = [
   { value: 1, label: 'Rough' },
 ];
 
-export const MOOD_LABELS: Record<Mood, string> = { 5: 'Great', 4: 'Good', 3: 'Okay', 2: 'Low', 1: 'Rough' };
-
 export const FLOWS: readonly { value: Flow; label: string }[] = [
   { value: 1, label: 'Light' },
   { value: 2, label: 'Medium' },
   { value: 3, label: 'Heavy' },
 ];
-
-export const FLOW_LABELS: Record<Flow, string> = { 1: 'Light', 2: 'Medium', 3: 'Heavy' };
 
 /** Next severity when the user taps a symptom chip: none → mild → moderate → severe → none. */
 export function nextSeverity(current: Severity | undefined): Severity | undefined {

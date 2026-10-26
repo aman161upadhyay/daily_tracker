@@ -1,16 +1,9 @@
 /**
- * The only place the app reads the wall clock. Domain logic and services take
- * `now()` from here so tests can pin time.
+ * The only place the app reads the wall clock. Domain logic takes an instant as an argument (the
+ * tests pass their own); services and screens read it here.
  */
-let nowProvider: () => number = () => Date.now();
-
 export function now(): number {
-  return nowProvider();
-}
-
-/** Test hook. Pass `null` to restore the real clock. */
-export function setClock(provider: (() => number) | null): void {
-  nowProvider = provider ?? (() => Date.now());
+  return Date.now();
 }
 
 export function currentZone(): string {

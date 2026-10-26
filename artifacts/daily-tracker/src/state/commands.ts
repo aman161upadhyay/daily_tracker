@@ -5,9 +5,10 @@
  */
 import type { Cadence, EntrySource, Habit, HabitRule, MindKind, NudgeEvent, NudgeEventKind, SnackTrigger, SnackType } from '@/src/domain/models';
 import { SNACK_LABELS } from '@/src/domain/models';
+import { MAX_WATER_LOG_ML } from '@/src/data/validate';
 import type { NudgeActionKind } from '@/src/domain/nudges/planner';
 import { SNOOZE_MINUTES } from '@/src/domain/nudges/planner';
-import { addDays, trackingDayOf, weekStartOf } from '@/src/domain/time/trackingDay';
+import { addDays, isCalendarDay, isInstantMs, trackingDayOf, weekStartOf } from '@/src/domain/time/trackingDay';
 import type { Action } from './reducer';
 import { habitView, latestRule, ruleFor } from './selectors';
 import type { TrackerState } from './types';
@@ -40,10 +41,7 @@ const PAYLOAD_KINDS = new Set(['ROTATION', 'INTERVAL', 'FIXED', 'WATER', 'EVENT'
 const MIND_KINDS = new Set<MindKind>(['MEDITATION', 'BREATHING']);
 const MAX_ID = 200;
 const MAX_HABIT_IDS = 50;
-/** The largest drink a button may log (the Water target's own ceiling). */
-const MAX_PAYLOAD_WATER_ML = 20_000;
 const MAX_MIND_MINUTES = 24 * 60;
-const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 const isId = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= MAX_ID;
 const isInt = (v: unknown, min: number, max: number): v is number => typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
@@ -60,22 +58,20 @@ export function parsePayload(data: unknown): NudgePayload | null {
   const d = data as Record<string, unknown>;
   if (!isId(d.nudgeId) || typeof d.kind !== 'string' || !PAYLOAD_KINDS.has(d.kind)) return null;
   // The timer bell carries no day: its logger derives the day from the instant the session ended.
-  if (typeof d.day !== 'string' || !(DAY_RE.test(d.day) || (d.kind === 'MIND_END' && d.day === ''))) return null;
+  if (!(isCalendarDay(d.day) || (d.kind === 'MIND_END' && d.day === ''))) return null;
   if (!Array.isArray(d.habitIds) || d.habitIds.length > MAX_HABIT_IDS || !d.habitIds.every(isId)) return null;
   const out: NudgePayload = { nudgeId: d.nudgeId, kind: d.kind, habitIds: d.habitIds as string[], day: d.day };
   if (typeof d.snackType === 'string' && Object.prototype.hasOwnProperty.call(SNACK_LABELS, d.snackType)) out.snackType = d.snackType;
-  if (isInt(d.waterMl, 1, MAX_PAYLOAD_WATER_ML)) out.waterMl = d.waterMl;
+  if (isInt(d.waterMl, 1, MAX_WATER_LOG_ML)) out.waterMl = d.waterMl;
   if (d.mind && typeof d.mind === 'object') {
     const m = d.mind as Record<string, unknown>;
-    if (typeof m.kind === 'string' && MIND_KINDS.has(m.kind as MindKind) && isInt(m.minutes, 1, MAX_MIND_MINUTES) && typeof m.startAt === 'number' && Number.isFinite(m.startAt) && m.startAt > 0) {
+    // Both ends of the session must be instants the formatters accept (a finite 1e300 is not):
+    // the logger derives the day from the end.
+    if (typeof m.kind === 'string' && MIND_KINDS.has(m.kind as MindKind) && isInt(m.minutes, 1, MAX_MIND_MINUTES) && isInstantMs(m.startAt) && m.startAt > 0 && isInstantMs(m.startAt + m.minutes * 60_000)) {
       out.mind = { kind: m.kind as MindKind, minutes: m.minutes, startAt: m.startAt };
     }
   }
   return out;
-}
-
-export function isNudgePayload(data: unknown): data is NudgePayload {
-  return parsePayload(data) !== null;
 }
 
 /** Identifier of the one scheduled timer bell. */

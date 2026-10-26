@@ -62,6 +62,18 @@ What to expect:
   it loaded and will try to reconnect to Metro on the next launch — for a build that works without
   the laptop use the release variant below.
 - Debug APK, if you want to keep it: `android/app/build/outputs/apk/debug/app-debug.apk`.
+- **Two pieces of native code live in this repo, not in a package.** `patches/expo-background-task@57.0.21.patch`
+  (applied by `pnpm install`; it is listed under `patchedDependencies` in `pnpm-workspace.yaml`)
+  removes the "network connected" constraint that the background-task scheduler puts on every job —
+  without it an offline phone stops re-planning reminders after about 36 hours. If the install ever
+  prints a patch-apply failure, the package version moved: run `pnpm patch expo-background-task`,
+  re-apply the one-line change in `BackgroundTaskScheduler.kt` (`NetworkType.CONNECTED` →
+  `NetworkType.NOT_REQUIRED`) and `pnpm patch-commit`. The second is `modules/exact-alarms/`, a
+  30-line local Expo module that asks `AlarmManager.canScheduleExactAlarms()`, so Settings can say
+  whether "Alarms & reminders" is allowed. Expo's autolinking picks it up from the `modules/` folder;
+  it needs nothing in `app.json`. **Escape hatch:** if the Kotlin in it fails to compile on your
+  machine, delete the folder and build again — the app then simply cannot tell whether exact timing
+  is on (it says so in Settings) and everything else works.
 - **Prebuild check** (30 seconds, catches a plugin that silently stopped applying):
   `android/app/src/main/AndroidManifest.xml` must show `android:fullBackupContent` and
   `android:dataExtractionRules` on `<application>`; an `<activity android:name=".HealthRationaleActivity">`
@@ -162,8 +174,8 @@ the block survives every `--clean` prebuild.
 `versionCode` discipline: Android installs a same-signer build whose `versionCode` is equal **or**
 higher over the existing one and rejects only a lower one (`INSTALL_FAILED_VERSION_DOWNGRADE`).
 This project still raises `expo.android.versionCode` in `app.json` on every release (M3 shipped 3,
-M4 4, M5 5, M6 6, then one per council round: round 3 → 7, round 4 → 8, round 5 → 9, round 6 → 10)
-so that "which build is this phone on" has one answer; `version` follows the tag (`0.10.0` = `v0.10`).
+M4 4, M5 5, M6 6, then one per council round: round 3 → 7, round 4 → 8, round 5 → 9, round 6 → 10, round 7 → 11)
+so that "which build is this phone on" has one answer; `version` follows the tag (`0.11.0` = `v0.11`).
 `app.json` is the source of truth; when this paragraph and `app.json` disagree, `app.json` is right.
 
 Google Play is deliberately not part of this recipe; `./gradlew bundleRelease` produces the AAB if
@@ -224,6 +236,8 @@ reboot before Health Connect shows the app in its list.
 | `Use pnpm instead` during install | You ran npm/yarn. Use `pnpm install` at the repo root. |
 | `SDK location not found` | `ANDROID_HOME` not exported, or create `android/local.properties` with `sdk.dir=/path/to/sdk` (git-ignored). |
 | `Unsupported class file major version` / Gradle JVM errors | Wrong JDK on `PATH`. Point `JAVA_HOME` at a JDK 17+. |
+| `modules/exact-alarms` fails to compile | Delete the `modules/exact-alarms/` folder and rebuild (see "Every build" above). Settings then shows the neutral "Exact timing" button instead of the exact status. |
+| `patch-package` / `pnpm patch` apply error on install | `expo-background-task` moved past 57.0.21. Re-create the patch as described above, or remove the `patchedDependencies` entry to build without it (reminders then re-plan only while online). |
 | Widget not in the picker | The build predates the plugin: run prebuild with `--clean`, rebuild, and reinstall. Some launchers need a reboot to list new widgets. |
 | Widget shows "Open Daily Tracker…" | Fresh install with no habits yet: finish onboarding, then the widget redraws. |
 | Red screen `AndroidWidget could not be found` | Only possible in Expo Go. Expo Go has no widget module; use the dev build. |

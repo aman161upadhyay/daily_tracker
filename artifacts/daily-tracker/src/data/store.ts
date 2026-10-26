@@ -10,7 +10,7 @@
 import { normalizeBody } from '@/src/domain/body/merge';
 import { DEFAULT_SETTINGS, type CycleDayLog, type Settings } from '@/src/domain/models';
 import type { TrackerState } from '@/src/state/types';
-import { sanitizeCycleReminders, sanitizePeriodHistory, sanitizeSettings, validateRecords, ValidationError } from './validate';
+import { projectRecords, sanitizeCycleReminders, sanitizePeriodHistory, sanitizeSettings, validateRecords, ValidationError } from './validate';
 
 export interface TrackerStore {
   /** Saved state, or null on a fresh install. */
@@ -98,7 +98,8 @@ export function parseState(raw: unknown): TrackerState {
     if (err instanceof ValidationError) throw new StorageError(`The file has data this version of the app cannot read (${err.message}). It may be damaged, or made by a newer version.`);
     throw err;
   }
-  return state;
+  // Only the known fields travel on: whatever else a file carries next to them stays in the file.
+  return projectRecords(state);
 }
 
 /** Day logs from older files may lack the symptoms map. */

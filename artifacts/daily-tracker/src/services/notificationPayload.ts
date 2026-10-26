@@ -23,8 +23,22 @@ export interface ParsedResponse {
 type RawContent = { data?: unknown; dataString?: unknown };
 type RawResponse = {
   actionIdentifier?: unknown;
-  notification?: { date?: unknown; request?: { identifier?: unknown; content?: RawContent } };
+  notification?: { date?: unknown; request?: { identifier?: unknown; content?: RawContent; trigger?: unknown } };
 };
+
+/**
+ * Only responses to notifications this app scheduled are acted on. Everything we schedule uses a
+ * date trigger, so that is what the OS hands back. A response whose trigger says "push" never came
+ * from us: this app has no push setup, but expo-notifications treats any launch intent carrying a
+ * `google.message_id` extra as a push response and builds one from the intent's own `body` — which
+ * another app on the phone can craft to log a "session" or a drink through MainActivity. A missing
+ * trigger is tolerated (older serialisations), an explicit non-date one is not.
+ */
+export function isOwnTrigger(trigger: unknown): boolean {
+  if (trigger === undefined || trigger === null) return true;
+  if (typeof trigger !== 'object') return false;
+  return (trigger as { type?: unknown }).type === 'date';
+}
 
 /** `content.data` when present, else the parsed `dataString`; undefined when neither is usable. */
 export function contentData(content: RawContent | undefined): unknown {
@@ -45,6 +59,7 @@ export function parseResponse(raw: unknown): ParsedResponse | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as RawResponse;
   if (typeof r.actionIdentifier !== 'string') return null;
+  if (!isOwnTrigger(r.notification?.request?.trigger)) return null;
   // Validated field by field (the bundle is the OS's copy of what we scheduled, parsed from JSON).
   const payload = parsePayload(contentData(r.notification?.request?.content));
   if (!payload) return null;

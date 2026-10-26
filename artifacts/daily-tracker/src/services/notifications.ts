@@ -39,8 +39,11 @@ export async function requestPermission(): Promise<PermissionState> {
 export async function openNotificationSettings(): Promise<void> {}
 
 export async function openExactAlarmSettings(): Promise<void> {}
+export function exactAlarmsAllowed(): boolean | null {
+  return null;
+}
 
-export async function prepare(_tapMl: number): Promise<void> {}
+export async function prepare(_tapMl: number, _units?: 'ml' | 'oz'): Promise<void> {}
 
 /** Make the OS schedule match the plan. Returns nudges that fired since the last sync. */
 export async function syncPlan(_plan: ScheduledNudge[], _nowMs: number): Promise<FiredRecord[]> {
