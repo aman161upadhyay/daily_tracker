@@ -283,6 +283,18 @@ cycle (phases, calendar, day sheet, insights) was verified in the web preview an
 | AC7 | Next-ring wording at night | A set time 01:00; look at the card at 23:00 | "Next: tomorrow at 1:00 AM" (not "today"); the Settings preview says "Tomorrow 1:00 AM" |
 | AC8 | Water copy in ounces | Units oz; fall behind pace; wait for a water check | The notification says "About 8.5 oz behind pace", not ml |
 
+### AD — round 13 (refused OS calls, replace fences, the launch press, the lock, the Logged list)
+
+| # | Check | Steps | Expected |
+|---|---|---|---|
+| AD1 | A refused schedule shows and retries | Deny "Alarms & reminders" (exact alarms) if the phone offers it, or revoke notification permission mid-sync; change a reminder | Settings → Reminders shows "… could not be scheduled. Will try again."; within a minute of re-granting the line clears and `dumpsys notification --noredact` lists the plan |
+| AD2 | A restore whose save fails keeps the old rings out | Let a nudge ring and leave it; fill the storage (or use a backup file large enough to make the write slow) and Restore | The restored state's habit limits show no spent slot from the old ring; after the save succeeds the schedule is the restored state's only |
+| AD3 | The launch press under a kill | With the app closed, tap the body of a nudge (not a button) so the app launches; kill it within a second of the first frame; open it again | The tap's navigation is not required, but the press is handled once: no duplicate FIRED / TAP rows (Settings → Export, inspect `nudgeEvents`) |
+| AD4 | The Logged list and an exact Remove | From the widget tap water twice by mistake; open the habit page | "Logged" lists both drinks with "· widget" and the times; Remove on one takes off exactly 250 ml; the other stays with its time |
+| AD5 | A deep link under the lock | App lock "Right away"; leave and reopen, cancel the prompt; from a terminal `adb shell am start -a android.intent.action.VIEW -d "daily-tracker://habits?preset=meditate&t=1"` | Nothing appears above the lock screen; after unlocking, the Meditate sheet is showing |
+| AD6 | A hostile preset id | `adb shell am start -a android.intent.action.VIEW -d "daily-tracker://habits?preset=__proto__"` (and `constructor`) | The Habits tab shows, no sheet, no error screen |
+| AD7 | Fix an older day | On a habit older than a week tap "Fix an older day" under the 26-week heatmap; pick a day two weeks back; set an amount | The day's cell in the heatmap and the 2W chart update; "Logged → Show the last 7 days" is unaffected (the day is older); for a yes/no habit the picker's day flips in place |
+
 ## Recording results
 
-Add a dated line under the milestone in `docs/IMPLEMENTATION_PLAN.md` ("Device run YYYY-MM-DD, Pixel 7 / Android 15: N1–N17, Y1–Y14, Z1–Z13, AA1–AA16, AB1–AB11, AC1–AC8 pass except …") and open follow-ups for anything that failed.
+Add a dated line under the milestone in `docs/IMPLEMENTATION_PLAN.md` ("Device run YYYY-MM-DD, Pixel 7 / Android 15: N1–N17, Y1–Y14, Z1–Z13, AA1–AA16, AB1–AB11, AC1–AC8, AD1–AD7 pass except …") and open follow-ups for anything that failed.

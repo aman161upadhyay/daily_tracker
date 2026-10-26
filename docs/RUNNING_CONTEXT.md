@@ -15,10 +15,10 @@ Last updated: 2026-10-26, autonomous session (council rounds 1–11 fixed; see j
 |---|---|
 | App | Daily Tracker — private Android tracker: habits · water · movement snacks · meditation · opt-in cycle · home-screen widget · configurable nudges · Health Connect import · app lock · encrypted backups |
 | Code | `artifacts/daily-tracker/` — Expo SDK 57, React Native 0.86, TypeScript, Expo Router, expo-sqlite |
-| Version | `app.json` `version 0.16.0`, `versionCode 16`, tag `v0.16` (M6 complete + council rounds 1–12) |
+| Version | `app.json` `version 0.17.0`, `versionCode 17`, tag `v0.17` (M6 complete + council rounds 1–13) |
 | Repo | https://github.com/aman161upadhyay/daily_tracker.git, branch `main`, commits authored as Aman |
 | Milestones | M0 skeleton ✅ · M1 storage/streaks/onboarding ✅ · M2 nudges/notifications ✅ · M3 widget ✅ · M4 Health Connect/Body ✅ · M5 cycle ✅ · M6 theme/lock/backup/signing ✅ (`docs/IMPLEMENTATION_PLAN.md`) |
-| Verified here | type-check (three packages), 376 unit tests, Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks (incl. the Health Connect rationale activity), web walkthroughs by a browser-driving tester |
+| Verified here | type-check (three packages), 384 unit tests, Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks (incl. the Health Connect rationale activity), web walkthroughs by a browser-driving tester |
 | Never run yet | a real Android device. Everything native (widget taps, notification buttons with the app closed, Health Connect, app lock, Auto Backup, signed APK) is coded and reviewed but untested on hardware — `docs/DEVICE_CHECKLIST.md` lists the exact rows |
 | User's next step | `docs/GET_IT_ON_YOUR_PHONE.md` (plain-language build guide) |
 
@@ -348,11 +348,43 @@ contradicts one, write down why.
     by field and bounded (1,000 records, 50 presses, 200 handled marks). **Why:** one bad row kept
     as-is would crash every later sync and stop reminders for good; an unbounded list would make
     every sync crawl.
-52. **A refused OS call leaves its entry standing.** A cancel the OS refused keeps its ledger entry
-    (the alarm is still the OS's, a ring from it is counted, the next sync tries again); a failed
-    sync is visible — Settings → Reminders shows the last failure, the scheduler retries a minute
-    later and on the next foreground. **Why:** dropping the entry made that ring unaccountable, and
-    a silent failure left the schedule stale while the app looked healthy.
+52. **A refused OS call leaves its entry standing — and fails the sync.** A cancel the OS refused keeps
+    its ledger entry (the alarm is still the OS's, a ring from it is counted, the next sync tries
+    again); a schedule the OS refused is not written down. Either way the sync writes its honest
+    ledger first and then throws (`OsRefusedError`), so the failure is visible — Settings →
+    Reminders shows it, the scheduler retries a minute later and on the next foreground. **Why:**
+    dropping the entry made that ring unaccountable, and a sync that swallowed the refusal
+    reported success, so nothing retried and the reminder never rang.
+53. **A record's version moves with every replace, present or not.** `readRecord` returns a version
+    (the replace generation plus the text); `writeRecord` compares that, not the text alone. **Why:**
+    a sync that read "no record yet", was overtaken by an erase / restore, and then wrote with
+    "expected: nothing" passed the compare and revived the dead state's schedule and deliveries.
+54. **Nothing of the old state's record is folded into a replacement.** A re-plan waits until the
+    replace is in the database (`replacePending`), and a re-plan already in flight is fenced on
+    the replace counter (`replaceSeq`): a fold conceived before the replace is refused after it
+    and the re-plan starts over. **Why:** between the replace on screen and its commit the database
+    (and the deliveries journal beside it) still belong to the old state; a fold in that window
+    charged the new state for rings it never scheduled.
+55. **The press that launched the app is cleared only once it is in the inbox.** `launchResponse`
+    reads without clearing; `clearLaunchResponse` runs after `beginHandling` wrote the press down.
+    **Why:** clearing first lost the press to a death in between; reading it twice is harmless
+    (the inbox dedupes by key).
+56. **Nothing is presented above the app lock.** The gate publishes its state (`lockState`); every
+    Sheet renders its Modal only while unlocked and appears once the gate is down. **Why:** a deep
+    link (`daily-tracker://habits?preset=…`) opened a Sheet while the gate was up, and Android
+    stacks a later Dialog above an earlier one — the lock showed what it was meant to hide.
+57. **An id from outside the table is looked up with `hasOwnProperty`.** `presetById` answers for
+    real presets only; a deep link's or a backup's `presetId` never reaches a plain index. **Why:**
+    `PRESET_BY_ID['__proto__']` returned `Object.prototype`, which rendered as a preset and threw
+    in the evidence block — a crash on demand from any app on the phone.
+58. **What was logged is a list of records, each removable on its own.** The habit page's "Logged"
+    card lists the records behind the figures (drinks, snacks, sessions, entries) with where each
+    came from, today by default and the last seven days on request; Remove takes off exactly that
+    record. Records another app owns (Health Connect) are listed, not removable — the next read
+    would bring them back. Older days are fixed through a month picker ("Fix an older day"), which
+    sets the day's total (or flips a yes/no day in place). **Why:** a drink logged twice from the
+    widget or squats counted from the wrong reminder were only correctable by rewriting the day's
+    total, which erased the time and origin of everything else that day.
 
 ### How council findings are judged
 - Accept when: evidence is concrete (file:line, reproducible), it violates a paradigm or a user constraint,
@@ -421,7 +453,10 @@ Dates are America/New_York. Commits are on `main`.
 | 2026-10-26 night | Verification: tsc clean, 362 tests (17 new in `tests/round11.test.ts`), `expo export --platform android` → Hermes bytecode OK | `485066c`, tag `v0.15` |
 | 2026-10-26 night | **Council round 12** — five lenses over the round-11 result: a diff review with probes, a data / upgrade audit, a finish-line audit (does the app do what the user asked, end to end), an Android platform audit, browser e2e; plus the simulator rerun, which found the one real residual (merging across the 3 am boundary) | this commit |
 | 2026-10-26 night | **Round-12 fixes:** the planner never merges across the tracking-day boundary; service records move from AsyncStorage into the state's SQLite `kv` table (`readRecord` / `writeRecord`, compare-and-set, cleared by `replace`); erase / restore / sample data are written with `replace` (the provider's `replaceGenRef`) and `replaceEpoch` drives the re-plan instead of `cancelAll({forget})`; a durable press inbox (`responseInbox.ts`) replayed at every runtime start with the received instant, snooze deduped by instant; bookkeeping validated entry by entry and capped, the ledger indexed; refused cancels stay in the ledger (sync and cancel-all); sync health shown on the Reminders card with a one-minute retry; the next-ring line orders pause → plan → met quota → far set time → done today, today / tomorrow by the calendar day (card and Settings preview); a widget tap under a failed save draws the committed state; the stepper clamps a restored value to the current bounds; no Remind-me switch on on-demand policies; Off / paused movement copy matches the rotation; the Water door opens the Library every time; water copy in the person's units; weekday chips without the radiogroup role; onboarding and the phone guide say what the Android backup carries; version 0.16.0 / versionCode 16 | this commit |
-| 2026-10-26 night | Verification: tsc clean, 376 tests (12 new in `tests/round12.test.ts`, 2 in the store contract), simulator 600 sequences / 0 invariant failures, `expo export --platform android` → Hermes bytecode OK | this commit, tag `v0.16` |
+| 2026-10-26 night | Verification: tsc clean, 376 tests (12 new in `tests/round12.test.ts`, 2 in the store contract), simulator 600 sequences / 0 invariant failures, `expo export --platform android` → Hermes bytecode OK | `07420f8`, tag `v0.16` |
+| 2026-10-26 night | **Council round 13** — a diff review with probes over the round-12 result (five findings, all reproduced in pure probes) and a privacy / threat lens over the whole app (two findings; the backup crypto, Android backup allowlist, Health Connect scope, network silence, cycle notification visibility and widget exposure all passed) | this commit |
+| 2026-10-26 night | **Round-13 fixes:** refused OS calls fail the sync after the honest ledger write (`OsRefusedError`, retry + health); record versions carry the replace generation (SQLite `replace_generation`, JSON `{generation, records}`), so a "nothing yet" read before a replace cannot write after it; re-plans wait for a replace to commit (`replacePending`) and in-flight folds are fenced (`replaceSeq`, in the scheduler and `replanLive`); the launch press is cleared only after the inbox write; the JSON store serialises its record operations; sheets stay down while the app lock is up (`lockState`); `presetById` for every id from outside; **B3** — the "Logged" activity list on every habit page (exact-record Remove, origin, today / last 7 days) and the "Fix an older day" month picker (`DayPickerSheet`, `month.ts` shared with the cycle calendar); version 0.17.0 / versionCode 17 | this commit |
+| 2026-10-26 night | Verification: tsc clean, 384 tests (8 new in `tests/round13.test.ts`, the store contract rewritten for versions), browser e2e of the Logged card and the picker, `expo export --platform android` | this commit, tag `v0.17` |
 
 (Entries for each council round follow below as they happen.)
 
@@ -429,6 +464,29 @@ Dates are America/New_York. Commits are on `main`.
 
 Format per round: lens → findings (severity · title · disposition · commit). Dispositions: **fixed**,
 **rejected** (reason), **deferred** (needs user/phone).
+
+### Round 13 (2026-10-26 night)
+
+Two lenses over the round-12 result — a diff review with probes (the records-beside-the-state change, the inbox, the replace path) and a privacy / threat review of the whole app — plus the B3 feature. Ids are theirs.
+
+**Diff review (probes run in pure TypeScript against the real modules)**
+- ADV12-01 high · a schedule or cancel the OS refused was a `console.warn`; the sync resolved, health cleared, nothing retried — a transient refusal left a reminder unscheduled until the plan next changed · **fixed** — the sync writes its honest ledger, then throws `OsRefusedError` (count of refused schedules / cancels); the scheduler retries after a minute and the Reminders card shows it; `cancelAll` the same; paradigm 52 rewritten.
+- ADV12-02 med · a compare-and-set with "expected: no record" could not see a replace between the read and the write (reproduced in SQLite and JSON): the old state's sync wrote its ledger after an erase and the next sync counted its rings for the new state · **fixed** — `readRecord` returns `{value, version}`, the version carries a replace generation the store bumps in the same transaction; `writeRecord` compares versions and returns the new one; paradigm 53; the store contract covers a "nothing yet" read across a replace and racing writes.
+- ADV12-03 high · a replace that failed to commit (and was retried) let the 600 ms re-plan read the old journal and fold the old state's deliveries into the restored state; a replace during a re-plan did the same · **fixed** — `replacePending` gates the re-plan (and the foreground sync, and `replanLive`) until the replace is in the database; the in-flight fold is fenced on `replaceSeq()` and a fenced re-plan is abandoned as superseded; paradigm 54.
+- ADV12-04 high · `consumeLaunchResponse` cleared Expo's last response before the inbox write; a death in between lost the press that launched the app · **fixed** — `launchResponse` + `clearLaunchResponse` after `beginHandling`; paradigm 55.
+- ADV12-05 low · the JSON store's compare-and-set was read-then-write without a transaction; two concurrent writes with the same expectation both won (reproduced under `Promise.all`) · **fixed** — one queue per JsonStore instance; the contract test races two writes on both stores (the SQLite one through the same one-at-a-time queue the app uses).
+- Judged correct by the reviewer (no finding): the serialised queue has no deadlock cycle, the provider's replace generation and the boundary merge, the widget's committed() path.
+
+**Privacy / threat review**
+- PRIV-01 high · with the app lock up, `daily-tracker://habits?preset=meditate&t=1` from any app mounted the habits route and opened its Sheet — a second Modal that Android stacks above the gate's — showing "Open habit" (the habit exists) or "Add to my habits" (and allowing the add) without authentication · **fixed** — the gate publishes `lockState`; `Sheet` renders its Modal only while unlocked and shows once the gate is down; paradigm 56; checklist AD5.
+- PRIV-02 high · `daily-tracker://habits?preset=__proto__` (also `constructor`, `toString`) passed `PRESET_BY_ID[...]` and crashed the app in the evidence block (reproduced with a pure probe) · **fixed** — `presetById` (own properties only) everywhere an id comes from outside — the route, Today's nudge text, the habit page, `addPreset`, onboarding; tests cover the inherited names; paradigm 57.
+- Passed without findings: backup encryption (AES-256-GCM, PBKDF2 200k, fresh salt / IV, authenticated header, bounded import, password cleared), the Android backup allowlist (only `files/backup`; live SQLite / WAL, preferences, transfer cache and widget images excluded), Health Connect (seven read types, no writes, package-restricted rationale), no runtime network calls or analytics, bundled fonts, cycle notifications on a PRIVATE channel (AOSP redaction checked), the widget model (selected habits only, private files, unpredictable names), release error screen hides details.
+
+**B3 — correctable activity history** (from the round-10 backlog)
+- `src/domain/habits/activity.ts` (`habitActivity`): the records behind a habit for a set of days, newest first, with amount, time, origin (widget / reminder / Health Connect / Sugar Shield) and whether it is removable (imported records are not — the next read re-adds them); the Sugar Shield rule (`snackCountsFor`) decides which snacks belong to which habit, so Remove never takes a row the count did not include.
+- `components/tracker/ActivityList.tsx`: the "Logged" card on every habit page (it replaces the water-only "Today's water" list); today by default, "Show the last 7 days" with day headers; Remove behind `confirmDestructive`; a footnote when imported rows are listed.
+- `components/tracker/DayPickerSheet.tsx` + `src/domain/time/month.ts` (shared with the cycle calendar, which was refactored onto it): "Fix an older day" under the 26-week heatmap when the habit is older than the 7-day strip; days tinted by the day's done ratio; days before the habit and days to come are not offered; a yes/no day flips in place, an amount opens the amount sheet in set mode for that day (one sheet at a time).
+- Not done: an "Undo" toast after Remove (the row is gone; adding it back is one tap on the habit's button) — backlog.
 
 ### Round 12 (2026-10-26 night)
 
@@ -969,18 +1027,19 @@ Five lenses over the round-6 result, each a fresh read-only session with its own
 - Week-start setting (Monday is fixed) and per-habit notification sounds (deferred in the plan at M2, M3 and M6; still not built).
 - Reminder set-up inside habit creation (the editor is one tap away on the habit page; the strength / stairs presets still start on every day until their weekly quota is in — the days are chosen under Reminders → Change → On).
 - An automatic luteal symptom check-in (a cycle reminder anchored "into the luteal phase" stands in).
-- B3 — a correctable activity history (water, snacks, sessions) with exact-record Undo and dated backfill beyond seven days.
 - B5 — a picker for Today's pinned summary cards (Steps / Sleep, order); `Settings.pinned` exists and is unused.
+- B3 follow-up — an Undo toast after Remove in the Logged list (round 13 built the list and the month picker; a removed record is re-added by hand).
 - PIPE10-03 — reconstruction of merged reminders scheduled by v0.12 (they are replaced on the first sync after the update).
 
 ### Device verification owed
-- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10, T1–T11, U1–U11, V1–V11, X1–X11, Y1–Y14, Z1–Z13, AA1–AA16, AB1–AB11, AC1–AC8 have never been run on hardware. First build on the laptop is the next real milestone.
+- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10, T1–T11, U1–U11, V1–V11, X1–X11, Y1–Y14, Z1–Z13, AA1–AA16, AB1–AB11, AC1–AC8, AD1–AD7 have never been run on hardware. First build on the laptop is the next real milestone.
 - Residual risk carried knowingly: two JavaScript runtimes writing SQLite at once (UPG6-03, row V11). If the device run shows a lost write there, the fix is a database revision compared inside the write transaction.
 - Rows added in round 7: X1–X5 (exact alarms and the offline re-plan — the two library defaults the platform lens read in the sources), X6 (sheets in a short window), X7–X9 (Today without the trio, cycle off / hidden), X10–X11 (long titles, the drink ceiling).
 - Rows added in round 8: Y1–Y3 (snapshot replacement, kept copies, journaled deletes), Y4–Y6 (speculative and birth-control reminders, estimated wording), Y7–Y10 (widget sizes, font scale, notice), Y11–Y14 (drink reconcile, one night across sources, late records and backfill, permission names).
 - Rows added in round 9: Z1–Z6 (deliveries before planning, merged notifications, evening snoozes, the hours before the boundary, a met weekly quota, the live countdown), Z7–Z9 (one-to-one drink twins, a re-granted type, "when the period begins"), Z10–Z13 (compact ring values, stepper hints, row labels, the water button's tap size).
 - Rows added in round 11: AB1–AB3 (re-rings spend, erase forgets, a kill between the OS change and the record), AB4–AB7 (paused edits, the next-reminder line, weekdays), AB8–AB11 (tap-and-Done, freezes, the Water door, a widget tap under a failed save).
 - Rows added in round 12: AC1 (a replace under a sync in flight), AC2–AC3 (a press under a kill, a replayed press), AC4 (a failed sync shows and retries), AC5 (PLAT12-03: a reboot with an expired alarm — measures the phantom), AC6–AC7 (across-the-boundary set times, the next-ring wording at night), AC8 (water copy in ounces).
+- Rows added in round 13: AD1 (a refused schedule shows and retries), AD2 (a restore whose save fails does not inherit the old rings), AD3 (the launch press under a kill), AD4 (the Logged list and Remove from the widget's double tap), AD5 (a deep link under the lock), AD6 (`preset=__proto__` from another app), AD7 (Fix an older day).
 - PLAT12-03 (deferred): after a reboot Android drops expired one-shot alarms before Expo's boot receiver runs; the next sync reads them as rung and the daily cap is spent a slot early. A fix needs a Kotlin boot receiver that records the boot instant for the JavaScript side; AC5 measures how often it bites.
 - Rows added in round 10: AA1–AA8 (occurrences, the journal under a lost save, a clock set back, yesterday's tap, exempt rings, missed mornings, night-owl hours, the background re-plan), AA9–AA16 (rest of today, the reminder editor on custom / preset / movement habits, ounces everywhere, Body extrema, freezes by cadence, confirmations).
 - Deferred from round 8: Health Connect change tokens (`getChanges`) as an optimisation over the rolling window; "sharpens after three" copy.

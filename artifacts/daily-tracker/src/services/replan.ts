@@ -12,7 +12,7 @@ import type { TrackerState } from '@/src/state/types';
 import { currentZone, newId, now } from '@/src/domain/time/clock';
 import { trackingDayOf } from '@/src/domain/time/trackingDay';
 import type { Action } from '@/src/state/reducer';
-import { acknowledgeDeliveries, firedSinceLastSync, prepare, syncPlan, type FiredRecord } from './notifications';
+import { acknowledgeDeliveries, firedSinceLastSync, prepare, SupersededError, syncPlan, type FiredRecord } from './notifications';
 
 const DIRTY_KEY = 'dailytracker.headless.dirty.v1';
 
@@ -97,7 +97,12 @@ export async function replanHeadless(state: TrackerState, ctx: CommandContext): 
  * here (or kept for a replay when a save failed).
  */
 export async function replanLive(live: LiveStore, ctx: CommandContext): Promise<TrackerState> {
-  await reconcileAndSync(() => live.current(), (build) => live.apply(build), ctx);
+  // A replace on screen that is not in the database yet: the record beside the state still
+  // belongs to the old state. The app's own scheduler re-plans once the replace committed.
+  if (live.replacePending()) return live.current();
+  // Fenced like the in-app scheduler: a fold conceived before a replace must not land after it.
+  const seq = live.replaceSeq();
+  await reconcileAndSync(() => live.current(), (build) => (live.replaceSeq() !== seq ? Promise.reject(new SupersededError()) : live.apply(build)), ctx);
   return live.current();
 }
 

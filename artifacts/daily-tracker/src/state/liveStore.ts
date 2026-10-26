@@ -26,6 +26,10 @@ export interface LiveStore {
   current(): TrackerState;
   /** What the database holds, as far as the app knows: the newest state minus the saves still pending or failed. */
   committed(): TrackerState;
+  /** How many whole-state replaces so far (erase, restore, sample data): a fence for work that spans awaits. */
+  replaceSeq(): number;
+  /** True while a replace is applied on screen but not yet in the database (see TrackerContextValue.replacePending). */
+  replacePending(): boolean;
 }
 
 let live: LiveStore | null = null;

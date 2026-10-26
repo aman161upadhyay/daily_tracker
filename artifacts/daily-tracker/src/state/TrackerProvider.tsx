@@ -10,12 +10,12 @@ import { SNACK_LABELS } from '@/src/domain/models';
 import { applyPeriodStart } from '@/src/domain/cycle/timeline';
 import { currentZone, newId, now } from '@/src/domain/time/clock';
 import { calendarDayOf, instantOf, minutesOfDay, trackingDayOf } from '@/src/domain/time/trackingDay';
-import { PRESET_BY_ID } from '@/src/library/presets';
+import { presetById } from '@/src/library/presets';
 import { mindSessionExists, ruleChangeActions, ruleInForce, targetChangeActions, type RuleDraft } from './commands';
 import { reducer, type Action } from './reducer';
 import { buildEmptyState, buildSampleState, habitFromPreset } from './seed';
 import { bumpBodyEpoch } from './epochs';
-import { setLiveStore } from './liveStore';
+import { setLiveStore, type LiveStore } from './liveStore';
 import { latestRule } from './selectors';
 import type { TrackerState } from './types';
 
@@ -35,6 +35,14 @@ export interface TrackerContextValue {
    * journal — forgets it when this moves.
    */
   replaceEpoch: number;
+  /**
+   * True from a whole-state replace (erase, restore, sample data) until the database holds it.
+   * The notification scheduler waits for it: until then the database, and the service record
+   * beside it, still belong to the old state.
+   */
+  replacePending: boolean;
+  /** How many replaces so far, read synchronously: a fence for work that spans awaits (see NudgeScheduler). */
+  replaceSeq(): number;
   /** Tracking day (3 am boundary by default). */
   today: string;
   /** Calendar day (midnight boundary) for cycle data. */
@@ -175,6 +183,17 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [replaceEpoch, setReplaceEpoch] = useState(0);
+  const [replacePending, setReplacePending] = useState(false);
+  const replacePendingRef = useRef(false);
+  const replaceSeqRef = useRef(0);
+  const replaceSeq = useCallback(() => replaceSeqRef.current, []);
+  const liveStoreFor = (apply: LiveStore['apply']): LiveStore => ({
+    apply,
+    current: () => pendingRef.current,
+    committed: () => committedRef.current ?? pendingRef.current,
+    replaceSeq,
+    replacePending: () => replacePendingRef.current,
+  });
   const [nowMs, setNowMs] = useState(() => now());
   // The phone's zone can change while the app is open (travel); refreshed with the clock.
   const [zone, setZone] = useState(() => currentZone());
@@ -233,6 +252,10 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
             else await store.persist(base, target);
             committedRef.current = target;
             committedGenRef.current = Math.max(committedGenRef.current, targetGen);
+            if (committedGenRef.current >= replaceGenRef.current && replacePendingRef.current) {
+              replacePendingRef.current = false;
+              setReplacePending(false);
+            }
             failuresRef.current = 0;
             setStorageError((e) => (e && e.startsWith('Could not save') ? null : e));
             settleWaiters(true);
@@ -358,7 +381,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
           dispatch({ type: 'HYDRATE', state: next });
           targetGenRef.current = genRef.current;
           committedGenRef.current = genRef.current;
-          setLiveStore({ apply, current: () => pendingRef.current, committed: () => committedRef.current ?? pendingRef.current });
+          setLiveStore(liveStoreFor(apply));
         });
       } catch (err) {
         console.error('Storage failed to open', err);
@@ -390,7 +413,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   // notification button that runs here goes through the reducer instead of racing our saves.
   useEffect(() => {
     if (!ready || !storeRef.current) return;
-    setLiveStore({ apply, current: () => pendingRef.current, committed: () => committedRef.current ?? pendingRef.current });
+    setLiveStore(liveStoreFor(apply));
     return () => setLiveStore(null);
   }, [ready, apply]);
 
@@ -446,7 +469,10 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   const replaceWith = useCallback(
     (next: TrackerState) => {
       bumpBodyEpoch();
+      replaceSeqRef.current += 1;
+      replacePendingRef.current = true;
       setReplaceEpoch((n) => n + 1);
+      setReplacePending(true);
       dispatch({ type: 'REPLACE', state: next });
       replaceGenRef.current = genRef.current;
     },
@@ -573,7 +599,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
         dispatch({ type: 'LOG_MIND', session: { id: newId(), startAt, endAt, zone: z, day: d, kind, minutes } });
       },
       addPreset(presetId) {
-        const preset = PRESET_BY_ID[presetId];
+        const preset = presetById(presetId);
         if (!preset) return null;
         const s = stateRef();
         const existing = s.habits.find((h) => h.presetId === presetId);
@@ -678,7 +704,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
           if (h.presetId && !wanted.has(h.presetId) && !h.archived) dispatch({ type: 'UPDATE_HABIT', id: h.id, patch: { archived: true } });
         }
         for (const presetId of choices.presetIds) {
-          const preset = PRESET_BY_ID[presetId];
+          const preset = presetById(presetId);
           if (!preset) continue;
           const existing = s.habits.find((h) => h.presetId === presetId);
           if (existing) {
@@ -753,8 +779,8 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   }, [stamp, zone, boundary, replaceWith]);
 
   const value = useMemo<TrackerContextValue>(
-    () => ({ state, ready, storageError, nowMs, zone, replaceEpoch, today, calendarToday, nowMin, dispatch, apply, actions, commitPending }),
-    [state, ready, storageError, nowMs, zone, replaceEpoch, today, calendarToday, nowMin, dispatch, apply, actions, commitPending],
+    () => ({ state, ready, storageError, nowMs, zone, replaceEpoch, replacePending, replaceSeq, today, calendarToday, nowMin, dispatch, apply, actions, commitPending }),
+    [state, ready, storageError, nowMs, zone, replaceEpoch, replacePending, replaceSeq, today, calendarToday, nowMin, dispatch, apply, actions, commitPending],
   );
 
   return <TrackerContext.Provider value={value}>{children}</TrackerContext.Provider>;

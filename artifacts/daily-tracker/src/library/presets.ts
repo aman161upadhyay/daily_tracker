@@ -439,6 +439,15 @@ export const PRESETS: Preset[] = [
 
 export const PRESET_BY_ID: Record<string, Preset> = Object.fromEntries(PRESETS.map((p) => [p.id, p]));
 
+/**
+ * The preset with this id, or undefined. For ids that arrive from outside the table — a deep
+ * link's query, a habit's presetId from a backup — where a plain index would also answer for
+ * inherited names ("constructor", "__proto__") with something that is not a preset.
+ */
+export function presetById(id: unknown): Preset | undefined {
+  return typeof id === 'string' && Object.prototype.hasOwnProperty.call(PRESET_BY_ID, id) ? PRESET_BY_ID[id] : undefined;
+}
+
 export const CATEGORY_LABELS: Record<Category, string> = {
   hydration: 'Hydration',
   movement: 'Movement',

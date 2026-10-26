@@ -2,9 +2,11 @@ import React, { useMemo, useState } from 'react';
 import { StyleSheet, Switch, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useBackOrHome } from '@/hooks/useBackOrHome';
+import { ActivityList } from '@/components/tracker/ActivityList';
 import { AdherenceBar } from '@/components/tracker/AdherenceBar';
 import { AmountSheet } from '@/components/tracker/AmountSheet';
 import { BackfillStrip } from '@/components/tracker/BackfillStrip';
+import { DayPickerSheet } from '@/components/tracker/DayPickerSheet';
 import { EvidenceBlock } from '@/components/tracker/EvidenceBlock';
 import { HabitEditorSheet } from '@/components/tracker/HabitEditorSheet';
 import { ReminderPolicySheet } from '@/components/tracker/ReminderPolicySheet';
@@ -20,9 +22,9 @@ import { useColors } from '@/hooks/useColors';
 import { adherenceColor, FLOW_THRESHOLD, STAGE_LABELS } from '@/src/domain/adherence/adherenceScale';
 import { withAlpha } from '@/src/domain/color/oklch';
 import { describePolicy, isPaused, nextRingText, type PolicyContext } from '@/src/domain/nudges/describePolicy';
-import { describeRule, formatClock, formatDayShort, formatHabitValue, formatVolume, formatWeekdayShort, habitAmountText, habitUnit, mlToOz } from '@/src/domain/time/format';
-import { lastNDays, minutesOfDay } from '@/src/domain/time/trackingDay';
-import { PRESET_BY_ID } from '@/src/library/presets';
+import { describeRule, formatDayShort, formatHabitValue, formatVolume, formatWeekdayShort, habitAmountText, habitUnit, mlToOz } from '@/src/domain/time/format';
+import { lastNDays } from '@/src/domain/time/trackingDay';
+import { presetById } from '@/src/library/presets';
 import { useHabitView } from '@/src/state/hooks';
 import { habitDayValue, habitSeries, heatmapValues, latestRule, nudgePlan, ruleFor } from '@/src/state/selectors';
 import { useTracker } from '@/src/state/TrackerProvider';
@@ -39,8 +41,9 @@ export default function HabitDetailScreen() {
   const [editing, setEditing] = useState(false);
   const [policyOpen, setPolicyOpen] = useState(false);
   const [amount, setAmount] = useState<{ mode: 'add' | 'set'; day?: string; current?: number } | null>(null);
+  const [pickingDay, setPickingDay] = useState(false);
 
-  const preset = habit?.presetId ? PRESET_BY_ID[habit.presetId] : undefined;
+  const preset = presetById(habit?.presetId);
 
   const chart = useMemo(() => {
     if (!habit) return null;
@@ -124,7 +127,6 @@ export default function HabitDetailScreen() {
     donePeriod: view.periodDone !== undefined && view.periodQuota !== undefined ? view.periodDone >= view.periodQuota : false,
     periodNoun,
   });
-  const todayWater = isWater ? state.water.filter((w) => w.day === today).sort((a, b) => b.at - a.at) : [];
   const editRule = latestRule(state, habit.id) ?? view.rule;
   // A rhythm saved for the next period is not in force yet; say so, or the save looks lost.
   const pendingRule = editRule.effectiveFrom > today && editRule !== view.rule ? editRule : null;
@@ -146,6 +148,13 @@ export default function HabitDetailScreen() {
   const onBackfill = (day: string, value: number) => {
     if (habit.type === 'YES_NO') return actions.toggleYesNo(habit, day);
     setAmount({ mode: 'set', day, current: value });
+  };
+  // From the month picker: a yes/no day flips in place (the picker stays open to fix another);
+  // an amount needs the amount sheet, one sheet at a time.
+  const onPickDay = (day: string) => {
+    if (habit.type === 'YES_NO') return actions.toggleYesNo(habit, day);
+    setPickingDay(false);
+    setAmount({ mode: 'set', day, current: habitDayValue(state, habit, day) });
   };
 
   const archive = () =>
@@ -238,46 +247,10 @@ export default function HabitDetailScreen() {
         </Txt>
       </Card>
 
-      {isWater ? (
-        <>
-          <SectionHeader title="Today's water" />
-          <Card>
-            {todayWater.length === 0 ? (
-              <Txt role="body" tone="secondary">
-                Nothing logged yet today.
-              </Txt>
-            ) : (
-              todayWater.map((w, i) => {
-                const f = formatVolume(w.ml, units);
-                return (
-                  <View key={w.id}>
-                    <Row style={{ justifyContent: 'space-between', paddingVertical: 6 }}>
-                      <Row gap={10}>
-                        <UI.Drop size={18} color={c.cat.hydration} weight="fill" />
-                        <Txt role="body">
-                          {f.value} {f.unit}
-                        </Txt>
-                        <Txt role="footnote" tone="tertiary">
-                          {formatClock(minutesOfDay(w.at, zone))}
-                          {w.source === 'AUTO_WIDGET' ? ' · widget' : ''}
-                        </Txt>
-                      </Row>
-                      <IconButton
-                        Glyph={UI.Trash}
-                        label={`Delete ${f.value} ${f.unit} entry`}
-                        onPress={() => confirmDestructive('Remove this drink?', `${f.value} ${f.unit} at ${formatClock(minutesOfDay(w.at, zone))} comes off today's total.`, 'Remove', () => actions.removeLog('water', w.id))}
-                        size={36}
-                        color={c.textSecondary}
-                      />
-                    </Row>
-                    {i < todayWater.length - 1 ? <Divider /> : null}
-                  </View>
-                );
-              })
-            )}
-          </Card>
-        </>
-      ) : null}
+      <SectionHeader title="Logged" />
+      <Card>
+        <ActivityList habit={habit} />
+      </Card>
 
       <Card>
         <Segmented options={RANGE_OPTIONS} value={range} onChange={setRange} />
@@ -313,6 +286,9 @@ export default function HabitDetailScreen() {
       <SectionHeader title="Last 26 weeks" />
       <Card>
         <Heatmap26w values={heat} today={today} createdDay={habit.createdDay} />
+        {habit.createdDay < lastNDays(today, 7)[0]! ? (
+          <PillButton label="Fix an older day" kind="ghost" compact Leading={UI.Calendar} onPress={() => setPickingDay(true)} style={{ alignSelf: 'flex-start', marginTop: 12 }} />
+        ) : null}
       </Card>
 
       {preset ? (
@@ -409,6 +385,7 @@ export default function HabitDetailScreen() {
       <HabitEditorSheet visible={editing} onClose={() => setEditing(false)} habit={habit} rule={editRule} />
       <ReminderPolicySheet visible={policyOpen} onClose={() => setPolicyOpen(false)} habit={habit} policy={view.policy} context={policyContext} onSave={(p) => actions.setPolicy(p)} />
       {amount ? <AmountSheet visible onClose={() => setAmount(null)} habit={habit} mode={amount.mode} day={amount.day} current={amount.current} /> : null}
+      {pickingDay ? <DayPickerSheet visible onClose={() => setPickingDay(false)} habit={habit} today={today} values={heat} firstDay={habit.createdDay} onPick={onPickDay} /> : null}
     </Screen>
   );
 }

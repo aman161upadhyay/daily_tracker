@@ -8,8 +8,9 @@ import {
   SupersededError,
   addResponseListener,
   cancelAll,
-  consumeLaunchResponse,
+  clearLaunchResponse,
   getPermission,
+  launchResponse,
   beginHandling,
   endHandling,
   registerBackgroundReplan,
@@ -29,13 +30,13 @@ const SYNC_RETRY_MS = 60_000;
  * notification button presses into state changes. Renders nothing.
  */
 export function NudgeScheduler() {
-  const { state, ready, nowMs, zone, today, apply, replaceEpoch } = useTracker();
+  const { state, ready, nowMs, zone, today, apply, replaceEpoch, replacePending, replaceSeq } = useTracker();
   const router = useRouter();
-  const latest = useRef({ state, today, nowMs, zone });
+  const latest = useRef({ state, today, nowMs, zone, replacePending });
   // Written after commit, not during render (a render-phase ref write makes the compiler skip
   // this component); every reader below is a listener or a timer, which runs after commit anyway.
   useLayoutEffect(() => {
-    latest.current = { state, today, nowMs, zone };
+    latest.current = { state, today, nowMs, zone, replacePending };
   });
 
   // One instant, and the day derived from it. The rendered `today` is refreshed on a 30-second tick,
@@ -43,8 +44,12 @@ export function NudgeScheduler() {
   // new instant under the previous day.
   const ctx = (state: typeof latest.current.state, at = Date.now()): CommandContext => contextFor(state, at, currentZone());
 
-  const handle = async (r: NudgeResponse) => {
-    if (!(await beginHandling(r))) return;
+  const handle = async (r: NudgeResponse, launch = false) => {
+    const claimed = await beginHandling(r);
+    // The press that launched the app is in the inbox now (or was handled before): the OS copy
+    // can go. Cleared only after the inbox write, so a death before it replays the press.
+    if (launch) await clearLaunchResponse();
+    if (!claimed) return;
     // Decided against the newest state (a press right after a tap on Today, or two presses in the
     // same tick, see each other), at the instant the press arrived. The durable "handled" mark is
     // written only once the state write committed, so a crash in between replays the press rather
@@ -79,19 +84,35 @@ export function NudgeScheduler() {
     // Presses an earlier process wrote down and never confirmed applied, then the one that
     // launched the app (if any): the launch response is the newest, and the inbox dedupes both.
     void replayPendingResponses()
-      .then(() => consumeLaunchResponse().then((r) => r && handle(r)))
+      .then(() => launchResponse().then((r) => r && handle(r, true)))
       .catch((err) => console.warn('Notification press failed', err));
     return remove;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
 
+  // A re-plan folds what the OS delivered into the state. Those deliveries belong to the state
+  // whose alarms rang; a replace (erase, restore, sample data) in the middle of a re-plan would
+  // fold them into the new state. Fenced on the replace counter: a fold conceived before a
+  // replace is refused after it, the re-plan is abandoned, and the one the replace triggers
+  // starts over from the new state's (empty) record.
+  const fencedReconcile = () => {
+    const seq = replaceSeq();
+    const fenced: typeof apply = (build) => {
+      if (replaceSeq() !== seq) return Promise.reject(new SupersededError());
+      return apply(build);
+    };
+    return reconcileAndSync(() => latest.current.state, fenced, ctx(latest.current.state));
+  };
+
   // Re-plan whenever the plan changes (state or the minute), debounced. Also after the state was
   // replaced (erase, restore, sample data): the service's record went with the old state in the
   // same database transaction, so this sync starts from a clean slate — it cancels the old
   // state's alarms as not ours and schedules the new state's plan — even when the two plans
-  // happen to read the same. And again a minute after a sync failed (the OS list could not be
-  // read, the record could not be written): the schedule must not stay stale until the next
-  // state change.
+  // happen to read the same. Not before that transaction committed, though: until then the
+  // database (and the record) still belong to the old state, and a re-plan would read the old
+  // state's deliveries as the new state's. And again a minute after a sync failed (the OS list
+  // could not be read, the record could not be written, the OS refused a request): the schedule
+  // must not stay stale until the next state change.
   const plan = ready ? nudgePlan(state, today, nowMs, zone) : null;
   const planKey = plan ? plan.map((n) => `${n.id}@${n.at}:${n.habitIds.join(',')}:${n.body}`).join('|') : '';
   const enabled = state.settings.remindersEnabled;
@@ -102,6 +123,7 @@ export function NudgeScheduler() {
     if (!NOTIFICATIONS_SUPPORTED || !ready) return;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let gone = false;
+    if (replacePending) return;
     const timer = setTimeout(async () => {
       try {
         if (!enabled) {
@@ -109,7 +131,7 @@ export function NudgeScheduler() {
           return;
         }
         if ((await getPermission()) !== 'granted') return;
-        await reconcileAndSync(() => latest.current.state, apply, ctx(latest.current.state));
+        await fencedReconcile();
       } catch (err) {
         // A superseded sync (the record moved under it) is tried again as well, quietly.
         if (!(err instanceof SupersededError)) console.warn('Notification sync failed', err);
@@ -122,17 +144,19 @@ export function NudgeScheduler() {
       if (retryTimer !== null) clearTimeout(retryTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, planKey, enabled, tapMl, units, replaceEpoch, retry]);
+  }, [ready, planKey, enabled, tapMl, units, replaceEpoch, replacePending, retry]);
 
   // Permission can change in system settings while we are away: re-sync on foreground.
   useEffect(() => {
     if (!NOTIFICATIONS_SUPPORTED) return;
     const sub = AppState.addEventListener('change', (s) => {
-      if (s !== 'active' || !latest.current.state.settings.remindersEnabled) return;
+      if (s !== 'active' || !latest.current.state.settings.remindersEnabled || latest.current.replacePending) return;
       void (async () => {
         if ((await getPermission()) !== 'granted') return;
-        await reconcileAndSync(() => latest.current.state, apply, ctx(latest.current.state));
-      })().catch((err) => console.warn('Notification sync failed', err));
+        await fencedReconcile();
+      })().catch((err) => {
+        if (!(err instanceof SupersededError)) console.warn('Notification sync failed', err);
+      });
     });
     return () => sub.remove();
     // eslint-disable-next-line react-hooks/exhaustive-deps

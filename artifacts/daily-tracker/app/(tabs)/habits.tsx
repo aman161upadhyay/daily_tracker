@@ -15,7 +15,7 @@ import { Txt } from '@/components/ui/Txt';
 import { SampleDataChip } from '@/components/tracker/SampleDataChip';
 import { useColors } from '@/hooks/useColors';
 import type { Category, Habit } from '@/src/domain/models';
-import { CATEGORY_LABELS, CATEGORY_ORDER, PRESET_BY_ID, PRESETS, type Preset } from '@/src/library/presets';
+import { CATEGORY_LABELS, CATEGORY_ORDER, presetById, PRESETS, type Preset } from '@/src/library/presets';
 import { useHabitViews } from '@/src/state/hooks';
 import { useTracker } from '@/src/state/TrackerProvider';
 
@@ -29,11 +29,11 @@ export default function HabitsScreen() {
   // `t` is the instant of the knock: the same door tapped twice opens the sheet twice.
   const { preset: presetParam, t: knock } = useLocalSearchParams<{ preset?: string; t?: string }>();
   const door = presetParam ? `${presetParam}|${knock ?? ''}` : undefined;
-  const [preset, setPreset] = useState<Preset | null>(() => PRESET_BY_ID[presetParam ?? ''] ?? null);
+  const [preset, setPreset] = useState<Preset | null>(() => presetById(presetParam) ?? null);
   const [openedFor, setOpenedFor] = useState(door);
   if (door !== openedFor) {
     setOpenedFor(door);
-    setPreset(PRESET_BY_ID[presetParam ?? ''] ?? null);
+    setPreset(presetById(presetParam) ?? null);
   }
   const [amountHabit, setAmountHabit] = useState<Habit | null>(null);
   const needsAmount = (h: Habit) => h.type === 'AMOUNT' || (h.type === 'TIMER' && !h.mindKind);

@@ -211,22 +211,22 @@ export class SupersededError extends Error {
 
 interface ReadBookkeeping {
   bk: Bookkeeping;
-  /** The stored text, for the compare-and-set write that follows. */
-  raw: string | null;
+  /** The record's version, for the compare-and-set write that follows (a replace moves it too). */
+  raw: string;
 }
 
 async function readBookkeeping(): Promise<ReadBookkeeping> {
   const store = await createStore();
-  const raw = await store.readRecord(BOOKKEEPING_RECORD);
-  return { bk: parseBookkeeping(raw), raw };
+  const { value, version } = await store.readRecord(BOOKKEEPING_RECORD);
+  return { bk: parseBookkeeping(value), raw: version };
 }
 
-/** Write the record if it still reads `expected`; returns the stored text for the next write. */
-async function writeBookkeeping(bk: Bookkeeping, expected: string | null): Promise<string> {
+/** Write the record if its version is still `expected`; returns the new version for the next write. */
+async function writeBookkeeping(bk: Bookkeeping, expected: string): Promise<string> {
   const store = await createStore();
-  const raw = JSON.stringify(bk);
-  if (!(await store.writeRecord(BOOKKEEPING_RECORD, raw, expected))) throw new SupersededError();
-  return raw;
+  const version = await store.writeRecord(BOOKKEEPING_RECORD, JSON.stringify(bk), expected);
+  if (version === null) throw new SupersededError();
+  return version;
 }
 
 /**
@@ -410,6 +410,7 @@ async function syncPlanNow(plan: ScheduledNudge[], nowMs: number): Promise<Fired
   // The ledger lists what is really pending: kept alarms plus what scheduling accepted. A request
   // the OS refused is not written down, so it is neither counted as fired nor marked delivered.
   const accepted = new Set<string>(ours);
+  let unscheduled = 0;
   for (const n of scheduling) {
     const payload: NudgePayload = {
       nudgeId: n.id,
@@ -436,6 +437,7 @@ async function syncPlanNow(plan: ScheduledNudge[], nowMs: number): Promise<Fired
       accepted.add(n.id);
     } catch (err) {
       console.warn('Could not schedule', n.id, err);
+      unscheduled += 1;
     }
   }
 
@@ -444,7 +446,26 @@ async function syncPlanNow(plan: ScheduledNudge[], nowMs: number): Promise<Fired
   const standing = live.filter((e) => refused.has(e.id) && !accepted.has(e.id) && !keep.has(e.id));
   const ledger: LedgerEntry[] = [...overdueKept, ...plan.filter((n) => n.at > nowMs && !keep.has(n.id) && accepted.has(n.id)).map((n) => ledgerEntry(n, exact)), ...standing];
   await writeBookkeeping({ ledger, journal: owed, cancelling: [], scheduling: [] }, stored);
+  // The ledger is honest about what the OS refused; the sync itself is not a success. Thrown
+  // after the write so the schedule is accounted for, and so the caller tries again (and the
+  // reminder health shows it) instead of leaving the plan half-applied until the next change.
+  if (unscheduled > 0 || refused.size > 0) throw new OsRefusedError(unscheduled, refused.size);
   return owed;
+}
+
+/** The OS turned some schedule or cancel requests down; the ledger already reflects what stands. */
+export class OsRefusedError extends Error {
+  constructor(
+    readonly unscheduled: number,
+    readonly uncancelled: number,
+  ) {
+    super(
+      [unscheduled > 0 ? `${unscheduled} reminder${unscheduled === 1 ? '' : 's'} could not be scheduled` : '', uncancelled > 0 ? `${uncancelled} old reminder${uncancelled === 1 ? '' : 's'} could not be cancelled` : '']
+        .filter(Boolean)
+        .join('; ') + '. Will try again.',
+    );
+    this.name = 'OsRefusedError';
+  }
 }
 
 /**
@@ -468,6 +489,7 @@ export function cancelAll(): Promise<void> {
     const stored = await writeBookkeeping({ ledger: live, journal, cancelling: ids, scheduling: [] }, raw);
     const refused = await cancelEach(ids);
     await writeBookkeeping({ ledger: live.filter((e) => refused.has(e.id)), journal, cancelling: [], scheduling: [] }, stored);
+    if (refused.size > 0) throw new OsRefusedError(0, refused.size);
   });
 }
 
@@ -485,12 +507,18 @@ export function addResponseListener(onResponse: (r: NudgeResponse) => void): () 
   return () => sub.remove();
 }
 
-/** The response that launched the app (if any); cleared so it is not replayed. */
-export async function consumeLaunchResponse(): Promise<NudgeResponse | null> {
+/**
+ * The response that launched the app (if any). Not cleared here: the caller clears it with
+ * `clearLaunchResponse` once the press is in the inbox, so a death in between replays it rather
+ * than losing it (the inbox dedupes a press that is read twice).
+ */
+export async function launchResponse(): Promise<NudgeResponse | null> {
   const last = await Notifications.getLastNotificationResponseAsync();
-  if (!last) return null;
+  return last ? toResponse(last) : null;
+}
+
+export async function clearLaunchResponse(): Promise<void> {
   await Notifications.clearLastNotificationResponseAsync().catch(() => {});
-  return toResponse(last);
 }
 
 // The responses record is read-modify-write; one queue per runtime keeps two presses arriving
@@ -502,10 +530,10 @@ function withResponses<T>(job: (r: Responses) => { next: Responses; out: T }): P
   const run = async () => {
     const store = await createStore();
     for (let attempt = 0; attempt < 3; attempt++) {
-      const raw = await store.readRecord(RESPONSES_RECORD);
-      const { next, out } = job(parseResponses(raw));
+      const { value, version } = await store.readRecord(RESPONSES_RECORD);
+      const { next, out } = job(parseResponses(value));
       const text = JSON.stringify(next);
-      if (text === (raw ?? JSON.stringify(EMPTY_RESPONSES)) || (await store.writeRecord(RESPONSES_RECORD, text, raw))) return out;
+      if (text === (value ?? JSON.stringify(EMPTY_RESPONSES)) || (await store.writeRecord(RESPONSES_RECORD, text, version)) !== null) return out;
     }
     throw new SupersededError();
   };
@@ -554,7 +582,7 @@ export async function endHandling(key: string, committed: boolean): Promise<void
 /** Presses written down and not yet confirmed applied, oldest first (see responseInbox). */
 export async function pendingResponses(): Promise<NudgeResponse[]> {
   const store = await createStore();
-  const rec = parseResponses(await store.readRecord(RESPONSES_RECORD));
+  const rec = parseResponses((await store.readRecord(RESPONSES_RECORD)).value);
   return pending(rec, Date.now())
     .filter((p) => !inFlight.has(p.key))
     .map((p) => ({ payload: p.payload, action: p.action, key: p.key, receivedAt: p.receivedAt }));

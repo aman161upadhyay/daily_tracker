@@ -117,32 +117,65 @@ function storeContract(name: string, open: () => Promise<TrackerStore>) {
     it('keeps service records beside the state, compare-and-set, and replaces them with it', async () => {
       const store = await open();
       await store.replace(buildEmptyState(TODAY));
-      assert.equal(await store.readRecord('nudges.bookkeeping'), null);
-      assert.equal(await store.writeRecord('nudges.bookkeeping', 'one', 'stale'), false, 'a write that expects a record that is not there is refused');
-      assert.equal(await store.writeRecord('nudges.bookkeeping', 'one', null), true);
-      assert.equal(await store.readRecord('nudges.bookkeeping'), 'one');
-      assert.equal(await store.writeRecord('nudges.bookkeeping', 'two', 'zero'), false, 'a write against a moved record is refused');
-      assert.equal(await store.readRecord('nudges.bookkeeping'), 'one', 'and leaves it alone');
-      assert.equal(await store.writeRecord('nudges.bookkeeping', 'two', 'one'), true);
-      assert.equal(await store.writeRecord('nudges.responses', '{}', null), true);
-      assert.equal(await store.readRecord('nudges.bookkeeping'), 'two');
-      assert.equal(await store.readRecord('nudges.responses'), '{}', 'records are independent');
+      const none = await store.readRecord('nudges.bookkeeping');
+      assert.equal(none.value, null);
+      assert.equal(await store.writeRecord('nudges.bookkeeping', 'one', 'stale'), null, 'a write with a made-up version is refused');
+      const v1 = await store.writeRecord('nudges.bookkeeping', 'one', none.version);
+      assert.ok(v1, 'a write against the version read goes through');
+      assert.equal((await store.readRecord('nudges.bookkeeping')).value, 'one');
+      assert.equal(await store.writeRecord('nudges.bookkeeping', 'two', none.version), null, 'a write against a moved record is refused');
+      assert.equal((await store.readRecord('nudges.bookkeeping')).value, 'one', 'and leaves it alone');
+      const v2 = await store.writeRecord('nudges.bookkeeping', 'two', v1!);
+      assert.ok(v2);
+      const r0 = await store.readRecord('nudges.responses');
+      assert.ok(await store.writeRecord('nudges.responses', '{}', r0.version));
+      assert.equal((await store.readRecord('nudges.bookkeeping')).value, 'two');
+      assert.equal((await store.readRecord('nudges.responses')).value, '{}', 'records are independent');
       // A row-level persist leaves the records alone; a whole replace takes them with the old state.
       const before = (await store.load())!;
       const after = reducer(before, { type: 'ADD_WATER', entry: { id: 'w1', day: TODAY, at: NOW, zone: ZONE, ml: 250, source: 'MANUAL' } });
       await store.persist(before, after);
-      assert.equal(await store.readRecord('nudges.bookkeeping'), 'two');
+      assert.equal((await store.readRecord('nudges.bookkeeping')).value, 'two');
+      assert.equal((await store.readRecord('nudges.bookkeeping')).version, v2, 'a persist does not move the version');
       await store.replace(buildSampleState(TODAY, ZONE, NOW));
-      assert.equal(await store.readRecord('nudges.bookkeeping'), null, 'gone with the replaced state');
-      assert.equal(await store.readRecord('nudges.responses'), null);
-      assert.equal(await store.writeRecord('nudges.bookkeeping', 'three', null), true, 'and a fresh one starts from nothing');
-      assert.equal(await store.writeRecord('nudges.bookkeeping', null, 'three'), true, 'null removes');
-      assert.equal(await store.readRecord('nudges.bookkeeping'), null);
+      const gone = await store.readRecord('nudges.bookkeeping');
+      assert.equal(gone.value, null, 'gone with the replaced state');
+      assert.equal((await store.readRecord('nudges.responses')).value, null);
+      assert.equal(await store.writeRecord('nudges.bookkeeping', 'three', v2!), null, 'the old version is dead after a replace');
+      assert.notEqual(gone.version, none.version, 'two "no record" reads across a replace are different versions');
+      assert.equal(await store.writeRecord('nudges.bookkeeping', 'three', none.version), null, 'a "no record yet" read before the replace does not pass after it');
+      const v3 = await store.writeRecord('nudges.bookkeeping', 'three', gone.version);
+      assert.ok(v3, 'a fresh read after the replace starts from nothing');
+      assert.ok(await store.writeRecord('nudges.bookkeeping', null, v3!), 'null removes');
+      assert.equal((await store.readRecord('nudges.bookkeeping')).value, null);
+      // Interleaved compare-and-set writes never both succeed.
+      const start = await store.readRecord('race');
+      const results = await Promise.all([store.writeRecord('race', 'a', start.version), store.writeRecord('race', 'b', start.version)]);
+      assert.equal(results.filter((x) => x !== null).length, 1, 'exactly one of two racing writes wins');
     });
   });
 }
 
-storeContract('sqlite', async () => SqliteStore.open(new NodeDriver()));
+// The app reaches SQLite through createStore.native's one-at-a-time queue (one connection cannot
+// nest transactions); the contract's racing writes go through the same kind of queue here.
+async function serializedSqlite(): Promise<TrackerStore> {
+  const store = await SqliteStore.open(new NodeDriver());
+  let queue: Promise<unknown> = Promise.resolve();
+  const serialized = <T>(job: () => Promise<T>): Promise<T> => {
+    const run = queue.then(job, job);
+    queue = run.catch(() => undefined);
+    return run;
+  };
+  return {
+    load: () => serialized(() => store.load()),
+    persist: (prev, next) => serialized(() => store.persist(prev, next)),
+    replace: (state) => serialized(() => store.replace(state)),
+    readRecord: (key) => serialized(() => store.readRecord(key)),
+    writeRecord: (key, value, expected) => serialized(() => store.writeRecord(key, value, expected)),
+  };
+}
+
+storeContract('sqlite', serializedSqlite);
 storeContract('json', async () => new JsonStore(new MemoryBackend()));
 
 describe('schema migrations', () => {

@@ -7,11 +7,11 @@ import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import { withAlpha } from '@/src/domain/color/oklch';
 import { displayPhase, PHASE_LABELS, phaseQualifier, type CyclePhase, type CycleTimeline } from '@/src/domain/cycle/timeline';
-import { addDays, parseDay, toDayString, weekdayOf } from '@/src/domain/time/trackingDay';
+import { monthCells, monthOf, monthTitle, shiftMonth } from '@/src/domain/time/month';
+import { parseDay } from '@/src/domain/time/trackingDay';
 import { phaseColor, phaseFill } from './phaseColors';
 
 const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 export interface CycleCalendarProps {
   /** "YYYY-MM" */
@@ -26,37 +26,12 @@ export interface CycleCalendarProps {
   onMonthChange: (month: string) => void;
 }
 
-function monthOf(day: string): string {
-  return day.slice(0, 7);
-}
-
-function shiftMonth(month: string, by: number): string {
-  const [y, m] = month.split('-').map(Number) as [number, number];
-  const idx = y * 12 + (m - 1) + by;
-  return `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, '0')}`;
-}
-
-function daysInMonth(month: string): number {
-  const [y, m] = month.split('-').map(Number) as [number, number];
-  return new Date(Date.UTC(y, m, 0)).getUTCDate();
-}
-
 /** Month grid, Monday first; days are tinted by phase (solid = logged, soft = predicted). */
 export function CycleCalendar({ month, today, timeline, birthControl, loggedDays, selected, onSelect, onMonthChange }: CycleCalendarProps) {
   const c = useColors();
   const palette = { cycle: c.cat.cycle, green: c.green, violet: c.violetSoft, gold: c.goldBright, textTertiary: c.textTertiary };
 
-  const cells = useMemo(() => {
-    const [y, m] = month.split('-').map(Number) as [number, number];
-    const first = toDayString(y, m, 1);
-    const lead = weekdayOf(first);
-    const n = daysInMonth(month);
-    const out: (string | null)[] = [];
-    for (let i = 0; i < lead; i++) out.push(null);
-    for (let d = 0; d < n; d++) out.push(addDays(first, d));
-    while (out.length % 7 !== 0) out.push(null);
-    return out;
-  }, [month]);
+  const cells = useMemo(() => monthCells(month), [month]);
 
   const legend = useMemo(() => {
     const seen = new Set<CyclePhase>();
@@ -69,7 +44,6 @@ export function CycleCalendar({ month, today, timeline, birthControl, loggedDays
     return (['menstrual', 'fertile', 'luteal', 'late-luteal'] as CyclePhase[]).filter((p) => seen.has(p));
   }, [cells, timeline, birthControl]);
 
-  const [year, monthIndex] = month.split('-').map(Number) as [number, number];
   const thisMonth = monthOf(today);
 
   return (
@@ -77,7 +51,7 @@ export function CycleCalendar({ month, today, timeline, birthControl, loggedDays
       <Row style={styles.header}>
         <IconButton Glyph={UI.Back} label="Previous month" onPress={() => onMonthChange(shiftMonth(month, -1))} size={36} color={c.text} />
         <PressableScale haptic={false} onPress={() => onMonthChange(thisMonth)} accessibilityRole="button" accessibilityLabel="Jump to this month" style={{ flex: 1 }}>
-          <Txt role="title2" align="center">{`${MONTHS[monthIndex - 1]} ${year}`}</Txt>
+          <Txt role="title2" align="center">{monthTitle(month)}</Txt>
         </PressableScale>
         <IconButton Glyph={UI.Caret} label="Next month" onPress={() => onMonthChange(shiftMonth(month, 1))} size={36} color={c.text} />
       </Row>

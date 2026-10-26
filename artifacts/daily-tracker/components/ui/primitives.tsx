@@ -169,6 +169,7 @@ export function IconButton({
   color,
   filled,
   haptic,
+  disabled,
 }: {
   Glyph: Icon;
   onPress: () => void;
@@ -177,6 +178,7 @@ export function IconButton({
   color?: string;
   filled?: boolean;
   haptic?: boolean;
+  disabled?: boolean;
 }) {
   const c = useColors();
   const accent = color ?? c.green;
@@ -184,8 +186,10 @@ export function IconButton({
     <PressableScale
       onPress={onPress}
       haptic={haptic}
+      disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={disabled ? { disabled: true } : undefined}
       // Touch target of at least 48 dp whatever the drawn size (Material / WCAG 2.5.8).
       hitSlop={Math.max(6, Math.ceil((48 - size) / 2))}
       style={{

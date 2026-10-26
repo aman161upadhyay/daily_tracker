@@ -13,6 +13,17 @@ import { isCalendarDay } from '@/src/domain/time/trackingDay';
 import type { TrackerState } from '@/src/state/types';
 import { projectRecords, sanitizeCycleReminders, sanitizePeriodHistory, sanitizeSettings, validateRecords, ValidationError } from './validate';
 
+/** A service record as read: its text (null when absent) and the opaque version a write compares against. */
+export interface RecordRead {
+  value: string | null;
+  version: string;
+}
+
+/** The version of a record: the replace generation it was read under, then the text (absent: "-"). */
+export function recordVersion(generation: number, value: string | null): string {
+  return value === null ? `${generation}:-` : `${generation}:+${value}`;
+}
+
 export interface TrackerStore {
   /** Saved state, or null on a fresh install. */
   load(): Promise<TrackerState | null>;
@@ -26,15 +37,17 @@ export interface TrackerStore {
   /**
    * A service record kept beside the state (the notification service's bookkeeping, the inbox of
    * button presses): it shares the state's database, so it is as durable as the state and is
-   * replaced with it. Null when there is none.
+   * replaced with it. The value is null when there is none; the version is the token for the
+   * compare-and-set write that follows. A replace() moves the version of every record, present or
+   * not — a writer that read "no record yet" before a replace is refused after it.
    */
-  readRecord(key: string): Promise<string | null>;
+  readRecord(key: string): Promise<RecordRead>;
   /**
-   * Write a service record only if it still reads `expected` (null: no record yet); false when
-   * another writer moved it first, so the caller can read again instead of overwriting. A null
-   * `value` removes it.
+   * Write a service record only if its version is still `expected`; the new version, or null when
+   * another writer (or a replace) moved it first, so the caller can read again instead of
+   * overwriting. A null `value` removes the record.
    */
-  writeRecord(key: string, value: string | null, expected: string | null): Promise<boolean>;
+  writeRecord(key: string, value: string | null, expected: string): Promise<string | null>;
 }
 
 export class StorageError extends Error {

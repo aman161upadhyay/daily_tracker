@@ -8,7 +8,7 @@ import type { BodySync, HeartDay, SleepNight, StepDay, WeightEntry, Workout } fr
 import type { CycleDayLog, Habit, HabitEntry, HabitRule, MindSession, MovementSnack, NudgeEvent, NudgePolicy, ScheduledEvent } from '@/src/domain/models';
 import type { WaterEntry } from '@/src/domain/models';
 import type { TrackerState } from '@/src/state/types';
-import { diffById, normalizeSettings, StorageError, type TrackerStore } from '../store';
+import { diffById, normalizeSettings, recordVersion, StorageError, type RecordRead, type TrackerStore } from '../store';
 import type { SqlDriver, SqlValue } from './driver';
 import { migrate } from './schema';
 
@@ -315,6 +315,8 @@ const ALL_TABLES = [HABIT, RULE, POLICY, ENTRY, WATER, SNACK, MIND, NUDGE_EVENT,
 
 /** Service records share the kv table with the state's own keys, under their own prefix; replace() clears the table. */
 const RECORD_PREFIX = 'svc.';
+/** How many times the state was replaced; part of every record version (see TrackerStore.readRecord). */
+const KV_REPLACE_GENERATION = 'replace_generation';
 
 function upsertSql<T>(t: Table<T>): string {
   const placeholders = t.columns.map(() => '?').join(', ');
@@ -414,8 +416,12 @@ export class SqliteStore implements TrackerStore {
 
   async replace(state: TrackerState): Promise<void> {
     await this.db.withTransactionAsync(async () => {
+      // The replace generation outlives the records: a version read under the old one (a record
+      // that was missing then and is missing now) must not pass the compare-and-set after this.
+      const generation = await this.generation();
       for (const t of ALL_TABLES) await this.db.execAsync(`DELETE FROM ${t.name}`);
       await this.db.execAsync('DELETE FROM kv');
+      await this.writeKv(KV_REPLACE_GENERATION, String(generation + 1));
       await this.insertAll(HABIT, state.habits);
       await this.insertAll(RULE, state.rules);
       await this.insertAll(POLICY, state.policies);
@@ -438,22 +444,37 @@ export class SqliteStore implements TrackerStore {
     });
   }
 
-  async readRecord(key: string): Promise<string | null> {
+  private async generation(): Promise<number> {
+    const rows = await this.db.getAllAsync<{ value: string }>('SELECT value FROM kv WHERE key = ?', [KV_REPLACE_GENERATION]);
+    const n = Number(rows[0]?.value ?? 0);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  private async recordValue(key: string): Promise<string | null> {
     const rows = await this.db.getAllAsync<{ value: string }>('SELECT value FROM kv WHERE key = ?', [RECORD_PREFIX + key]);
     return rows[0]?.value ?? null;
   }
 
-  async writeRecord(key: string, value: string | null, expected: string | null): Promise<boolean> {
+  async readRecord(key: string): Promise<RecordRead> {
+    // Two reads, no transaction: a replace between them gives a version that matches neither
+    // side afterwards, which only refuses the write that follows (a false "moved", never a false "same").
+    const generation = await this.generation();
+    const value = await this.recordValue(key);
+    return { value, version: recordVersion(generation, value) };
+  }
+
+  async writeRecord(key: string, value: string | null, expected: string): Promise<string | null> {
     // Compare-and-set inside one transaction: the compare and the write cannot interleave with
     // another runtime's (a headless task's) write of the same record, nor with a replace().
-    let written = false;
+    let version: string | null = null;
     await this.db.withTransactionAsync(async () => {
-      const current = await this.readRecord(key);
-      if (current !== expected) return;
+      const generation = await this.generation();
+      const current = await this.recordValue(key);
+      if (recordVersion(generation, current) !== expected) return;
       await this.writeKv(RECORD_PREFIX + key, value);
-      written = true;
+      version = recordVersion(generation, value);
     });
-    return written;
+    return version;
   }
 
   // ── helpers ──────────────────────────────────────────────────────────────

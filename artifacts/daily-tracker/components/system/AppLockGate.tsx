@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AppState, type AppStateStatus, Modal, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { UI } from '@/components/ui/icons';
@@ -6,6 +6,7 @@ import { IconTile, PillButton } from '@/components/ui/primitives';
 import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import { authenticate, lockCapability, setScreenProtection } from '@/src/services/appLock';
+import { setAppLocked } from '@/src/services/lockState';
 import { useTracker } from '@/src/state/TrackerProvider';
 
 /**
@@ -99,6 +100,12 @@ export function AppLockGate() {
   useEffect(() => {
     if (locked) void unlock();
   }, [locked, unlock]);
+
+  // Published for the sheets: a Modal presented while the gate is up would stack above it.
+  useLayoutEffect(() => {
+    setAppLocked(locked);
+    return () => setAppLocked(false);
+  }, [locked]);
 
   if (!locked) return null;
 

@@ -240,6 +240,18 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   cancel is correct: Expo removes a request at delivery). Deferred PLAT12-03 (reboot drops expired DATE
   triggers before Expo's boot receiver → phantom FIRED; needs a Kotlin boot receiver; checklist AC5
   measures it). Dispositions in RUNNING_CONTEXT §6 Round 12.
+- Round 13 (2026-10-26 night) rules, paradigms 53–58: `readRecord` returns `{value, version}` and the
+  version carries a replace generation (SQLite kv `replace_generation`, JSON `{generation, records}`) —
+  a "no record yet" read before an erase/restore must not write after it; never compare record text
+  alone. Re-plans wait for `replacePending` (replace applied on screen but not committed) and in-flight
+  folds are fenced on `replaceSeq()` (scheduler + `replanLive`; LiveStore exposes both). A refused OS
+  schedule/cancel fails the sync (`OsRefusedError`) *after* the honest ledger write. The launch press is
+  cleared only after the inbox write (`launchResponse` / `clearLaunchResponse`). Nothing may present
+  above the app lock: `Sheet` reads `lockState` (a later RN Modal stacks above the gate's on Android).
+  Ids from outside the table go through `presetById` (hasOwnProperty), never `PRESET_BY_ID[x]`. B3 built:
+  "Logged" activity list on every habit page (exact-record Remove; Health Connect rows listed, not
+  removable) + "Fix an older day" month picker (yes/no flips in place; amounts via AmountSheet set mode;
+  one sheet at a time). Backlog: Undo toast after Remove, B5 pinned-card picker. Dispositions in §6 Round 13.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app

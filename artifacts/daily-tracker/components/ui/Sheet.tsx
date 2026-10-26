@@ -4,6 +4,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SPACE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
+import { useAppLocked } from '@/src/services/lockState';
 import { UI } from './icons';
 import { IconButton } from './primitives';
 import { Txt } from './Txt';
@@ -26,8 +27,12 @@ export function Sheet({ visible, title, onClose, children }: SheetProps) {
   // height pushed the title and the close button above the top edge. The body is what shrinks;
   // the grabber and the header keep their size, so Close stays reachable.
   const maxHeight = Math.max(240, windowHeight - insets.top - 24);
+  // Never above the app-lock gate: a Modal presented while the gate's own Modal is up stacks on
+  // top of it on Android (a deep link that opens a sheet would show the lock what it hides). The
+  // sheet waits, and appears once the gate is down.
+  const locked = useAppLocked();
   return (
-    <Modal visible={visible} transparent animationType={reduceMotion ? 'none' : 'slide'} onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible && !locked} transparent animationType={reduceMotion ? 'none' : 'slide'} onRequestClose={onClose} statusBarTranslucent>
       <View style={styles.root}>
         <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: c.scrim }]} onPress={onClose} accessibilityLabel="Close" accessibilityRole="button" />
         <View style={[styles.sheet, { backgroundColor: c.surfaceRaised, borderColor: c.hairline, paddingBottom: Math.max(insets.bottom, 16), maxHeight }]}>

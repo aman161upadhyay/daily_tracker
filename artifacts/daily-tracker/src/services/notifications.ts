@@ -30,6 +30,16 @@ export class SupersededError extends Error {
   }
 }
 
+export class OsRefusedError extends Error {
+  constructor(
+    readonly unscheduled: number,
+    readonly uncancelled: number,
+  ) {
+    super('The system refused part of the schedule.');
+    this.name = 'OsRefusedError';
+  }
+}
+
 export interface SyncHealth {
   failure: { at: number; message: string } | null;
 }
@@ -81,9 +91,11 @@ export function addResponseListener(_onResponse: (r: NudgeResponse) => void): ()
   return () => {};
 }
 
-export async function consumeLaunchResponse(): Promise<NudgeResponse | null> {
+export async function launchResponse(): Promise<NudgeResponse | null> {
   return null;
 }
+
+export async function clearLaunchResponse(): Promise<void> {}
 
 export async function scheduleMindEnd(_endAtMs: number, _minutes: number, _kind: MindKind): Promise<void> {}
 

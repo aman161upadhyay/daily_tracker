@@ -18,7 +18,7 @@ import { useColors } from '@/hooks/useColors';
 import type { Habit } from '@/src/domain/models';
 import { formatClock, formatDayLong, formatNumber, formatVolume } from '@/src/domain/time/format';
 import { minutesOfDay } from '@/src/domain/time/trackingDay';
-import { PRESET_BY_ID } from '@/src/library/presets';
+import { presetById } from '@/src/library/presets';
 import { useHabitViews, useHighlights, useLiveNudge, useTodaySummary } from '@/src/state/hooks';
 import { cycleTimeline, mindSeries, rotationItems, snackSeries, snackSuggestion, waterSeries } from '@/src/state/selectors';
 import { displayPhase, PHASE_LABELS, phaseQualifier } from '@/src/domain/cycle/timeline';
@@ -202,7 +202,7 @@ export default function TodayScreen() {
             view={v}
             last={i === views.length - 1}
             units={units}
-            nudgeText={v.habit.presetId ? PRESET_BY_ID[v.habit.presetId]?.nudgeText.split(',')[0] : undefined}
+            nudgeText={presetById(v.habit.presetId)?.nudgeText.split(',')[0]}
             onPress={() => router.push({ pathname: '/habit/[id]', params: { id: v.habit.id } })}
             onIncrement={() => (needsAmount(v.habit) ? setAmountHabit(v.habit) : actions.increment(v.habit))}
             onDecrement={() => actions.decrement(v.habit)}
