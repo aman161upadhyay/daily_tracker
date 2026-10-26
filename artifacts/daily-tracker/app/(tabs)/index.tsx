@@ -21,7 +21,7 @@ import { minutesOfDay } from '@/src/domain/time/trackingDay';
 import { PRESET_BY_ID } from '@/src/library/presets';
 import { useHabitViews, useHighlights, useLiveNudge, useTodaySummary } from '@/src/state/hooks';
 import { cycleTimeline, mindSeries, rotationItems, snackSeries, snackSuggestion, waterSeries } from '@/src/state/selectors';
-import { displayPhase, PHASE_LABELS } from '@/src/domain/cycle/timeline';
+import { displayPhase, PHASE_LABELS, phaseQualifier } from '@/src/domain/cycle/timeline';
 import { formatDayShort } from '@/src/domain/time/format';
 import { dayDiff } from '@/src/domain/time/trackingDay';
 import { useTracker } from '@/src/state/TrackerProvider';
@@ -142,7 +142,7 @@ export default function TodayScreen() {
           }}
           footer={
             <Row gap={8}>
-              <PillButton label={`+${formatVolume(250, units).value} ${units}`} Leading={UI.Drop} color={c.green} onPress={() => actions.addWater(250)} style={{ flex: 1 }} />
+              <PillButton label={`+${formatVolume(s.tapSizeMl, units).value} ${units}`} Leading={UI.Drop} color={c.green} onPress={() => actions.addWater(s.tapSizeMl)} style={{ flex: 1 }} />
               <IconButton Glyph={UI.Undo} label="Undo last water entry" onPress={() => actions.undoWater()} size={48} color={c.text} />
             </Row>
           }
@@ -250,6 +250,7 @@ function CycleSummary() {
   const prediction = timeline.prediction;
   const info = timeline.infoOn(calendarToday);
   const birthControl = state.settings.cycle.birthControl;
+  const word = phaseQualifier(info, calendarToday, calendarToday);
   const until = prediction ? dayDiff(calendarToday, prediction.nextStart) : 0;
   const detail = !prediction
     ? 'Log your first period on the Cycle tab'
@@ -264,7 +265,7 @@ function CycleSummary() {
       color={c.cat.cycle}
       Glyph={UI.Cycle}
       value={info ? `Day ${info.cycleDay}` : '—'}
-      unit={info ? PHASE_LABELS[displayPhase(info.phase, birthControl)] : undefined}
+      unit={info ? `${PHASE_LABELS[displayPhase(info.phase, birthControl)]}${word ? ` (${word})` : ''}` : undefined}
       detail={detail}
       onPress={() => router.push('/cycle')}
     />

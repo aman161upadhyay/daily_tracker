@@ -33,6 +33,8 @@ export interface FiredRecord {
   habitIds: string[];
   day: string;
   at: number;
+  /** A merged notification: every slot id it stood for. */
+  mergedIds?: string[];
 }
 
 export interface NudgeResponse {
@@ -58,7 +60,7 @@ type LedgerEntry = FiredRecord & { sig: string };
  * before they revoked it is gone at the OS level while still listed as pending). Folding the
  * capability into the signature re-submits every future request on either transition.
  */
-const signature = (n: ScheduledNudge, exact: boolean | null) => `${n.at}|${n.habitIds.join(',')}|${n.title}|${n.body}|${exact === null ? '?' : exact ? 'x' : 'i'}`;
+const signature = (n: ScheduledNudge, exact: boolean | null) => `${n.at}|${n.day}|${n.habitIds.join(',')}|${(n.mergedIds ?? []).join(',')}|${n.title}|${n.body}|${exact === null ? '?' : exact ? 'x' : 'i'}`;
 
 const CHANNELS: Record<NudgeChannel, { name: string; description: string; importance: Notifications.AndroidImportance; lockscreenVisibility?: Notifications.AndroidNotificationVisibility }> = {
   nudges: { name: 'Movement & habit nudges', description: 'Snack-sized reminders during your active hours.', importance: Notifications.AndroidImportance.DEFAULT },
@@ -223,6 +225,32 @@ function serialized<T>(job: () => Promise<T>, skipped: T): Promise<T> {
 }
 
 /**
+ * What the OS delivered since the previous sync (ledger entries whose time has passed and that
+ * are no longer pending), without touching the schedule. Callers fold these into the state
+ * before they derive the next plan: a plan built before the deliveries are known still counts
+ * the delivered slots as free and overspends the daily cap.
+ */
+export function firedSinceLastSync(nowMs: number): Promise<FiredRecord[]> {
+  return serialized(async () => {
+    const ledger = await readLedger();
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    return deliveries(ledger, new Set(scheduled.map((r) => r.identifier)), nowMs).fired;
+  }, []);
+}
+
+/**
+ * Split the ledger into what rang and what is overdue yet still pending. Without exact-alarm
+ * access (the Android 14+ default) an alarm may still be pending minutes after its time. Such an
+ * entry has not fired: it is left scheduled for a while rather than cancelled and counted against
+ * the daily cap as if the user had seen it.
+ */
+function deliveries(ledger: LedgerEntry[], pending: Set<string>, nowMs: number): { fired: FiredRecord[]; overdueKept: LedgerEntry[] } {
+  const overdueKept = ledger.filter((e) => e.at <= nowMs && pending.has(e.id) && e.at > nowMs - OVERDUE_GRACE_MS);
+  const fired = ledger.filter((e) => e.at <= nowMs && !pending.has(e.id)).map(({ sig: _sig, ...f }) => f);
+  return { fired, overdueKept };
+}
+
+/**
  * Make the OS schedule match the plan. Returns what the OS delivered since the
  * previous sync (ledger entries whose time has passed), so the caller can record
  * FIRED events. A superseded call returns nothing: the newer sync reports it.
@@ -235,12 +263,8 @@ async function syncPlanNow(plan: ScheduledNudge[], nowMs: number): Promise<Fired
   const ledger = await readLedger();
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   const pending = new Set(scheduled.map((r) => r.identifier));
-  // Without exact-alarm access (the Android 14+ default) an alarm may still be pending minutes
-  // after its time. Such an entry has not fired: leave it scheduled for a while rather than
-  // cancelling it and counting it against the daily cap as if the user had seen it.
-  const overdueKept = ledger.filter((e) => e.at <= nowMs && pending.has(e.id) && e.at > nowMs - OVERDUE_GRACE_MS);
+  const { fired, overdueKept } = deliveries(ledger, pending, nowMs);
   const keep = new Set(overdueKept.map((e) => e.id));
-  const fired = ledger.filter((e) => e.at <= nowMs && !pending.has(e.id));
 
   const wanted = new Map(plan.map((n) => [n.id, n]));
   const ours = new Set<string>();
@@ -272,6 +296,7 @@ async function syncPlanNow(plan: ScheduledNudge[], nowMs: number): Promise<Fired
       kind: n.kind,
       habitIds: n.habitIds,
       day: n.day,
+      ...(n.mergedIds ? { mergedIds: n.mergedIds } : {}),
       ...(n.snackType ? { snackType: n.snackType } : {}),
       ...(n.waterMl ? { waterMl: n.waterMl } : {}),
     };
@@ -296,7 +321,7 @@ async function syncPlanNow(plan: ScheduledNudge[], nowMs: number): Promise<Fired
 
   const nextLedger: LedgerEntry[] = [
     ...overdueKept,
-    ...plan.filter((n) => n.at > nowMs && !keep.has(n.id) && accepted.has(n.id)).map((n) => ({ id: n.id, habitIds: n.habitIds, day: n.day, at: n.at, sig: signature(n, exact) })),
+    ...plan.filter((n) => n.at > nowMs && !keep.has(n.id) && accepted.has(n.id)).map((n) => ({ id: n.id, habitIds: n.habitIds, day: n.day, at: n.at, ...(n.mergedIds ? { mergedIds: n.mergedIds } : {}), sig: signature(n, exact) })),
   ];
   await AsyncStorage.setItem(LEDGER_KEY, JSON.stringify(nextLedger));
   return fired;

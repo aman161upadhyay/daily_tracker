@@ -6,7 +6,7 @@ import { Txt } from '@/components/ui/Txt';
 import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
 import { FLOWS, isEmptyLog, MOODS, nextSeverity, SEVERITY_LABELS, SYMPTOMS } from '@/src/domain/cycle/symptoms';
-import { displayPhase, OPEN_PERIOD_MAX_DAYS, PHASE_LABELS, type CycleTimeline } from '@/src/domain/cycle/timeline';
+import { displayPhase, OPEN_PERIOD_MAX_DAYS, PHASE_LABELS, phaseQualifier, type CycleTimeline } from '@/src/domain/cycle/timeline';
 import type { CycleDayLog, Flow, Mood, Severity } from '@/src/domain/models';
 import { formatDayLong, formatDayShort } from '@/src/domain/time/format';
 import { dayDiff } from '@/src/domain/time/trackingDay';
@@ -51,7 +51,8 @@ export function DaySheet({ day, today, timeline, birthControl, log, onClose, onS
   const phaseLabel = info ? PHASE_LABELS[displayPhase(info.phase, birthControl)] : undefined;
   // Only logged bleeding is known: a projected phase says so, and a past cycle's fertile or luteal
   // day — counted back from the next logged start — is an estimate, not a record of ovulation.
-  const qualifier = info?.predicted ? ' (predicted)' : info?.estimated ? ' (estimated)' : '';
+  const word = phaseQualifier(info, day, today);
+  const qualifier = word ? ` (${word})` : '';
   const subtitle = [phaseLabel ? `${phaseLabel}${qualifier}` : null, info ? `cycle day ${info.cycleDay}` : null].filter(Boolean).join(' · ');
 
   const saveDraft = () => {

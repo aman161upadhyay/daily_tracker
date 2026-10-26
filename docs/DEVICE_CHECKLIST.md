@@ -215,6 +215,24 @@ cycle (phases, calendar, day sheet, insights) was verified in the web preview an
 | Y13 | Late workout and a later grant | Sync; then add a workout dated two days ago in another app; sync again. Then allow Weight in Health Connect permissions (previously off) and sync | The workout appears for its own day; the weight history for the last 30 days appears, not only since the last sync |
 | Y14 | A permission left off | Connect with Sleep denied | The connection card says "Reading …" and "Not allowed: sleep …" with a Permissions button; the Body tab names Sleep as kept empty by the permission, not "Nothing in Health Connect yet" |
 
+## Z — Council round 9 follow-ups (2026-10-26)
+
+| # | Scenario | Steps | Expect |
+|---|---|---|---|
+| Z1 | Delivered while closed, then a re-plan | Reminders on, cap set to 2 (Settings → Reminders); force-stop the app; let two movement nudges ring; open the app | The cap shows 2 of 2 used for the day and no third automatic nudge is scheduled (`adb shell dumpsys notification --noredact` lists none for today); the two rings appear in the ledger once each |
+| Z2 | Merged notification, one action | Two reminders set within five minutes of each other (a fixed time at 10:00 and one at 10:02) | One notification arrives naming both; Snooze on it brings back one notification 15 minutes later, never one of the two alone two minutes after; the daily cap counts one |
+| Z3 | Snooze late in the evening | Active hours end at 21:00; snooze an automatic movement nudge at 20:50 | No movement nudge rings at 21:05; the series resumes the next morning; a fixed clock time snoozed at the same moment still rings at 21:05 |
+| Z4 | After midnight, before the boundary | Tracking day starts at 3 am; at 00:30 look at Today and the Reminders card | Today still shows the evening's day; a 1:00 am fixed reminder is skipped when that habit was done in the evening; the cap is not reset until 3 am |
+| Z5 | Weekly quota met on Monday | A 2×/week habit with a fixed daily time; log it twice on Monday | No reminder for it Tuesday–Sunday; Monday of the next week rings again |
+| Z6 | Live nudge after everything is done | Log every movement habit (or let their quotas fill); look at the Today movement card | No "next nudge" countdown is shown; it returns the next day |
+| Z7 | Two drinks in the other app | In Samsung Health log 250 ml at 10:00 and 250 ml at 10:08; tap +250 ml here at 10:04; sync | Today shows 500 ml, not 250: only the nearer import is treated as the copy of the tap |
+| Z8 | A weight permission revoked and re-granted | Allow Weight, sync, revoke Weight in Health Connect, sync, allow it again, sync | The weight history for the last 30 days comes back, not only days since the last sync |
+| Z9 | "When the period begins" | A period reminder "Period · day 0 (when it begins)"; log a period start today | The reminder fires today at its time (not in four weeks) |
+| Z10 | Smallest widget, long value | Water goal in ounces with a four-digit total (or 20,000 ml) at the smallest widget size | The ring shows "1.9k" / "20k" rather than "1,8…"; TalkBack still reads the full amount |
+| Z11 | Stepper hints | TalkBack on; focus the water goal stepper in Settings and onboarding, then an active-hours stepper | "Tap to type an amount" with ml or oz bounds for the water goal; "Tap to type a time" for the hours; the onboarding bounds read in the unit shown |
+| Z12 | Row actions | TalkBack on the Habits list on Today: a count habit, an amount habit, a plain timer habit, a meditation habit | Labels read "Add one to …", "Log an amount for …", "Log time for …", "Start … timer" and the tap does what the label says |
+| Z13 | Water button follows "One tap adds" | Settings → Water → One tap adds 330 ml | Today's water button reads +330 ml and logs 330 ml |
+
 ## Recording results
 
-Add a dated line under the milestone in `docs/IMPLEMENTATION_PLAN.md` ("Device run YYYY-MM-DD, Pixel 7 / Android 15: N1–N17, Y1–Y14 pass except …") and open follow-ups for anything that failed.
+Add a dated line under the milestone in `docs/IMPLEMENTATION_PLAN.md` ("Device run YYYY-MM-DD, Pixel 7 / Android 15: N1–N17, Y1–Y14, Z1–Z13 pass except …") and open follow-ups for anything that failed.

@@ -15,8 +15,8 @@ import {
   type NudgeResponse,
 } from '@/src/services/notifications';
 import { registerResponseTask } from '@/src/services/nudgeTasks';
-import { contextFor, syncStateToOs } from '@/src/services/replan';
-import { firedActions, nudgeResponseActions, type CommandContext } from '@/src/state/commands';
+import { contextFor, reconcileAndSync } from '@/src/services/replan';
+import { nudgeResponseActions, type CommandContext } from '@/src/state/commands';
 import { nudgePlan } from '@/src/state/selectors';
 import { useTracker } from '@/src/state/TrackerProvider';
 
@@ -84,9 +84,7 @@ export function NudgeScheduler() {
           return;
         }
         if ((await getPermission()) !== 'granted') return;
-        const c = ctx(latest.current.state);
-        const fired = await syncStateToOs(latest.current.state, c);
-        await apply((s) => [...firedActions(s, fired, c), { type: 'PRUNE_EVENTS', beforeMs: c.nowMs - 60 * 60_000 }]);
+        await reconcileAndSync(() => latest.current.state, apply, ctx(latest.current.state));
       } catch (err) {
         console.warn('Notification sync failed', err);
       }
@@ -102,9 +100,7 @@ export function NudgeScheduler() {
       if (s !== 'active' || !latest.current.state.settings.remindersEnabled) return;
       void (async () => {
         if ((await getPermission()) !== 'granted') return;
-        const c = ctx(latest.current.state);
-        const fired = await syncStateToOs(latest.current.state, c);
-        await apply((s) => firedActions(s, fired, c));
+        await reconcileAndSync(() => latest.current.state, apply, ctx(latest.current.state));
       })().catch((err) => console.warn('Notification sync failed', err));
     });
     return () => sub.remove();

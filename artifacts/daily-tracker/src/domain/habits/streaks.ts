@@ -93,9 +93,12 @@ export function periodQuota(rule: Pick<HabitRule, 'cadence' | 'timesPerPeriod'>,
 export function periodRequired(rule: Pick<HabitRule, 'cadence' | 'timesPerPeriod'>, day: string, from: string, offDays?: ReadonlySet<string>): number {
   if (rule.cadence === 'DAILY') return 1;
   const bounds = periodBounds(rule.cadence, day);
-  let available = 0;
-  for (let d = from > bounds.start ? from : bounds.start; d <= bounds.end; d = addDays(d, 1)) if (!offDays?.has(d)) available++;
-  if (available === 0) return 0;
+  const first = from > bounds.start ? from : bounds.start;
+  if (first > bounds.end) return 0;
+  // Arithmetic, not a walk: this runs once per day of every history chart and cycle insight.
+  let available = dayDiff(first, bounds.end) + 1;
+  if (offDays) for (const d of offDays) if (d >= first && d <= bounds.end) available--;
+  if (available <= 0) return 0;
   return Math.min(available, Math.max(1, Math.round((periodQuota(rule, bounds.end) * available) / bounds.length)));
 }
 
@@ -107,24 +110,44 @@ export function periodRequired(rule: Pick<HabitRule, 'cadence' | 'timesPerPeriod
  * a full month's quota.
  */
 export function segmentStartOn(rules: HabitRule[], createdDay: string, day: string): string {
+  return segmentStartIn(cadenceSegments(rules, createdDay, day), day, createdDay);
+}
+
+export interface CadenceSegment {
+  /** First day the cadence applies: creation, or the day after the previous cadence's last period. */
+  from: string;
+  cadence: Cadence;
+}
+
+/**
+ * Every cadence segment from creation up to `day`, oldest first: one walk over the periods gives
+ * the segment of any day in the range by lookup, where walking again for each day of a year's
+ * history would be a year of periods per day.
+ */
+export function cadenceSegments(rules: HabitRule[], createdDay: string, day: string): CadenceSegment[] {
   const sorted = sortRules(rules);
-  if (sorted.length === 0 || day <= createdDay) return createdDay;
-  // A cadence that never changed has one segment: no need to walk a year of periods to find its start.
-  if (sorted.every((r) => r.cadence === sorted[0]!.cadence)) return createdDay;
+  if (sorted.length === 0) return [{ from: createdDay, cadence: 'DAILY' }];
+  let cadence = ruleOn(sorted, createdDay).cadence;
+  const out: CadenceSegment[] = [{ from: createdDay, cadence }];
+  // A cadence that never changed has one segment: no need to walk a year of periods.
+  if (sorted.every((r) => r.cadence === cadence)) return out;
   let cursor = createdDay;
-  let cadence = ruleOn(sorted, cursor).cadence;
-  let segment = cursor;
   while (cursor <= day) {
     const rule = ruleOn(sorted, cursor);
     if (rule.cadence !== cadence) {
       cadence = rule.cadence;
-      segment = cursor;
+      out.push({ from: cursor, cadence });
     }
-    const end = periodBounds(rule.cadence, cursor).end;
-    if (day <= end) return segment;
-    cursor = addDays(end, 1);
+    cursor = addDays(periodBounds(rule.cadence, cursor).end, 1);
   }
-  return segment;
+  return out;
+}
+
+/** Start of the segment that contains `day` in a list walked at least up to `day`. */
+export function segmentStartIn(segments: readonly CadenceSegment[], day: string, createdDay: string): string {
+  if (day <= createdDay) return createdDay;
+  for (let i = segments.length - 1; i >= 0; i--) if (segments[i]!.from <= day) return segments[i]!.from;
+  return createdDay;
 }
 
 export function periodBounds(cadence: Cadence, day: string): { start: string; end: string; length: number } {

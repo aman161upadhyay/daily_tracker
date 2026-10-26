@@ -72,7 +72,14 @@ export function SummaryCard({ title, color, icon, Glyph, value, unit, detail, ti
   return (
     <Card featured={featured}>
       {onPress ? (
-        <PressableScale haptic={false} scaleTo={0.99} onPress={onPress} accessibilityRole="button" accessibilityLabel={`${title}: ${value} ${unit ?? ''}`.trim()}>
+        <PressableScale
+          haptic={false}
+          scaleTo={0.99}
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={[`${title}: ${value}${unit ? ` ${unit}` : ''}`, timestamp, detail].filter(Boolean).join(', ')}
+          accessibilityHint={`Opens ${title}`}
+        >
           {metric}
         </PressableScale>
       ) : (

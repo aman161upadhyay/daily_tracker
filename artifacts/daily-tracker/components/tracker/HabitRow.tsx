@@ -4,6 +4,7 @@ import { useColors } from '@/hooks/useColors';
 import { adherenceColor, FLOW_THRESHOLD, STAGE_LABELS } from '@/src/domain/adherence/adherenceScale';
 import { withAlpha } from '@/src/domain/color/oklch';
 import { formatNumber } from '@/src/domain/time/format';
+import type { Habit } from '@/src/domain/models';
 import type { HabitView } from '@/src/state/selectors';
 import { IconTile, Row } from '../ui/primitives';
 import { PressableScale } from '../ui/PressableScale';
@@ -21,6 +22,14 @@ export interface HabitRowProps {
   nudgeText?: string;
   /** Hide the bottom hairline (last row in a card). */
   last?: boolean;
+}
+
+/** What the quick-log button really does for this habit: the sheet for an amount, a drink, a set, or one more. */
+function quickLogLabel(habit: Habit): string {
+  if (habit.type === 'AMOUNT') return `Log an amount for ${habit.name}`;
+  if (habit.presetId === 'water') return `Add a drink to ${habit.name}`;
+  if (habit.snackType) return `Log one ${habit.name}`;
+  return `Add one to ${habit.name}`;
 }
 
 export function HabitRow({ view, onPress, onIncrement, onToggle, onTimer, nudgeText, last }: HabitRowProps) {
@@ -94,13 +103,13 @@ export function HabitRow({ view, onPress, onIncrement, onToggle, onTimer, nudgeT
           </View>
         </PressableScale>
       ) : habit.type === 'TIMER' ? (
-        <PressableScale onPress={onTimer} accessibilityRole="button" accessibilityLabel={`Start ${habit.name} timer`} style={styles.target}>
+        <PressableScale onPress={onTimer} accessibilityRole="button" accessibilityLabel={habit.mindKind ? `Start ${habit.name} timer` : `Log time for ${habit.name}`} style={styles.target}>
           <View style={[styles.check, { backgroundColor: done ? fillColor : c.surfaceRaised, borderColor: done ? fillColor : c.hairline }]}>
             {done ? <UI.Check size={16} color={c.onGreen} weight="bold" /> : <UI.Play size={14} color={c.text} weight="fill" />}
           </View>
         </PressableScale>
       ) : (
-        <PressableScale onPress={onIncrement} accessibilityRole="button" accessibilityLabel={`Add one to ${habit.name}`} style={styles.target}>
+        <PressableScale onPress={onIncrement} accessibilityRole="button" accessibilityLabel={quickLogLabel(habit)} style={styles.target}>
           <View style={[styles.check, { backgroundColor: done ? fillColor : c.surfaceRaised, borderColor: done ? (flow ? c.gold : fillColor) : c.hairline }]}>
             {done ? <UI.Check size={16} color={c.onGreen} weight="bold" /> : <UI.Plus size={16} color={c.greenBright} weight="bold" />}
           </View>

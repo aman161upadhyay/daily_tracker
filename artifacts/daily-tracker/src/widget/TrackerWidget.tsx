@@ -9,7 +9,7 @@ import { PixelRatio } from 'react-native';
 import { FlexWidget, OverlapWidget, SvgWidget, TextWidget } from 'react-native-android-widget';
 import type { HexColor } from 'react-native-android-widget';
 import colors from '@/constants/colors';
-import { TILE_GAP, fitValueSize, widgetLayout, type WidgetLayout } from './layout';
+import { TILE_GAP, ringValue, widgetLayout, type WidgetLayout } from './layout';
 import { widgetDayLabel, type WidgetModel, type WidgetTile } from './model';
 import { ringSvg } from './ring';
 
@@ -43,6 +43,7 @@ function Ring({ tile, layout }: { tile: WidgetTile; layout: WidgetLayout }) {
   const size = layout.ring;
   const stroke = Math.max(4, Math.round(size * 0.11));
   const inner = size - 2 * stroke - 6;
+  const value = ringValue(tile.value, inner, layout.valueSize);
   return (
     <OverlapWidget
       style={{ width: size, height: size }}
@@ -54,13 +55,13 @@ function Ring({ tile, layout }: { tile: WidgetTile; layout: WidgetLayout }) {
       <FlexWidget style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
         {/* The ring is dp, so its value is too: a font-scaled "750 ml" would spill out of a 48 dp ring. TalkBack reads the full value from the label. */}
         <TextWidget
-          text={tile.value}
+          text={value.text}
           maxLines={1}
           truncate="END"
           allowFontScaling={false}
           style={{
             width: inner,
-            fontSize: fitValueSize(tile.value, inner, layout.valueSize),
+            fontSize: value.size,
             fontFamily: FONT_BOLD,
             color: hex(tile.done ? tile.color : C.text),
             textAlign: 'center',

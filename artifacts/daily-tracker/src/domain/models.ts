@@ -152,6 +152,11 @@ export interface NudgeEvent {
   kind: NudgeEventKind;
   /** For SNOOZED: when the nudge should fire instead. */
   untilMs?: number;
+  /**
+   * Set when this nudge rang as part of a merged notification under another slot's id: the id of
+   * that notification. One delivery, several slots — the daily cap counts it once through this.
+   */
+  via?: string;
 }
 
 /** The habitId a Sugar Shield follow-up carries when no Sugar Shield habit exists to own it. */

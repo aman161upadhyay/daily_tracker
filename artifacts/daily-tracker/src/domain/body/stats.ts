@@ -29,17 +29,31 @@ export const SAME_SESSION_SHARE = 0.5;
 export function distinctSessions<T extends { startAt: number; endAt: number }>(sessions: readonly T[], sameKind: (a: T, b: T) => boolean, prefer: (a: T, b: T) => T): T[] {
   const sorted = [...sessions].sort((a, b) => a.startAt - b.startAt || a.endAt - b.endAt);
   const out: T[] = [];
+  // Sessions arrive in start order, so a kept group whose last end lies before this start can
+  // never overlap anything later: it leaves the open set for good. The open set is the handful of
+  // nights still in progress at this start (one long anomalous record costs one comparison per
+  // later session), never the whole history — the scan stays linear over two years of nights.
+  const open: { index: number; lastEnd: number }[] = [];
   for (const s of sorted) {
     let merged = false;
-    for (let i = 0; i < out.length; i++) {
-      const kept = out[i]!;
+    for (let j = open.length - 1; j >= 0; j--) {
+      const o = open[j]!;
+      if (o.lastEnd <= s.startAt) {
+        open.splice(j, 1);
+        continue;
+      }
+      const kept = out[o.index]!;
       if (sameKind(kept, s) && overlapShare(kept, s) > SAME_SESSION_SHARE) {
-        out[i] = prefer(kept, s);
+        out[o.index] = prefer(kept, s);
+        o.lastEnd = Math.max(o.lastEnd, s.endAt);
         merged = true;
         break;
       }
     }
-    if (!merged) out.push(s);
+    if (!merged) {
+      out.push(s);
+      open.push({ index: out.length - 1, lastEnd: s.endAt });
+    }
   }
   return out;
 }
@@ -49,21 +63,43 @@ const richerNight = (a: SleepNight, b: SleepNight): SleepNight => {
   return stages(b) > stages(a) || (stages(b) === stages(a) && b.minutes > a.minutes) ? b : a;
 };
 
+// The mirrors are replaced, never mutated, so one pass per list identity serves every selector
+// that asks (a 14-night list, the regularity figure and the chart each ask again).
+const distinctSleepCache = new WeakMap<readonly SleepNight[], SleepNight[]>();
+const distinctWorkoutsCache = new WeakMap<readonly Workout[], Workout[]>();
+
 /** Sleep sessions with the other sources' copies of the same night folded away. */
 export function distinctSleep(sessions: readonly SleepNight[]): SleepNight[] {
-  return distinctSessions(sessions, () => true, richerNight);
+  let out = distinctSleepCache.get(sessions);
+  if (!out) {
+    out = distinctSessions(sessions, () => true, richerNight);
+    distinctSleepCache.set(sessions, out);
+  }
+  return out;
 }
 
 const richerWorkout = (a: Workout, b: Workout): Workout => (b.minutes > a.minutes || (b.minutes === a.minutes && !!b.title && !a.title) ? b : a);
 
 /** Workouts with the other sources' copies of the same session folded away (a generic "Workout" matches any type). */
 export function distinctWorkouts(workouts: readonly Workout[]): Workout[] {
-  return distinctSessions(workouts, (a, b) => a.type === b.type || a.type === 0 || b.type === 0, richerWorkout);
+  let out = distinctWorkoutsCache.get(workouts);
+  if (!out) {
+    out = distinctSessions(workouts, (a, b) => a.type === b.type || a.type === 0 || b.type === 0, richerWorkout);
+    distinctWorkoutsCache.set(workouts, out);
+  }
+  return out;
 }
+
+const countedCache = new WeakMap<readonly Workout[], Workout[]>();
 
 /** Workouts worth counting: visible, not a walk (walks are movement snacks' territory), at least 10 minutes, one per real session. */
 export function countedWorkouts(body: BodyState): Workout[] {
-  return distinctWorkouts(body.workouts.filter((w) => !w.hidden && !isWalk(w.type) && w.minutes >= 10));
+  let out = countedCache.get(body.workouts);
+  if (!out) {
+    out = distinctWorkouts(body.workouts.filter((w) => !w.hidden && !isWalk(w.type) && w.minutes >= 10));
+    countedCache.set(body.workouts, out);
+  }
+  return out;
 }
 
 export function stepsByDay(body: BodyState): Map<string, number> {

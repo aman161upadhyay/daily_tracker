@@ -217,6 +217,7 @@ export function Stepper({
   keyboardType,
   placeholder,
   label,
+  inputKind = parse ? 'time' : 'number',
 }: {
   value: number;
   onChange: (next: number) => void;
@@ -230,6 +231,8 @@ export function Stepper({
   keyboardType?: 'number-pad' | 'decimal-pad' | 'default';
   placeholder?: string;
   label: string;
+  /** What a typed value is, for the hint read out on the value ("Tap to type a time"); inferred from `parse` when absent. */
+  inputKind?: 'number' | 'time' | 'amount';
 }) {
   const c = useColors();
   // A value off the step grid (100 ml typed in the editor, a restored 1,750) moves to the next
@@ -281,7 +284,7 @@ export function Stepper({
           style={[TYPE.title2, styles.stepperValue, styles.stepperInput, { color: c.text, borderColor: c.tint }]}
         />
       ) : (
-        <Pressable onPress={() => setTyped(parse ? shown : String(value))} accessibilityRole="button" accessibilityLabel={`${label}: ${shown}. Tap to type ${parse ? 'a time' : 'a number'}${bounds}`} hitSlop={6}>
+        <Pressable onPress={() => setTyped(parse ? shown : String(value))} accessibilityRole="button" accessibilityLabel={`${label}: ${shown}. Tap to type ${inputKind === 'time' ? 'a time' : inputKind === 'amount' ? 'an amount' : 'a number'}${bounds}`} hitSlop={6}>
           <Txt role="title2" style={styles.stepperValue} align="center" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
             {shown}
           </Txt>

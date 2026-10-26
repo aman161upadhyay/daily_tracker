@@ -4,7 +4,7 @@ import Svg, { Circle, G } from 'react-native-svg';
 import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import { withAlpha } from '@/src/domain/color/oklch';
-import { displayPhase, PHASE_LABELS, type CyclePhase, type CycleTimeline } from '@/src/domain/cycle/timeline';
+import { displayPhase, PHASE_LABELS, phaseQualifier, type CyclePhase, type CycleTimeline } from '@/src/domain/cycle/timeline';
 import { addDays, dayDiff } from '@/src/domain/time/trackingDay';
 import { phaseColor } from './phaseColors';
 
@@ -56,7 +56,9 @@ export function PhaseRing({ timeline, today, birthControl, size = 216 }: PhaseRi
   const center = size / 2;
   const gapDeg = 2.5;
 
-  const label = todayInfo ? PHASE_LABELS[displayPhase(todayInfo.phase, birthControl)] : 'No data';
+  // Only logged bleeding is observed; every other phase says it was calculated.
+  const word = phaseQualifier(todayInfo, today, today);
+  const label = todayInfo ? `${PHASE_LABELS[displayPhase(todayInfo.phase, birthControl)]}${word ? ` (${word})` : ''}` : 'No data';
   const dayText = todayInfo ? `Day ${todayInfo.cycleDay}` : '—';
 
   return (

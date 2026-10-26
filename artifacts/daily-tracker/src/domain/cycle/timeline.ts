@@ -203,6 +203,16 @@ export function predictCycle(history: readonly PeriodSpan[], rules: CycleRules, 
 
 // ── Timeline: the phase of any date ────────────────────────────────────────
 
+/**
+ * The word that qualifies a phase label: a day still to come is "predicted", a day that has
+ * passed (or today) outside logged bleeding is "estimated" — the phase was calculated, not
+ * observed — and a logged period needs no qualifier.
+ */
+export function phaseQualifier(info: Pick<CycleDayInfo, 'estimated'> | null | undefined, date: string, today: string): '' | 'predicted' | 'estimated' {
+  if (!info || !info.estimated) return '';
+  return date > today ? 'predicted' : 'estimated';
+}
+
 export interface CycleDayInfo {
   phase: CyclePhase;
   /** True when the phase comes from a prediction (the projected cycle) rather than logged starts. */

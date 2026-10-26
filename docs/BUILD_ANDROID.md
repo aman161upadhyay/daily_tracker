@@ -174,8 +174,8 @@ the block survives every `--clean` prebuild.
 `versionCode` discipline: Android installs a same-signer build whose `versionCode` is equal **or**
 higher over the existing one and rejects only a lower one (`INSTALL_FAILED_VERSION_DOWNGRADE`).
 This project still raises `expo.android.versionCode` in `app.json` on every release (M3 shipped 3,
-M4 4, M5 5, M6 6, then one per council round: round 3 → 7, round 4 → 8, round 5 → 9, round 6 → 10, round 7 → 11, round 8 → 12)
-so that "which build is this phone on" has one answer; `version` follows the tag (`0.12.0` = `v0.12`).
+M4 4, M5 5, M6 6, then one per council round: round 3 → 7, round 4 → 8, round 5 → 9, round 6 → 10, round 7 → 11, round 8 → 12, round 9 → 13)
+so that "which build is this phone on" has one answer; `version` follows the tag (`0.13.0` = `v0.13`).
 `app.json` is the source of truth; when this paragraph and `app.json` disagree, `app.json` is right.
 
 Google Play is deliberately not part of this recipe; `./gradlew bundleRelease` produces the AAB if

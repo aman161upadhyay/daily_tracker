@@ -247,7 +247,7 @@ export default function OnboardingScreen() {
               Adults need about 2–3 L of drinks a day
             </Txt>
           </View>
-          <Stepper value={waterGoalMl} onChange={setWaterGoalMl} step={250} min={1000} max={4000} label="water goal" format={() => `${goal.value} ${goal.unit}`} parse={(text) => parseVolumeInput(text, units)} keyboardType="decimal-pad" placeholder={units === 'oz' ? '64 oz' : '2,000 ml'} />
+          <Stepper value={waterGoalMl} onChange={setWaterGoalMl} step={250} min={1000} max={4000} label="water goal" format={(ml) => { const v = formatVolume(ml, units); return `${v.value} ${v.unit}`; }} parse={(text) => parseVolumeInput(text, units)} inputKind="amount" keyboardType="decimal-pad" placeholder={units === 'oz' ? '64 oz' : '2,000 ml'} />
         </Row>
         <View style={{ marginTop: 16, gap: 10 }}>
           <Txt role="body">Nudges only between</Txt>

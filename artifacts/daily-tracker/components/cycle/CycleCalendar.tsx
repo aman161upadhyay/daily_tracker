@@ -6,7 +6,7 @@ import { Dot, IconButton, Row } from '@/components/ui/primitives';
 import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import { withAlpha } from '@/src/domain/color/oklch';
-import { displayPhase, PHASE_LABELS, type CyclePhase, type CycleTimeline } from '@/src/domain/cycle/timeline';
+import { displayPhase, PHASE_LABELS, phaseQualifier, type CyclePhase, type CycleTimeline } from '@/src/domain/cycle/timeline';
 import { addDays, parseDay, toDayString, weekdayOf } from '@/src/domain/time/trackingDay';
 import { phaseColor, phaseFill } from './phaseColors';
 
@@ -98,7 +98,7 @@ export function CycleCalendar({ month, today, timeline, birthControl, loggedDays
           const isSelected = day === selected;
           const future = day > today;
           const { day: num } = parseDay(day);
-          const a11y = [`${day}`, phase ? PHASE_LABELS[phase] : '', info?.predicted ? 'predicted' : info?.estimated ? 'estimated' : '', loggedDays.has(day) ? 'has a log' : ''].filter(Boolean).join(', ');
+          const a11y = [`${day}`, phase ? PHASE_LABELS[phase] : '', phaseQualifier(info, day, today), loggedDays.has(day) ? 'has a log' : ''].filter(Boolean).join(', ');
           return (
             <PressableScale key={day} haptic={false} onPress={() => onSelect(day)} accessibilityRole="button" accessibilityLabel={a11y} accessibilityState={{ selected: isSelected }} style={styles.cell}>
               <View

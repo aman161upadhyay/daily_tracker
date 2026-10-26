@@ -10,8 +10,8 @@ import {
   sumValues,
   type DayRatio,
 } from '@/src/domain/habits/progress';
-import { evaluateStreak, periodRequired, periodStartOf, segmentStartOn, type PeriodResult } from '@/src/domain/habits/streaks';
-import type { Cadence, Category, Habit, HabitRule, MovementSnack, NudgePolicy, SnackType } from '@/src/domain/models';
+import { cadenceSegments, evaluateStreak, periodBounds, periodRequired, periodStartOf, segmentStartIn, type CadenceSegment, type PeriodResult } from '@/src/domain/habits/streaks';
+import type { Cadence, Category, Habit, HabitEntry, HabitRule, MovementSnack, NudgePolicy, SnackType } from '@/src/domain/models';
 import { SHIELD_EVENT_HABIT_ID, SNACK_LABELS } from '@/src/domain/models';
 import { habitSymptomCorrelations, symptomPatterns, type CompletedCycle, type Correlation, type HabitPerCycle, type SymptomPattern } from '@/src/domain/cycle/insights';
 import { upcomingReminders, type ReminderFire } from '@/src/domain/cycle/reminders';
@@ -29,6 +29,43 @@ import { snackCountsFor } from '@/src/domain/habits/snackMatch';
 // state gives each render pass O(1) lookups after one O(n) index build.
 const rulesCache = new WeakMap<TrackerState, Map<string, HabitRule[]>>();
 const valuesCache = new WeakMap<TrackerState, Map<string, Map<string, number>>>();
+const entriesIndex = new WeakMap<TrackerState, Map<string, HabitEntry[]>>();
+const NO_ENTRIES: readonly HabitEntry[] = [];
+
+/** A habit's own entries, from a per-state index built on the first ask. */
+function entriesOf(state: TrackerState, habitId: string): readonly HabitEntry[] {
+  let index = entriesIndex.get(state);
+  if (!index) {
+    index = new Map();
+    for (const e of state.entries) {
+      const list = index.get(e.habitId);
+      if (list) list.push(e);
+      else index.set(e.habitId, [e]);
+    }
+    entriesIndex.set(state, index);
+  }
+  return index.get(habitId) ?? NO_ENTRIES;
+}
+
+/**
+ * The log a habit's figures come from: its own entries, or the shared water, snack or mind log.
+ * Views and day values are memoised against this slice, so a water tap leaves the other habits'
+ * cached views (and their streak walks) alone.
+ */
+function logSlice(state: TrackerState, habit: Habit): readonly unknown[] {
+  if (habit.presetId === 'water') return state.water;
+  if (habit.snackType) return state.snacks;
+  if (habit.mindKind) return state.mind;
+  return entriesOf(state, habit.id);
+}
+
+/** Same rows in the same order (the per-habit entry slice is rebuilt per state; its rows are not). */
+function sameList(a: readonly unknown[], b: readonly unknown[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
 
 /** Rules of one habit, oldest first. */
 export function rulesFor(state: TrackerState, habitId: string): HabitRule[] {
@@ -88,6 +125,13 @@ export function dayValues(state: TrackerState, habit: Habit): Map<string, number
           : `habit:${habit.id}:${habit.type}`;
   const cached = perState.get(key);
   if (cached) return cached;
+  // Across states: the same slice of the log gives the same values, whatever else changed.
+  const slice = logSlice(state, habit);
+  const memo = valuesMemo.get(habit);
+  if (memo && sameList(memo.slice, slice)) {
+    perState.set(key, memo.values);
+    return memo.values;
+  }
 
   const m = new Map<string, number>();
   const add = (day: string, v: number) => m.set(day, (m.get(day) ?? 0) + v);
@@ -102,17 +146,23 @@ export function dayValues(state: TrackerState, habit: Habit): Map<string, number
     if (habit.type === 'YES_NO') for (const [day, v] of m) m.set(day, v > 0 ? 1 : 0);
   }
   perState.set(key, m);
+  valuesMemo.set(habit, { slice, values: m });
   return m;
 }
+
+// Keyed by the habit object (a draft with the same id is another object): the values last built
+// for it and the slice of the log they came from.
+const valuesMemo = new WeakMap<Habit, { slice: readonly unknown[]; values: Map<string, number> }>();
 
 /** Raw value of a habit on a day, derived from whichever log it lives in. */
 export function habitDayValue(state: TrackerState, habit: Habit, day: string): number {
   return dayValues(state, habit).get(day) ?? 0;
 }
 
-// Segment starts depend only on the habit's cadence history, which rarely changes, so they are
-// cached by that history rather than per state: a water tap does not re-walk a year of periods.
-const segmentCache = new Map<string, Map<string, string>>();
+// Cadence segments depend only on the habit's cadence history, which rarely changes, so they are
+// cached by that history rather than per state: a water tap does not re-walk a year of periods,
+// and a year of days asks one walk, not one per day.
+const segmentCache = new Map<string, { walkedTo: string; segments: CadenceSegment[] }>();
 const SEGMENT_CACHE_MAX = 256;
 
 /** First day of the habit's cadence segment that contains `day` (creation, or where the current cadence took over). */
@@ -120,18 +170,15 @@ export function segmentFrom(state: TrackerState, habit: Habit, day: string): str
   const rules = rulesFor(state, habit.id);
   if (rules.every((r) => r.cadence === rules[0]!.cadence)) return habit.createdDay;
   const key = `${habit.createdDay}|${rules.map((r) => `${r.effectiveFrom}:${r.cadence}`).join(',')}`;
-  let perHistory = segmentCache.get(key);
-  if (!perHistory) {
-    if (segmentCache.size >= SEGMENT_CACHE_MAX) segmentCache.clear();
-    perHistory = new Map();
-    segmentCache.set(key, perHistory);
+  let walked = segmentCache.get(key);
+  if (!walked || walked.walkedTo < day) {
+    if (!walked && segmentCache.size >= SEGMENT_CACHE_MAX) segmentCache.clear();
+    // Walk a year past what was asked, so the next later day is a lookup too.
+    const walkedTo = addDays(day, 366);
+    walked = { walkedTo, segments: cadenceSegments(rules, habit.createdDay, walkedTo) };
+    segmentCache.set(key, walked);
   }
-  let start = perHistory.get(day);
-  if (start === undefined) {
-    start = segmentStartOn(rules, habit.createdDay, day);
-    perHistory.set(day, start);
-  }
-  return start;
+  return segmentStartIn(walked.segments, day, habit.createdDay);
 }
 
 /**
@@ -156,13 +203,25 @@ export function periodDoneOn(state: TrackerState, habit: Habit, cadence: Cadence
  */
 export function habitRatios(state: TrackerState, habit: Habit, days: string[]): DayRatio[] {
   const out: DayRatio[] = [];
+  // Consecutive days of one period (same rule, same segment) extend the previous day's count by
+  // one check and keep its quota, instead of re-counting the period from its start for each day
+  // (a month of days is 30 checks, not 465) and re-measuring the period each time.
+  let prev: { day: string; end: string; from: string; rule: HabitRule; done: number; required: number } | null = null;
   for (const day of days) {
     const rule = ruleFor(state, habit.id, day);
     const target = rule?.target ?? 1;
     const value = habitDayValue(state, habit, day);
     if (rule && rule.cadence !== 'DAILY') {
-      out.push({ day, value, target, ratio: ratioOf(periodDoneOn(state, habit, rule.cadence, day), periodRequired(rule, day, segmentFrom(state, habit, day))) });
+      const from = segmentFrom(state, habit, day);
+      if (prev && prev.rule === rule && prev.from === from && day <= prev.end && addDays(prev.day, 1) === day) {
+        prev.day = day;
+        prev.done += value >= target ? 1 : 0;
+      } else {
+        prev = { day, end: periodBounds(rule.cadence, day).end, from, rule, done: periodDoneOn(state, habit, rule.cadence, day), required: periodRequired(rule, day, from) };
+      }
+      out.push({ day, value, target, ratio: ratioOf(prev.done, prev.required) });
     } else {
+      prev = null;
       out.push({ day, value, target, ratio: ratioOf(value, target) });
     }
   }
@@ -205,6 +264,10 @@ export interface HabitView {
 // One view per habit and day per state: the Today list, highlights, the planner and the widget
 // model all ask for the same views during one render pass.
 const viewCache = new WeakMap<TrackerState, Map<string, HabitView>>();
+// Across states, per habit object: a view stands as long as the habit's rules, policies, its slice
+// of the log and the day are the ones it was built from. A water tap changes none of these for the
+// other habits, so their streak walks are not repeated on the render thread.
+const viewMemo = new WeakMap<Habit, { rules: TrackerState['rules']; policies: TrackerState['policies']; slice: readonly unknown[]; today: string; view: HabitView }>();
 
 export function habitView(state: TrackerState, habit: Habit, today: string): HabitView {
   let perState = viewCache.get(state);
@@ -216,8 +279,14 @@ export function habitView(state: TrackerState, habit: Habit, today: string): Hab
   const cached = perState.get(key);
   // Only a view of this very habit object counts (a draft with the same id must not get the stored one's view).
   if (cached && cached.habit === habit) return cached;
-  const view = buildHabitView(state, habit, today);
-  if (state.habits.includes(habit)) perState.set(key, view);
+  const slice = logSlice(state, habit);
+  const memo = viewMemo.get(habit);
+  const view =
+    memo && memo.rules === state.rules && memo.policies === state.policies && memo.today === today && sameList(memo.slice, slice) ? memo.view : buildHabitView(state, habit, today);
+  if (state.habits.includes(habit)) {
+    perState.set(key, view);
+    viewMemo.set(habit, { rules: state.rules, policies: state.policies, slice, today, view });
+  }
   return view;
 }
 
@@ -351,7 +420,15 @@ export function rotationHabit(state: TrackerState, today: string): Habit | undef
 export function liveNudge(state: TrackerState, today: string, nowMs: number, zone: string): NextNudge | null {
   const s = state.settings;
   const nowMin = minutesOfDay(nowMs, zone);
-  const items = rotationItems(state);
+  // Only habits with something left to do today take part: six sets logged at noon end the day's
+  // movement nudges, on the card as in the shade.
+  const items = rotationItems(state).filter((i) => {
+    const habit = state.habits.find((h) => h.id === i.habitId);
+    if (!habit) return false;
+    const v = habitView(state, habit, today);
+    return !(v.doneToday || (v.rule.cadence !== 'DAILY' && (v.periodDone ?? 0) >= (v.periodQuota ?? 0)));
+  });
+  if (items.length === 0) return null;
   const todaySnacks = state.snacks.filter((x) => x.day === today && x.trigger !== 'SUGAR_SHIELD');
   const last = todaySnacks.reduce<MovementSnack | null>((acc, x) => (!acc || x.at > acc.at ? x : acc), null);
   const lastDoneMin = last ? minutesOfDay(last.at, zone) : undefined;
@@ -365,11 +442,13 @@ export function liveNudge(state: TrackerState, today: string, nowMs: number, zon
   );
   if (!legacy || !s.remindersEnabled) return legacy;
   // Agree with the first pending movement notification (snoozes and swaps made from a notification
-  // are only known to the planner); an overdue slot still shows as "due now" on the card.
+  // are only known to the planner); an overdue slot still shows as "due now" on the card. When the
+  // planner has nothing left to offer today — the cap is spent, the day is paused, every budget is
+  // used — the card promises nothing either.
   const planned = nudgePlan(state, today, nowMs, zone).find((n) => n.day === today && (n.kind === 'ROTATION' || n.kind === 'WATER') && n.habitIds.some((id) => items.some((i) => i.habitId === id)));
   const item = planned && items.find((i) => planned.habitIds.includes(i.habitId));
-  if (!planned || !item) return legacy;
-  if (legacy.inMin === 0) return { ...legacy, item };
+  if (legacy.inMin === 0) return item ? { ...legacy, item } : legacy;
+  if (!planned || !item) return null;
   const dueMin = minutesOfDay(planned.at, zone);
   return { dueMin, inMin: Math.max(0, dueMin - nowMin), item };
 }
@@ -553,6 +632,8 @@ function planHabitOf(state: TrackerState, view: HabitView, today: string): PlanH
     snackType: habit.snackType,
     doneToday: view.doneToday,
     donePeriod,
+    // A met quota settles the rest of the period: no "tomorrow" slots inside a week already done.
+    ...(donePeriod ? { periodEndsOn: periodBounds(rule.cadence, today).end } : {}),
     todayRatio: view.dayRatio,
     lastLogMs: lastLogMsToday(state, habit, today),
     movement: isMovement(habit),
@@ -578,11 +659,19 @@ export function weekSummaryText(state: TrackerState, today: string): { title: st
       const ratios = habitRatios(state, h, days).filter((r) => r.day >= h.createdDay);
       total += ratios.length;
       hit += ratios.filter((r) => r.ratio >= 1).length;
-    } else {
-      // A weekly or monthly habit is "3 of 4 this week", not seven daily misses.
+    } else if (v.rule.cadence === 'WEEKLY') {
+      // A weekly habit is "3 of 4 this week", not seven daily misses.
       const quota = v.periodQuota ?? v.rule.timesPerPeriod;
       total += quota;
       hit += Math.min(quota, v.periodDone ?? 0);
+    } else {
+      // A monthly habit's month-to-date count says nothing about this week: count the days of
+      // the week it was done, against the share of its month's quota that seven days hold.
+      const quota = v.periodQuota ?? v.rule.timesPerPeriod;
+      const share = Math.max(1, Math.round((quota * days.length) / periodBounds('MONTHLY', today).length));
+      const done = days.filter((d) => d >= h.createdDay && habitDayValue(state, h, d) >= (ruleFor(state, h.id, d)?.target ?? 1)).length;
+      total += share;
+      hit += Math.min(share, done);
     }
     if (v.streak > 0 && (!best || v.streak > best.streak)) best = { name: h.name, streak: v.streak, unit: streakUnit(v.rule.cadence) };
   }

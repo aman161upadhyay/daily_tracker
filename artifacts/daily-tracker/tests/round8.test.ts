@@ -220,7 +220,7 @@ describe('health: a drink logged by hand after its import', () => {
     const earlier = NOW - 2 * 60_000;
     const batch: BodyBatch = { hydration: [{ id: 'hc-1', at: earlier, ml: 250 }, { id: 'hc-2', at: NOW - 3 * 3600_000, ml: 330 }], window: { fromDay: addDays(TODAY, -6), toDay: TODAY } };
     const imported = applyAll(state, autoTickActions(state, batch, ctx), reducer);
-    assert.deepEqual(imported.water.map((w) => [w.ml, w.source]), [[250, 'AUTO_HC'], [330, 'AUTO_HC']]);
+    assert.deepEqual(imported.water.map((w) => [w.ml, w.source]).sort(), [[250, 'AUTO_HC'], [330, 'AUTO_HC']]);
     // A glass tapped in the app two minutes after the other app's entry: the same drink.
     const tapped = reducer(imported, { type: 'ADD_WATER', entry: { id: 'm1', at: NOW, zone: ZONE, day: TODAY, ml: 250, source: 'MANUAL' } });
     assert.equal(tapped.water.reduce((a, w) => a + w.ml, 0), 830, 'until the next sync both stand');

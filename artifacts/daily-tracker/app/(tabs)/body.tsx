@@ -254,7 +254,7 @@ export default function BodyScreen() {
       {notAllowed.length > 0 ? (
         <Card>
           <Txt role="footnote" tone="secondary">
-            {`${notAllowed.map((m) => METRIC_META[m].title).join(', ')}: not allowed in Health Connect permissions, so ${notAllowed.length === 1 ? 'it stays' : 'they stay'} empty here whatever the source app records.`}
+            {`${notAllowed.map((m) => METRIC_META[m].title).join(', ')}: not allowed in Health Connect permissions, so nothing arrives here whatever the source app records.`}
           </Txt>
           <PillButton label="Permissions" kind="ghost" compact Leading={UI.Gear} onPress={() => void hc.openSettings()} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
         </Card>

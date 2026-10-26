@@ -182,10 +182,10 @@ const MIND: Table<MindSession> = {
 
 const NUDGE_EVENT: Table<NudgeEvent> = {
   name: 'nudge_event',
-  columns: ['id', 'nudge_id', 'habit_ids_json', 'at', 'zone', 'day', 'kind', 'until_ms'],
+  columns: ['id', 'nudge_id', 'habit_ids_json', 'at', 'zone', 'day', 'kind', 'until_ms', 'via'],
   keyColumns: ['id'],
   key: (e) => e.id,
-  toRow: (e) => [e.id, e.nudgeId, JSON.stringify(e.habitIds), e.at, e.zone, e.day, e.kind, opt(e.untilMs)],
+  toRow: (e) => [e.id, e.nudgeId, JSON.stringify(e.habitIds), e.at, e.zone, e.day, e.kind, opt(e.untilMs), opt(e.via)],
   fromRow: (r) =>
     compact<NudgeEvent>({
       id: str(r, 'id'),
@@ -196,6 +196,7 @@ const NUDGE_EVENT: Table<NudgeEvent> = {
       day: str(r, 'day'),
       kind: str(r, 'kind') as NudgeEvent['kind'],
       untilMs: optNum(r, 'until_ms'),
+      via: optStr(r, 'via'),
     }),
   orderBy: 'at, rowid',
 };

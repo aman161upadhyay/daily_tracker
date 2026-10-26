@@ -98,3 +98,31 @@ export function fitValueSize(text: string, inner: number, preferred: number): nu
   if (needed <= inner) return preferred;
   return Math.max(9, Math.floor((preferred * inner) / needed));
 }
+
+/** Smallest size a value is still legible at inside a ring; below it the text is shortened instead. */
+const LEGIBLE_VALUE_SIZE = 11;
+
+/**
+ * The value as the ring shows it: the full text when it fits legibly, otherwise shortened step by
+ * step — the unit goes first ("1,893 oz" → "1,893"), then thousands compact ("1.9k") — so the
+ * smallest widget (32 dp inside the ring) shows a number, not "1,8…". The accessibility label keeps
+ * the full value.
+ */
+export function ringValue(text: string, inner: number, preferred: number): { text: string; size: number } {
+  const attempt = (t: string) => ({ text: t, size: fitValueSize(t, inner, preferred) });
+  let best = attempt(text);
+  if (best.size >= LEGIBLE_VALUE_SIZE) return best;
+  const unitless = text.replace(/\s*(ml|oz|L)$/u, '');
+  if (unitless !== text) {
+    best = attempt(unitless);
+    if (best.size >= LEGIBLE_VALUE_SIZE) return best;
+  }
+  const n = Number(unitless.replace(/,/g, ''));
+  if (Number.isFinite(n) && Math.abs(n) >= 1000) {
+    const k = n / 1000;
+    const compact = `${k >= 10 || k % 1 === 0 ? Math.round(k) : k.toFixed(1)}k`;
+    const short = attempt(compact);
+    if (short.size > best.size || short.text.length < best.text.length) best = short;
+  }
+  return best;
+}

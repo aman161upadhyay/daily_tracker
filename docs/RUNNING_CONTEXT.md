@@ -5,7 +5,7 @@ first thing to read after `replit.md`. It answers: what exists, why it is the wa
 verified, what happened step by step, and what is still open. Append to the journal; never rewrite
 history.
 
-Last updated: 2026-10-26, autonomous session (council rounds 1–6 fixed; see journal and §6).
+Last updated: 2026-10-26, autonomous session (council rounds 1–9 fixed; see journal and §6).
 
 ---
 
@@ -15,10 +15,10 @@ Last updated: 2026-10-26, autonomous session (council rounds 1–6 fixed; see jo
 |---|---|
 | App | Daily Tracker — private Android tracker: habits · water · movement snacks · meditation · opt-in cycle · home-screen widget · configurable nudges · Health Connect import · app lock · encrypted backups |
 | Code | `artifacts/daily-tracker/` — Expo SDK 57, React Native 0.86, TypeScript, Expo Router, expo-sqlite |
-| Version | `app.json` `version 0.12.0`, `versionCode 12`, tag `v0.12` (M6 complete + council rounds 1–8) |
+| Version | `app.json` `version 0.13.0`, `versionCode 13`, tag `v0.13` (M6 complete + council rounds 1–9) |
 | Repo | https://github.com/aman161upadhyay/daily_tracker.git, branch `main`, commits authored as Aman |
 | Milestones | M0 skeleton ✅ · M1 storage/streaks/onboarding ✅ · M2 nudges/notifications ✅ · M3 widget ✅ · M4 Health Connect/Body ✅ · M5 cycle ✅ · M6 theme/lock/backup/signing ✅ (`docs/IMPLEMENTATION_PLAN.md`) |
-| Verified here | type-check (three packages), 304 unit tests, Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks (incl. the Health Connect rationale activity), web walkthroughs by a browser-driving tester |
+| Verified here | type-check (three packages), 326 unit tests, Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks (incl. the Health Connect rationale activity), web walkthroughs by a browser-driving tester |
 | Never run yet | a real Android device. Everything native (widget taps, notification buttons with the app closed, Health Connect, app lock, Auto Backup, signed APK) is coded and reviewed but untested on hardware — `docs/DEVICE_CHECKLIST.md` lists the exact rows |
 | User's next step | `docs/GET_IT_ON_YOUR_PHONE.md` (plain-language build guide) |
 
@@ -232,6 +232,35 @@ contradicts one, write down why.
     from the habit the drawing showed. **Why:** at 2× font scale the old layout clipped "1,850",
     the 60 dp compact widget drew a 36 dp target, and a storage error was indistinguishable from a
     fresh install.
+36. **A merged notification is one delivery and many slots.** Two series landing within five
+    minutes ring once; the notification carries every slot id it stands for (`mergedIds`), what
+    happens to it — it rings, is snoozed, is done — is written against each slot (the constituents
+    pointing back through `via`), and the daily cap counts the delivery once. Deliveries the OS made
+    while the app was closed are folded into the state *before* the next plan is built. **Why:** a
+    recompute that kept only the first slot's id brought the second slot back two minutes after a
+    snooze, and planning before reading the deliveries spent the cap twice.
+37. **Every nudge decision is made in tracking days, and a decision made for a period holds for the
+    period.** A slot's day is the tracking day of its clock time (a 1 am reminder is judged by the
+    evening before it); budgets, caps and "done" are kept per tracking day; a met weekly or monthly
+    quota settles every remaining slot of that period (`periodEndsOn`); an automatic snooze that
+    lands past the end of the active hours is over for the day (a fixed clock time keeps its
+    snooze); the live countdown says nothing when the planner offers nothing. **Why:** midnight
+    reopened finished rotations and reset the cap three hours before the boundary, Tuesday rang
+    for a quota met on Monday, and a 20:50 snooze rang at 21:05.
+38. **Reads are memoised by what they read, not by the state they were asked with.** A habit's view
+    and day values are keyed on its rules, policies, its own slice of the log and the day (a water
+    tap leaves the other habits' views alone); cadence segments are walked once per rule history
+    and looked up; period counts over consecutive days extend the previous day's count; quotas are
+    arithmetic. The per-state caches stay as the fast path within one render pass. **Why:** one
+    water tap rebuilt 25 lifetime streaks (37 ms on the render thread) and the cycle insights took
+    0.4 s because every day re-walked a year of periods.
+39. **A manual drink stands for at most one imported one, judged on the upstream record as it is
+    now.** Twins are matched one-to-one, closest first, within five minutes and ten millilitres,
+    against the current upstream batch; an import moved an hour away upstream is a drink of its
+    own again; an edited import keeps the zone it was recorded in. A record type revoked and
+    re-granted gets its 30-day first read again. **Why:** one tap erased two distinct imports eight
+    minutes apart, a corrected upstream time was not idempotent, and a re-granted type never
+    recovered its gap.
 
 ### How council findings are judged
 - Accept when: evidence is concrete (file:line, reproducible), it violates a paradigm or a user constraint,
@@ -289,12 +318,58 @@ Dates are America/New_York. Commits are on `main`.
 | 2026-10-26 night | **Round-8 fixes:** snapshot replaced through a complete `snapshot.next.json` (recovered on start), kept copies one file each with a target-aware cleanup marker, onboarding and the kept-copy card delete through the same journaled path and show a failed delete; encrypted export envelope 2 (header as GCM AAD; envelope 1 still opens); damaged containers (`cycleLogs`, `events`, `body.*` present but not lists; a day log without a day) rejected instead of normalised away; cycle reminders carry `confirmed`, birth control pauses fertile/luteal rules and the sheet offers only period rules, "once the period is logged" suffix, `CycleDayInfo.estimated` with "(estimated)" wording, `historyUpTo` keeps future-dated starts out of predictions with a `future-start` alert, symptom burden as mean severity with a three-logged-days floor; `HabitView.doneToday` / `dayRatio` for the checkbox, Mark done and the planner, Today's movement target = the per-day target while the period quota is unmet, climber needs four observed days in both weeks, `streakUnit()` in highlights and the week summary, the week summary counts sessions against the quota, Sugar Shield alone no longer opens a Movement card; widget layout takes the font scale (ring value unscaled, labels budgeted, 48 dp touch floor, 72 dp minimum height, day line only while the ring stays ≥ 72 dp), `notice` state for load/tap failures on the last good model, rotation tap resolves from the newest state, headless runs refresh the widget even when nothing changed; Health Connect: a manual/widget drink within 5 min / 10 ml evicts its imported copy on the next sync, overlapping sleep and workout sessions counted once (`distinctSleep` / `distinctWorkouts`, the list page shows one row), rolling 7-day re-read with a 30-day backfill per newly granted type (`sync.backfilled`), the connection card names what is read and what is not allowed, the Body tab says which metrics a missing permission keeps empty; paradigms 31–35; checklist Y1–Y14; version 0.12.0 / versionCode 12 | this commit |
 | 2026-10-26 night | Verification: tsc clean, 304 tests (15 new in `tests/round8.test.ts`, plus updated widget / body / cycle / backupCrypto suites), `expo export --platform android` → 5.9 MB Hermes bytecode; browser e2e over the round-7 flows (Today without the trio, cycle guard and Today switch, Quick Log ceiling, Body card) all passed with no console errors | this commit |
 
+| 2026-10-26 night | **Council round 9** — six lenses over the round-8 diff, each with a harness rather than a read: a diff review with probes, a randomised command fuzzer (80 sequences × 65 commands, DST dates, four zones, SQLite round trips), a planner simulator over November's DST night, a performance profile on a two-year fixture, a copy / accessibility audit, and a browser e2e over the round-8 flows. Theme: the round-8 fixes were right one object at a time and wrong in the aggregate — one manual drink evicted two imports, a merged notification forgot its second slot, the planner's tracking-day checks stopped at the rotation, and every cache was keyed on the whole state. Triage in §6 | — |
+| 2026-10-26 night | **Round-9 fixes:** `reconcileAndSync` folds the deliveries the OS made while the app was closed into the state before planning (headless and live paths; `firedSinceLastSync`); merged notifications carry `mergedIds`, ledger events are written per constituent with `via` (schema v5), the cap and per-habit budgets count a delivery once, the signature includes day and constituents; planner slots carry their tracking day (`dayOf`), per-slot eligibility and budgets, rotation / water anchors unconditional, water counted per slot, a met weekly / monthly quota settles the period through `PlanHabit.periodEndsOn`, automatic snoozes past the active window dropped (fixed times keep theirs), `liveNudge` returns nothing when the planner offers nothing; cycle: PHASE_START/period with offset 0 fires on the logged start, `phaseQualifier()` gives "(estimated)" / "(predicted)" by date on the ring, the day sheet, the calendar and Today; Health Connect: `twinImports()` one-to-one nearest matching on the current upstream (binary search on the manual rows), edited imports keep their zone, duplicate external ids removed, a revoked type leaves `backfilled` so a re-grant backfills again; stats: `distinctSessions` as an active-set sweep (linear under an anomalous long record); week summary counts a monthly habit by its share of the week; summary cards expose their date and detail to TalkBack; connection-card copy says what a missing permission keeps empty; Today's water button and label follow `tapSizeMl`; row labels say what the button does (`quickLogLabel`); stepper `inputKind` ("an amount" for volumes, bounds in the unit shown; the onboarding formatter uses its argument); widget `ringValue()` drops the unit, then compacts thousands, before the floor size ("1.9k", TalkBack keeps the full value); performance: per-habit view / day-value memo keyed on rules, policies, the habit's log slice and the day, cadence segments walked once per history (`cadenceSegments` / `segmentStartIn`), incremental period counts in `habitRatios`, arithmetic `periodRequired` — water tap ×25 views 37 → 3.4 ms, cold cycle insights 430 → 48 ms, monthly year series 60 → 1.3 ms; paradigms 36–39; checklist Z1–Z13; version 0.13.0 / versionCode 13 | this commit, tag `v0.13` |
+| 2026-10-26 night | Verification: tsc clean, 326 tests (22 new in `tests/round9.test.ts`), `expo export --platform android` → 6.0 MB Hermes bytecode, the perf fixture re-run (`/tmp/perf-r9.ts`) | this commit |
+
 (Entries for each council round follow below as they happen.)
 
 ## 6. Council log
 
 Format per round: lens → findings (severity · title · disposition · commit). Dispositions: **fixed**,
 **rejected** (reason), **deferred** (needs user/phone).
+
+### Round 9 (2026-10-26 night)
+
+Six lenses over the round-8 diff, each with its own harness: a diff review with probes (`/tmp/r9-diff-probe.ts`), a randomised command fuzzer (`/tmp/fuzz-r9.ts`), a planner simulator (`/tmp/sim-r9.ts`), a performance profile (`/tmp/perf-r9.ts`), a copy / accessibility audit (`/tmp/council9-copy.ts`) and a browser e2e. Ids are theirs.
+
+**Diff review** (round-8 changes, probed)
+- DR-01 med · PHASE_START/period with offset 0 skipped the logged start (returned the predicted one, confirmed) · **fixed** — `offsetDays >= 0` counts from the logged start while that day is ahead; test.
+- DR-02 med · the working-tree early-break in `distinctSessions` double-counted overlapping workouts (in-place replacement broke the start order) · **fixed** — rewritten as an active-set sweep over kept groups by last end; the `longest` bound gone; test under an anomalous 400-hour record.
+- DR-03 med · water reconciliation not idempotent after an upstream correction (a moved import stayed evicted, then came back) · **fixed** — twins judged on the current upstream batch every sync.
+- DR-04 med · one manual drink erased two distinct imports eight minutes apart · **fixed** — `twinImports()` one-to-one, closest pair first, each manual row used once; paradigm 39; tests; checklist Z7.
+- DR-05 med · a type revoked and re-granted never recovered its gap (stayed in `backfilled`) · **fixed** — after a complete read `backfilled` is the granted set, so a re-grant backfills 30 days again; checklist Z8.
+- DR-06 low · the widget fit helper still truncated long values at 32 dp ("1,8…") · **fixed** — `ringValue()` drops the unit, then compacts thousands, before the 9 dp floor; the accessibility label keeps the full value; test; checklist Z10.
+- Checked and fine: weekly COUNT "done", sparse-symptom NaNs, a sole future start, partial-permission pruning, legacy / envelope-2 round trips.
+
+**Fuzzer** (80 sequences × 65 commands, two seeds, DST dates, four zones, SQLite persist / load)
+- FZ-01 med · editing an imported drink after a zone change kept the old zone but computed the day in the new one · **fixed** — the edited row's day comes from the zone it was recorded in (paradigm 39).
+- Checked and fine: reducer purity, duplicate keys, validation, JSON / SQLite semantic persistence, finite non-negative ratios, streak bounds, Today sums, deterministic / unique / capped plans. Noted, not a finding: preset construction carries own `undefined` properties that JSON omits (strict equality is not an invariant); strength ticks keep the workout's start day with `at` = its end (documented).
+
+**Planner simulator** (November DST night, New York)
+- PS-01 med · headless re-plan built the plan before folding the deliveries made while closed, spending the cap twice · **fixed** — `reconcileAndSync()`: deliveries first (`firedSinceLastSync`), then plan, then the sync's own fired records; both headless paths and the in-app scheduler; paradigm 36; checklist Z1.
+- PS-02 med · merged notifications kept only the first slot's id; a snooze on the merged one brought the second slot back two minutes later · **fixed** — `mergedIds` on the nudge and the payload, events per constituent with `via` (schema v5 `ALTER TABLE nudge_event ADD COLUMN via`), cap and budgets count a delivery once, swap / snooze re-offers search every constituent's habit; tests; checklist Z2.
+- PS-03 med · midnight reopened completed rotation progress and reset the cap three hours before the tracking boundary · **fixed** — every slot carries `dayOf(at)`; eligibility, budgets and the cap are per tracking day; paradigm 37; test; checklist Z4.
+- PS-04 med · an automatic snooze could ring outside active hours (20:50 → 21:05) · **fixed** — automatic snoozes past the active end are dropped for the day; fixed clock times keep theirs; test; checklist Z3.
+- PS-05 med · a met weekly quota still generated tomorrow's same-week reminders · **fixed** — `PlanHabit.periodEndsOn` from `periodBounds`; `settled()` covers every slot up to it; test; checklist Z5.
+- PS-06 med · the live countdown continued after every movement habit was done (legacy rotation fallback) · **fixed** — `liveNudge` filters done / period-met habits and returns null when the planner offers nothing (the "due now" case kept); checklist Z6.
+
+**Performance** (two-year fixture: 25 habits, 6,000 drinks, 900 sleep sessions, 30 cycles)
+- PF-01 med · a water tap rebuilt every habit's lifetime streak (37 ms on the render thread) · **fixed** — per-habit view / day-value memo keyed on rules, policies, the habit's log slice and the day; now 3.4 ms for 25 views; paradigm 38; test.
+- PF-02 med · cadence lookups quadratic; cold cycle insights 0.43 s · **fixed** — `cadenceSegments()` walked once per rule history (a year past the asked day), `segmentStartIn()` lookup, incremental period counts in `habitRatios`, arithmetic `periodRequired`; cold insights 48 ms, monthly year series 1.3 ms; tests.
+- PF-03 med · one anomalous long sleep span defeated the bounded dedupe scan (1.6 M comparisons at 1,800 sessions) · **fixed** — the active-set sweep (DR-02); comparisons bounded by the open set; test.
+- PF-04 low · hydration reconciliation was a Cartesian search · **fixed** — manual rows sorted once, binary search for the window (DR-04).
+
+**Copy / accessibility**
+- CA-01 med · the week summary counted a monthly habit's whole-month completions as this week's · **fixed** — a monthly habit contributes its share of the week (quota × 7 / month length, at least 1); test.
+- CA-02 med · the estimated-phase flag never reached the ring, Today or the calendar · **fixed** — `phaseQualifier()` shared by PhaseRing, DaySheet, CycleCalendar and Today ("(estimated)" up to today, "(predicted)" after); test — this was also the e2e's one failure.
+- CA-03 med · summary cards hid their timestamp and detail from TalkBack · **fixed** — the label includes detail and time.
+- CA-04 med · water steppers said "Tap to type a time" and onboarding announced bounds from a formatter that ignored its argument · **fixed** — `Stepper.inputKind` ("an amount"); the onboarding formatter formats the value it is given; checklist Z11.
+- CA-05 med · permission copy promised empty metrics that keep their data · **fixed** — "nothing new of these is imported … what was imported before stays until you remove it" on the connection card; the Body tab matches.
+- CA-06 med · "One tap adds" did not control Today's water button (hard-coded 250 ml) · **fixed** — label and action follow `tapSizeMl`; checklist Z13.
+- CA-07 med · row action labels promised actions the handlers do not perform ("Start … timer" for every TIMER, "Add one" for AMOUNT) · **fixed** — `quickLogLabel()` and a timer label that says "Log time for …" when the sheet opens; checklist Z12.
+
+**Browser e2e (round-8 build):** weekly "done today" and Undo today, period-day reminder suffix, birth-control pause and the period-only sheet — all passed; the one failure (the ring said "(predicted)" for an estimated day) is CA-02, fixed. No console errors.
 
 ### Round 8 (2026-10-26 night)
 
@@ -678,9 +753,10 @@ Five lenses over the round-6 result, each a fresh read-only session with its own
 - Steps and cycle tiles in the widget; sleep-stages chart; write-back of water/mind sessions to Health Connect (v2).
 
 ### Device verification owed
-- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10, T1–T11, U1–U11, V1–V11, X1–X11, Y1–Y14 have never been run on hardware. First build on the laptop is the next real milestone.
+- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10, T1–T11, U1–U11, V1–V11, X1–X11, Y1–Y14, Z1–Z13 have never been run on hardware. First build on the laptop is the next real milestone.
 - Residual risk carried knowingly: two JavaScript runtimes writing SQLite at once (UPG6-03, row V11). If the device run shows a lost write there, the fix is a database revision compared inside the write transaction.
 - Rows added in round 7: X1–X5 (exact alarms and the offline re-plan — the two library defaults the platform lens read in the sources), X6 (sheets in a short window), X7–X9 (Today without the trio, cycle off / hidden), X10–X11 (long titles, the drink ceiling).
 - Rows added in round 8: Y1–Y3 (snapshot replacement, kept copies, journaled deletes), Y4–Y6 (speculative and birth-control reminders, estimated wording), Y7–Y10 (widget sizes, font scale, notice), Y11–Y14 (drink reconcile, one night across sources, late records and backfill, permission names).
+- Rows added in round 9: Z1–Z6 (deliveries before planning, merged notifications, evening snoozes, the hours before the boundary, a met weekly quota, the live countdown), Z7–Z9 (one-to-one drink twins, a re-granted type, "when the period begins"), Z10–Z13 (compact ring values, stepper hints, row labels, the water button's tap size).
 - Deferred from round 8: Health Connect change tokens (`getChanges`) as an optimisation over the rolling window; "sharpens after three" copy.
 - Not compile-verified here: `modules/exact-alarms/` (Kotlin) — the first laptop build either compiles it or deletes the folder (the app degrades to "exact timing unknown").

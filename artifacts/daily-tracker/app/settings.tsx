@@ -93,6 +93,7 @@ export default function SettingsScreen() {
             }}
             // Typed in the unit shown: "64" in ounces is 64 oz, not 64 ml.
             parse={(text) => parseVolumeInput(text, s.units)}
+            inputKind="amount"
             keyboardType="decimal-pad"
             placeholder={s.units === 'oz' ? '64 oz' : '2,000 ml'}
           />

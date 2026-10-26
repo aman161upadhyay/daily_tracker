@@ -8,11 +8,13 @@
  * deterministic: the same inputs give the same ids and times.
  *
  * Invariants (all covered by tests/planner.test.ts):
- * - automatic cadences (rotation, interval, water) stay inside active hours;
- *   FIXED clock times are the user's explicit choice and may sit outside them
- * - never more than `dailyNudgeCap` automatic nudges per calendar day,
+ * - automatic cadences (rotation, interval, water) stay inside active hours,
+ *   snoozed or not; FIXED clock times are the user's explicit choice and may
+ *   sit outside them
+ * - never more than `dailyNudgeCap` automatic nudges per tracking day,
  *   counting the ones that already fired
- * - two nudges less than 5 minutes apart merge into one
+ * - two nudges less than 5 minutes apart merge into one, and stay one: what
+ *   happens to the merged notification happens to every slot in it
  * - a snooze moves only that nudge; a swap re-offers the slot with the next snack
  * - water nudges are dropped while on pace and stop at the goal
  * - a habit that is done for today (or for its week) emits nothing more
@@ -32,8 +34,14 @@ export interface ScheduledNudge {
   /** Deterministic per (policy, slot); doubles as the OS notification identifier. */
   id: string;
   at: number;
-  /** Calendar day the nudge belongs to (for the daily cap). */
+  /** Tracking day the nudge belongs to (the daily cap and the per-habit budget count by it). */
   day: string;
+  /**
+   * Set on a merged notification: the slot ids it stands for (its own first). What happens to the
+   * notification — it rings, is snoozed, is done — is recorded against every one of them, so no
+   * constituent comes back on its own two minutes later.
+   */
+  mergedIds?: string[];
   habitIds: string[];
   title: string;
   body: string;
@@ -55,6 +63,8 @@ export interface PlanHabit {
   doneToday: boolean;
   /** Weekly / monthly habits: the period's quota is met, nothing more needed. */
   donePeriod: boolean;
+  /** Weekly / monthly habits: last tracking day of the period `donePeriod` refers to (slots up to it are settled too). */
+  periodEndsOn?: string;
   /** Progress towards today's target, 0..1+. */
   todayRatio: number;
   /** Last log today (epoch ms); anchors interval slots. */
@@ -154,20 +164,28 @@ export function latestEvents(events: readonly NudgeEvent[]): Map<string, NudgeEv
   return out;
 }
 
+/** The notification a slot's event arrived through: several slots merged into one ring once. */
+const deliveryOf = (e: NudgeEvent) => e.via ?? e.nudgeId;
+
+/** Notifications that rang on a tracking day (a merged one counts once, whatever it stood for). */
 function firedCount(latest: Map<string, NudgeEvent>, day: string): number {
-  let n = 0;
-  for (const e of latest.values()) if (e.day === day && e.kind !== 'SNOOZED') n += 1;
-  return n;
+  const rang = new Set<string>();
+  for (const e of latest.values()) if (e.day === day && e.kind !== 'SNOOZED') rang.add(deliveryOf(e));
+  return rang.size;
 }
 
-/** How many nudges each habit already received today (fired, done or dismissed). */
+/** How many notifications each habit already received on a tracking day (fired, done or dismissed). */
 function firedPerHabit(latest: Map<string, NudgeEvent>, day: string): Map<string, number> {
-  const out = new Map<string, number>();
+  const seen = new Map<string, Set<string>>();
   for (const e of latest.values()) {
     if (e.day !== day || e.kind === 'SNOOZED') continue;
-    for (const id of e.habitIds) out.set(id, (out.get(id) ?? 0) + 1);
+    for (const id of e.habitIds) {
+      let s = seen.get(id);
+      if (!s) seen.set(id, (s = new Set()));
+      s.add(deliveryOf(e));
+    }
   }
-  return out;
+  return new Map([...seen].map(([id, s]) => [id, s.size]));
 }
 
 /** Notification titles get one line in the shade; a long habit name (up to 80 characters in the editor) is cut with an ellipsis. */
@@ -219,10 +237,19 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
     candidates.push(c);
   };
   const boundary = input.boundaryHour ?? DEFAULT_BOUNDARY_HOUR;
+  /** The tracking day a clock time belongs to: progress, budgets and the cap are all kept by it. */
+  const dayOf = (at: number) => trackingDayOf(at, zone, boundary);
   /** Whether a clock time belongs to the tracking day the progress figures describe. */
-  const inToday = (at: number) => trackingDayOf(at, zone, boundary) === input.today;
-  /** Done for the tracking day the slot falls in: a 1:30 am reminder is judged by the evening before it. */
-  const settled = (h: PlanHabit, at: number) => inToday(at) && (h.doneToday || h.donePeriod);
+  const inToday = (at: number) => dayOf(at) === input.today;
+  /**
+   * Nothing more wanted for the tracking day the slot falls in: a 1:30 am reminder is judged by the
+   * evening before it, and a weekly quota met on Monday settles the rest of that week's slots too.
+   */
+  const settled = (h: PlanHabit, at: number) => {
+    const d = dayOf(at);
+    if (d === input.today) return h.doneToday || h.donePeriod;
+    return h.donePeriod && h.periodEndsOn !== undefined && d > input.today && d <= h.periodEndsOn;
+  };
 
   /** Apply snooze / swap / fired bookkeeping to a slot; returns the effective time or null. */
   const effectiveAt = (id: string, at: number): number | null => {
@@ -233,8 +260,16 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
     return null; // fired, done or dismissed: never again
   };
 
+  // Per-habit budgets by tracking day: what already rang that day plus what is planned now (past,
+  // undelivered slots do not count). Built when a day's first slot asks for it.
+  const budgets = new Map<string, Map<string, number>>();
+  const budgetFor = (day: string) => {
+    let b = budgets.get(day);
+    if (!b) budgets.set(day, (b = firedPerHabit(latest, day)));
+    return b;
+  };
+
   for (const day of days) {
-    const isToday = day === input.today;
     const activeStart = instantOf(day, settings.activeStartMin, zone);
     const activeEnd = instantOf(day, settings.activeEndMin, zone);
     const activeOk = activeEnd > activeStart;
@@ -242,36 +277,41 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
     // ── Movement rotation: one shared series of slots ─────────────────────
     const rotation = input.habits.filter((h) => h.movement && h.policy.enabled && (h.policy.kind === 'ROTATION' || h.policy.kind === 'INTERVAL'));
     if (activeOk && rotation.length > 0 && settings.nudgeIntervalMin > 0) {
-      const lastSnack = isToday ? Math.max(...rotation.map((h) => h.lastLogMs ?? 0)) : 0;
+      // Today's last snack anchors today's series; on any other day's window it lies outside the
+      // window and the series starts at the active start.
+      const lastSnack = Math.max(...rotation.map((h) => h.lastLogMs ?? 0));
       const anchor = Math.max(lastSnack, activeStart);
       // The Today card's "snooze all": slots before it collapse onto it (the merge step folds them into one).
-      const snoozedUntil = isToday && input.snoozedUntilMs && input.snoozedUntilMs > nowMs ? input.snoozedUntilMs : 0;
-      const eligible = rotation.filter((h) => !(isToday && (h.doneToday || h.donePeriod)));
-      // Per-habit budget: what already fired today plus what we plan now (past, undelivered slots do not count).
-      const perHabit = isToday ? firedPerHabit(latest, day) : new Map<string, number>();
-      const hasRoom = (h: PlanHabit) => (perHabit.get(h.id) ?? 0) < h.policy.maxPerDay;
-      // The rotation advances once per completed snack (and per swap), exactly like the Today card,
-      // so the first pending slot always matches what the card shows. Past slots do not move it.
-      const base = isToday ? input.rotationCompletedToday + input.swapOffset : 0;
+      const snoozedUntil = input.snoozedUntilMs && input.snoozedUntilMs > nowMs ? input.snoozedUntilMs : 0;
       let ordinal = 0;
       const rotStep = slotStep(settings.nudgeIntervalMin);
       let rotSlots = 0;
-      for (let at = anchor + rotStep; at < activeEnd && eligible.length > 0 && rotSlots++ < MAX_SLOTS_PER_DAY; at += rotStep) {
+      for (let at = anchor + rotStep; at < activeEnd && rotSlots++ < MAX_SLOTS_PER_DAY; at += rotStep) {
         const minute = minutesOfDay(at, zone);
         const id = `rot:${day}:${minute}`;
         const when = effectiveAt(id, Math.max(at, snoozedUntil));
         if (when === null) continue;
         // A slot inside a pause (or past the horizon) is never offered, so it neither spends the
-        // habit's daily budget nor advances the rotation: the first real slot matches the card.
-        if (!placeable(when)) continue;
+        // habit's daily budget nor advances the rotation: the first real slot matches the card. A
+        // snooze (or snooze-all) that lands past the end of the active hours is over for the day.
+        if (!placeable(when) || when >= activeEnd) continue;
+        const eligible = rotation.filter((h) => !settled(h, at));
+        if (eligible.length === 0) break;
+        const slotDay = dayOf(at);
+        const perHabit = budgetFor(slotDay);
+        const hasRoom = (h: PlanHabit) => (perHabit.get(h.id) ?? 0) < h.policy.maxPerDay;
+        // The rotation advances once per completed snack (and per swap), exactly like the Today card,
+        // so the first pending slot always matches what the card shows. Past slots do not move it.
+        const base = slotDay === input.today ? input.rotationCompletedToday + input.swapOffset : 0;
         const history = latest.get(id);
         let item: PlanHabit | undefined;
         if (history?.kind === 'SNOOZED') {
-          // A snooze re-offers the same snack.
-          item = eligible.find((h) => h.id === history.habitIds[0] && hasRoom(h));
+          // A snooze re-offers the same snack (a merged notification named several habits; the
+          // snack among them is the one to bring back).
+          item = eligible.find((h) => history.habitIds.includes(h.id) && hasRoom(h));
         } else if (history?.kind === 'SWAPPED') {
           // A swap offers the next snack after the one declined.
-          const i = eligible.findIndex((h) => h.id === history.habitIds[0]);
+          const i = eligible.findIndex((h) => history.habitIds.includes(h.id));
           for (let k = 1; k <= eligible.length && i >= 0; k++) {
             const cand = eligible[(i + k) % eligible.length]!;
             if (hasRoom(cand)) {
@@ -295,7 +335,7 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
         push({
           id,
           at: when,
-          day,
+          day: slotDay,
           habitIds: [item.id],
           title: 'Movement snack',
           body: `${snackLine(item.snackType, item.name)} — ${shortName(item.name).toLowerCase()}`,
@@ -315,7 +355,7 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
       const start = h.policy.activeStartMin !== undefined ? instantOf(day, h.policy.activeStartMin, zone) : activeStart;
       const end = h.policy.activeEndMin !== undefined ? instantOf(day, h.policy.activeEndMin, zone) : activeEnd;
       if (end <= start) continue;
-      const anchor = Math.max(isToday ? (h.lastLogMs ?? 0) : 0, start);
+      const anchor = Math.max(h.lastLogMs ?? 0, start);
       let n = 0;
       let slots = 0;
       const step = slotStep(h.policy.intervalMin!);
@@ -331,12 +371,12 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
           n += 1; // already fired, done or dismissed today: it counts against the cap
           continue;
         }
-        if (!placeable(when)) continue; // paused or beyond the horizon: not offered, not counted
+        if (!placeable(when) || when >= end) continue; // paused, beyond the horizon or snoozed past the window: not offered, not counted
         n += 1;
         push({
           id,
           at: when,
-          day,
+          day: dayOf(at),
           habitIds: [h.id],
           title: shortName(h.name),
           body: 'Time for it — tap Done when you have.',
@@ -372,7 +412,7 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
         push({
           id,
           at: when,
-          day,
+          day: dayOf(at),
           habitIds: [h.id],
           title: shortName(h.name),
           body: h.movement ? snackLine(h.snackType, h.name) : 'Scheduled reminder — tap Done when you have.',
@@ -389,34 +429,35 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
     // ── Water: pace-aware checks, one interval after the last tap ────────
     const water = input.water;
     if (water && activeOk && water.intervalMin >= 1) {
-      const logged = isToday ? water.loggedMl : 0;
-      if (logged < settings.waterGoalMl) {
-        const anchor = Math.max(isToday ? (water.lastTapMs ?? 0) : 0, activeStart);
-        const waterStep = slotStep(water.intervalMin);
-        let waterSlots = 0;
-        for (let at = anchor + waterStep; at < activeEnd && waterSlots++ < MAX_SLOTS_PER_DAY; at += waterStep) {
-          const minute = minutesOfDay(at, zone);
-          const expected = expectedIntakeMl(minute, settings.activeStartMin, settings.activeEndMin, settings.waterGoalMl);
-          if (isOnPace(logged, expected, settings.tapSizeMl)) continue;
-          const id = `water:${day}:${minute}`;
-          const when = effectiveAt(id, at);
-          if (when === null) continue;
-          const behind = Math.max(0, expected - logged);
-          push({
-            id,
-            at: when,
-            day,
-            habitIds: [water.habitId],
-            title: 'Water',
-            body: behind > 0 ? `About ${Math.ceil(behind / 50) * 50} ml behind pace — a glass now keeps you on track.` : 'A glass now keeps you on pace.',
-            line: behind > 0 ? `Water (about ${Math.ceil(behind / 50) * 50} ml behind pace)` : 'Water',
-            channel: 'water',
-            kind: 'WATER',
-            actions: ['WATER', 'SNOOZE'],
-            waterMl: settings.tapSizeMl,
-            counted: true,
-          });
-        }
+      // Today's taps anchor today's series; on another day's window the last tap lies outside it.
+      const anchor = Math.max(water.lastTapMs ?? 0, activeStart);
+      const waterStep = slotStep(water.intervalMin);
+      let waterSlots = 0;
+      for (let at = anchor + waterStep; at < activeEnd && waterSlots++ < MAX_SLOTS_PER_DAY; at += waterStep) {
+        // What is logged counts for the tracking day the slot falls in; any other day starts at zero.
+        const logged = inToday(at) ? water.loggedMl : 0;
+        if (logged >= settings.waterGoalMl) continue;
+        const minute = minutesOfDay(at, zone);
+        const expected = expectedIntakeMl(minute, settings.activeStartMin, settings.activeEndMin, settings.waterGoalMl);
+        if (isOnPace(logged, expected, settings.tapSizeMl)) continue;
+        const id = `water:${day}:${minute}`;
+        const when = effectiveAt(id, at);
+        if (when === null || when >= activeEnd) continue;
+        const behind = Math.max(0, expected - logged);
+        push({
+          id,
+          at: when,
+          day: dayOf(at),
+          habitIds: [water.habitId],
+          title: 'Water',
+          body: behind > 0 ? `About ${Math.ceil(behind / 50) * 50} ml behind pace — a glass now keeps you on track.` : 'A glass now keeps you on pace.',
+          line: behind > 0 ? `Water (about ${Math.ceil(behind / 50) * 50} ml behind pace)` : 'Water',
+          channel: 'water',
+          kind: 'WATER',
+          actions: ['WATER', 'SNOOZE'],
+          waterMl: settings.tapSizeMl,
+          counted: true,
+        });
       }
     }
 
@@ -428,7 +469,7 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
         push({
           id,
           at,
-          day,
+          day: dayOf(at),
           habitIds: [],
           title: input.weekSummary.title,
           body: input.weekSummary.body,
@@ -450,7 +491,7 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
         push({
           id,
           at: when,
-          day,
+          day: dayOf(when),
           habitIds: [],
           title: discreet ? DISCREET_TITLE : 'Cycle',
           body: discreet ? DISCREET_BODY : 'Around the expected day — log it when it starts.',
@@ -470,7 +511,7 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
       push({
         id,
         at: when,
-        day,
+        day: dayOf(when),
         habitIds: [],
         title: discreet ? DISCREET_TITLE : r.label,
         body: discreet ? DISCREET_BODY : 'A cycle reminder you set.',
@@ -495,7 +536,7 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
     push({
       id,
       at: when,
-      day: calendarDayOf(when, zone),
+      day: dayOf(when),
       habitIds: [e.habitId],
       title: e.title,
       body: e.body,
@@ -521,13 +562,12 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
     merged.push(c);
   }
 
-  // ── Daily cap on automatic nudges ──────────────────────────────────────
+  // ── Daily cap on automatic nudges, per tracking day ────────────────────
   const used = new Map<string, number>();
-  for (const day of days) used.set(day, firedCount(latest, day));
   const out: ScheduledNudge[] = [];
   for (const c of merged) {
     if (c.counted) {
-      const n = used.get(c.day) ?? 0;
+      const n = used.get(c.day) ?? firedCount(latest, c.day);
       if (n >= settings.dailyNudgeCap) continue;
       used.set(c.day, n + 1);
     }
@@ -547,6 +587,7 @@ function mergeTwo(a: Candidate, b: Candidate): Candidate {
   const title = hasWater ? (movement(a) || movement(b) ? 'Water & a movement snack' : 'Water & a reminder') : 'Time for a break';
   return {
     ...a,
+    mergedIds: [...(a.mergedIds ?? [a.id]), ...(b.mergedIds ?? [b.id])],
     habitIds,
     title,
     body: `${a.line} · ${b.line}`,

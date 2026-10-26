@@ -23,7 +23,7 @@ export const MAX_RESYNC_DAYS = 14;
 /** Every sync re-reads at least this many days: late records land where they belong. */
 export const ROLLING_DAYS = 7;
 
-/** Granted types that never had their first, 30-day read. */
+/** Granted types that never had their first, 30-day read (or lost it when access was taken away). */
 export function pendingBackfill(state: TrackerState, granted: readonly BodyRecordType[]): BodyRecordType[] {
   const done = new Set(state.body.sync.backfilled ?? (state.body.sync.lastSyncAt === undefined ? [] : state.body.sync.granted));
   return granted.filter((g) => !done.has(g));
@@ -99,14 +99,10 @@ async function readAndBuild(source: TrackerState | (() => TrackerState), ctx: Co
         background: access.background,
         lastError: error,
         // A partly failed read keeps the old watermark so the missed days are read again next time;
-        // a watermark never moves backwards. The types this complete read covered have had their
-        // first history read (an existing install without the record counts what it had as done).
-        ...(error
-          ? {}
-          : {
-              lastSyncAt: Math.max(ctx.nowMs, state.body.sync.lastSyncAt ?? 0),
-              backfilled: [...new Set([...(state.body.sync.backfilled ?? (state.body.sync.lastSyncAt === undefined ? [] : state.body.sync.granted)), ...access.granted])],
-            }),
+        // a watermark never moves backwards. A complete read covered exactly the granted types with
+        // the window they needed, so those — and only those — have had their history read: a type
+        // taken away leaves the list, and gets its 30 days again if it is granted back later.
+        ...(error ? {} : { lastSyncAt: Math.max(ctx.nowMs, state.body.sync.lastSyncAt ?? 0), backfilled: [...access.granted] }),
       },
     },
   ];

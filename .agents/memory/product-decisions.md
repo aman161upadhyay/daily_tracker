@@ -159,6 +159,38 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   mind screen (correct code, no measurable cost), sheet drafts lost on process death. **Why:** round 7's platform
   lens read the installed native sources and found two defaults (network constraint, inexact alarms) that no test
   here could reveal; the surface lens showed finite ≠ sane. Dispositions in `docs/RUNNING_CONTEXT.md` §6 Round 7.
+- Round 8 (2026-10-26 night) rules, each with a paradigm in RUNNING_CONTEXT §4 (31–35): a file is replaced only
+  by a complete file (write `snapshot.next.json`, then move — the installed expo-file-system `move({overwrite})`
+  deletes the destination before renaming); kept copies are one file each and never overwritten; the cleanup
+  marker names its target. Encrypted export is envelope 2 (header string as GCM AAD; envelope 1 still opens; the
+  Python recipe in BUILD_ANDROID shows the AAD join). Cycle: a reminder day that depends on an unlogged period is
+  shown but never scheduled (`confirmed`); birth control pauses fertile/luteal rules; `estimated` is wording,
+  `predicted` is calendar styling; future-dated starts anchor nothing; symptom burden = mean severity per logged
+  day with a 3-day floor. Journey: weekly habits have `doneToday` distinct from the period ratio; week summary
+  counts sessions vs quota. Widget: ring value in dp (no font scaling), labels budgeted, 48 dp touch floor, 72 dp
+  min height, day line is the first thing dropped, failures draw a notice on the last good model, rotation taps
+  resolve from the newest state. Health Connect: manual/widget drink within 5 min & 10 ml evicts its imported twin
+  on the next sync; overlapping sleep/workouts (> half the shorter) count once (richest copy wins; hiding it
+  reveals the other); every sync re-reads a rolling 7 days (cap 14) and a newly granted type gets a 30-day
+  backfill (`sync.backfilled`; legacy installs count current grants as done). Deferred: HC `getChanges` tokens,
+  "sharpens after three" copy. **Why:** round 8's lenses ran personas and scripts against the selectors and found
+  the data layer only right for one source of truth per fact. Dispositions in RUNNING_CONTEXT §6 Round 8.
+- Round 9 (2026-10-26 night) rules, paradigms 36–39 in RUNNING_CONTEXT §4: a merged notification is one
+  delivery and many slots (`mergedIds` on the nudge/payload; ledger events per constituent with `via`; cap and
+  budgets count the delivery once; the OS's deliveries while closed are folded into state *before* planning —
+  `reconcileAndSync`). Every nudge decision is in tracking days (slot `dayOf`), a met weekly/monthly quota settles
+  the period (`periodEndsOn`), automatic snoozes past the active end are dropped (fixed clock times keep theirs),
+  `liveNudge` is null when the planner offers nothing. Reads are memoised by what they read: per-habit view/values
+  memo keyed on rules, policies, the habit's log slice and the day (one slot per habit *object*; tests must check
+  unrelated-state identity before the habit's own change); cadence segments walked once per rule history;
+  period counts incremental over consecutive days; `periodRequired` arithmetic. Health Connect: manual drink ↔
+  import twins one-to-one, nearest first, judged on the *current* upstream batch (idempotent); edited imports keep
+  their recorded zone; a revoked type leaves `backfilled` so a re-grant backfills again. Cycle: PHASE_START/period
+  offset 0 fires on the logged start; `phaseQualifier` = "(estimated)" up to today, "(predicted)" after. Copy:
+  Stepper `inputKind` ('amount' for volumes; defaults to 'time' when `parse` is given, else 'number'); row labels
+  say what the tap does; Today's water button follows `tapSizeMl`; widget `ringValue` drops the unit then compacts
+  thousands before shrinking under 11 dp. **Why:** round 9's harnesses (fuzzer, planner simulator, perf profile)
+  found the round-8 fixes right per object and wrong in aggregate. Dispositions in RUNNING_CONTEXT §6 Round 9.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app

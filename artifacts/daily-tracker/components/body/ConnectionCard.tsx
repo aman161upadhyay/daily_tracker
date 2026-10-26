@@ -159,7 +159,7 @@ export function ConnectionCard({ hc, nowMs, zone, sample, hasData }: Props) {
           </Txt>
           {missing.length > 0 ? (
             <Txt role="footnote" tone="secondary" style={{ marginTop: 2 }}>
-              {`Not allowed: ${listRecordTypes(missing)} — a metric that is off here stays empty, whatever the source app has. Change it under Permissions.`}
+              {`Not allowed: ${listRecordTypes(missing)} — nothing new of these is imported, whatever the source app has; what was imported before stays until you remove it. Change it under Permissions.`}
             </Txt>
           ) : null}
         </View>

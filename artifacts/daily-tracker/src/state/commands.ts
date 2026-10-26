@@ -30,6 +30,8 @@ export interface NudgePayload {
   kind: string;
   habitIds: string[];
   day: string;
+  /** A merged notification: every slot id it stands for (see ScheduledNudge.mergedIds). */
+  mergedIds?: string[];
   snackType?: string;
   waterMl?: number;
   /** Timer bell: enough to log the session if the app was killed before the timer finished. */
@@ -61,6 +63,7 @@ export function parsePayload(data: unknown): NudgePayload | null {
   if (!(isCalendarDay(d.day) || (d.kind === 'MIND_END' && d.day === ''))) return null;
   if (!Array.isArray(d.habitIds) || d.habitIds.length > MAX_HABIT_IDS || !d.habitIds.every(isId)) return null;
   const out: NudgePayload = { nudgeId: d.nudgeId, kind: d.kind, habitIds: d.habitIds as string[], day: d.day };
+  if (Array.isArray(d.mergedIds) && d.mergedIds.length > 0 && d.mergedIds.length <= MAX_HABIT_IDS && d.mergedIds.every(isId)) out.mergedIds = d.mergedIds as string[];
   if (typeof d.snackType === 'string' && Object.prototype.hasOwnProperty.call(SNACK_LABELS, d.snackType)) out.snackType = d.snackType;
   if (isInt(d.waterMl, 1, MAX_WATER_LOG_ML)) out.waterMl = d.waterMl;
   if (d.mind && typeof d.mind === 'object') {
@@ -191,18 +194,33 @@ export function widgetTapActions(state: TrackerState, habitId: string, ctx: Comm
   return completeFromNudge(state, habit, ctx, 'AUTO_WIDGET', 'WIDGET');
 }
 
+/**
+ * What happened to a notification, written against every slot it stood for: a merged one (two
+ * series landing within five minutes) is one notification in the shade, and a snooze or a Done on
+ * it must settle each of its slots, or the others come back on their own two minutes later. The
+ * constituents point back at the notification (`via`) so the daily cap still counts one ring.
+ */
+export function nudgeEventActions(payload: Pick<NudgePayload, 'nudgeId' | 'habitIds' | 'mergedIds'>, kind: NudgeEventKind, ctx: CommandContext, untilMs?: number): Action[] {
+  const ids = payload.mergedIds && payload.mergedIds.includes(payload.nudgeId) ? payload.mergedIds : [payload.nudgeId, ...(payload.mergedIds ?? [])];
+  return [...new Set(ids)].map((nudgeId) => {
+    const event: NudgeEvent = {
+      id: ctx.newId(),
+      nudgeId,
+      habitIds: payload.habitIds,
+      at: ctx.nowMs,
+      zone: ctx.zone,
+      day: ctx.today,
+      kind,
+      ...(untilMs !== undefined ? { untilMs } : {}),
+      ...(nudgeId !== payload.nudgeId ? { via: payload.nudgeId } : {}),
+    };
+    return { type: 'NUDGE_EVENT', event, keepFromDay: addDays(ctx.today, -NUDGE_EVENT_RETENTION_DAYS) };
+  });
+}
+
+/** The first of `nudgeEventActions`: the event against the notification's own id. */
 export function nudgeEventAction(payload: Pick<NudgePayload, 'nudgeId' | 'habitIds'>, kind: NudgeEventKind, ctx: CommandContext, untilMs?: number): Action {
-  const event: NudgeEvent = {
-    id: ctx.newId(),
-    nudgeId: payload.nudgeId,
-    habitIds: payload.habitIds,
-    at: ctx.nowMs,
-    zone: ctx.zone,
-    day: ctx.today,
-    kind,
-    ...(untilMs !== undefined ? { untilMs } : {}),
-  };
-  return { type: 'NUDGE_EVENT', event, keepFromDay: addDays(ctx.today, -NUDGE_EVENT_RETENTION_DAYS) };
+  return nudgeEventActions({ ...payload, mergedIds: undefined }, kind, ctx, untilMs)[0]!;
 }
 
 /** Translate a notification button press (or tap) into state changes. */
@@ -239,7 +257,7 @@ export function nudgeResponseActions(state: TrackerState, payload: NudgePayload,
       } else {
         for (const h of habits) out.push(...completeFromNudge(state, h, ctx));
       }
-      out.push(nudgeEventAction(payload, 'DONE', ctx));
+      out.push(...nudgeEventActions(payload, 'DONE', ctx));
       break;
     }
     case 'WATER': {
@@ -251,23 +269,23 @@ export function nudgeResponseActions(state: TrackerState, payload: NudgePayload,
       if (alreadyRecorded('DONE') || waterStillCurrent(state, payload.nudgeId, ctx.nowMs)) return out;
       const ml = payload.waterMl ?? state.settings.tapSizeMl;
       out.push({ type: 'ADD_WATER', entry: { id: ctx.newId(), at: ctx.nowMs, zone: ctx.zone, day: ctx.today, ml, source: 'MANUAL' } });
-      out.push(nudgeEventAction(payload, 'WATER', ctx));
+      out.push(...nudgeEventActions(payload, 'WATER', ctx));
       // Only the water half is done; the movement half (if merged) stays open via a short snooze.
-      if (habits.some((h) => h.snackType)) out.push(nudgeEventAction(payload, 'SNOOZED', ctx, ctx.nowMs + SNOOZE_MINUTES * 60_000));
-      else out.push(nudgeEventAction(payload, 'DONE', ctx));
+      if (habits.some((h) => h.snackType)) out.push(...nudgeEventActions(payload, 'SNOOZED', ctx, ctx.nowMs + SNOOZE_MINUTES * 60_000));
+      else out.push(...nudgeEventActions(payload, 'DONE', ctx));
       break;
     }
     case 'SNOOZE':
-      out.push(nudgeEventAction(payload, 'SNOOZED', ctx, ctx.nowMs + SNOOZE_MINUTES * 60_000));
+      out.push(...nudgeEventActions(payload, 'SNOOZED', ctx, ctx.nowMs + SNOOZE_MINUTES * 60_000));
       break;
     case 'SWAP':
       if (alreadyRecorded('SWAPPED')) return out;
       out.push({ type: 'SWAP', day: ctx.today });
-      out.push(nudgeEventAction(payload, 'SWAPPED', ctx));
+      out.push(...nudgeEventActions(payload, 'SWAPPED', ctx));
       break;
     case 'OPEN':
     case 'TAP':
-      out.push(nudgeEventAction(payload, 'FIRED', ctx));
+      out.push(...nudgeEventActions(payload, 'FIRED', ctx));
       break;
   }
   return out;
@@ -282,15 +300,24 @@ function waterStillCurrent(state: TrackerState, nudgeId: string, nowMs: number):
 }
 
 /** Record delivered nudges the OS fired while we were not watching (see nudgeScheduler). */
-export function firedActions(state: TrackerState, fired: { id: string; habitIds: string[]; day: string; at: number }[], ctx: CommandContext): Action[] {
+export function firedActions(state: TrackerState, fired: { id: string; habitIds: string[]; day: string; at: number; mergedIds?: string[] }[], ctx: CommandContext): Action[] {
   const known = new Set(state.nudgeEvents.map((e) => e.nudgeId));
-  return fired
-    .filter((f) => !known.has(f.id))
-    .map((f) => ({
-      type: 'NUDGE_EVENT' as const,
-      event: { id: ctx.newId(), nudgeId: f.id, habitIds: f.habitIds, at: f.at, zone: ctx.zone, day: f.day, kind: 'FIRED' as const },
-      keepFromDay: addDays(ctx.today, -NUDGE_EVENT_RETENTION_DAYS),
-    }));
+  const out: Action[] = [];
+  for (const f of fired) {
+    if (known.has(f.id)) continue;
+    // A merged notification rang for every slot in it; each is written down (the constituents
+    // pointing at the notification), so none is re-offered as if it had never rung.
+    for (const nudgeId of new Set([f.id, ...(f.mergedIds ?? [])])) {
+      if (known.has(nudgeId)) continue;
+      known.add(nudgeId);
+      out.push({
+        type: 'NUDGE_EVENT',
+        event: { id: ctx.newId(), nudgeId, habitIds: f.habitIds, at: f.at, zone: ctx.zone, day: f.day, kind: 'FIRED', ...(nudgeId !== f.id ? { via: f.id } : {}) },
+        keepFromDay: addDays(ctx.today, -NUDGE_EVENT_RETENTION_DAYS),
+      });
+    }
+  }
+  return out;
 }
 
 export function applyAll(state: TrackerState, actions: Action[], reduce: (s: TrackerState, a: Action) => TrackerState): TrackerState {

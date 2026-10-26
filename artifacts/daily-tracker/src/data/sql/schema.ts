@@ -171,6 +171,10 @@ export const MIGRATIONS: readonly string[] = [
     note TEXT
   );
   `,
+  // v5 — a nudge that rang inside a merged notification remembers which one
+  `
+  ALTER TABLE nudge_event ADD COLUMN via TEXT;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

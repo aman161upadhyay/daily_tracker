@@ -104,52 +104,76 @@ export function autoTickActions(state: TrackerState, batch: BodyBatch, ctx: Comm
 
   if (batch.hydration) {
     const boundary = state.settings.dayBoundaryHour;
-    const byExternal = new Map(batch.hydration.map((h) => [h.id, h]));
-    const seen = new Set<string>();
-    const manual = state.water.filter((w) => w.source === 'MANUAL' || w.source === 'AUTO_WIDGET');
-    const sameDrink = (at: number, ml: number) => manual.some((w) => Math.abs(w.at - at) <= SAME_DRINK_WINDOW_MS && Math.abs(w.ml - ml) <= 10);
+    // The rows already imported, one per upstream record (a duplicate of the same record is noise).
+    const existingByExternal = new Map<string, WaterEntry>();
     for (const w of state.water) {
-      if (!w.externalId) continue;
-      const upstream = byExternal.get(w.externalId);
-      if (upstream) {
-        seen.add(w.externalId);
-        if (w.source !== 'AUTO_HC') continue;
-        // The person logged the same drink here after it had been imported (a glass tapped a minute
-        // after the other app's entry): theirs is the record, the imported copy goes — the same
-        // rule a new import is held to below, applied to the ones already in.
-        if (sameDrink(w.at, w.ml) || sameDrink(upstream.at, Math.round(upstream.ml))) {
-          actions.push({ type: 'REMOVE_LOG', log: 'water', id: w.id });
-          continue;
-        }
-        // Edited in the other app: same record, new amount or time.
-        if (Math.round(upstream.ml) !== w.ml || upstream.at !== w.at) {
-          actions.push({ type: 'REMOVE_LOG', log: 'water', id: w.id });
-          actions.push({
-            type: 'ADD_WATER',
-            entry: { ...w, at: upstream.at, day: trackingDayOf(upstream.at, ctx.zone, boundary), ml: Math.round(upstream.ml) },
-          });
-        }
-      } else if (w.source === 'AUTO_HC' && inWindow(w.day)) {
-        // Deleted in the other app.
-        actions.push({ type: 'REMOVE_LOG', log: 'water', id: w.id });
-      }
+      if (w.source !== 'AUTO_HC' || !w.externalId) continue;
+      if (existingByExternal.has(w.externalId)) actions.push({ type: 'REMOVE_LOG', log: 'water', id: w.id });
+      else existingByExternal.set(w.externalId, w);
     }
-    for (const h of batch.hydration) {
-      if (h.ml <= 0 || seen.has(h.id)) continue;
-      seen.add(h.id);
-      if (sameDrink(h.at, h.ml)) continue;
-      const entry: WaterEntry = {
-        id: ctx.newId(),
-        at: h.at,
-        zone: ctx.zone,
-        day: trackingDayOf(h.at, ctx.zone, boundary),
-        ml: Math.round(h.ml),
-        source: 'AUTO_HC',
-        externalId: h.id,
-      };
+    const upstream = batch.hydration.filter((h) => h.ml > 0).map((h) => ({ ...h, ml: Math.round(h.ml) }));
+    const inBatch = new Set(batch.hydration.map((h) => h.id));
+    const stillThere = new Set(upstream.map((h) => h.id));
+    // A drink the person logged here (by hand or from the widget) is the record of that drink; an
+    // imported copy of it — the other app's entry a minute away — is not a second glass. Each
+    // manual row stands for at most one import, the nearest in time, judged on the record as the
+    // other app has it now (an entry moved an hour away upstream is a drink of its own again).
+    const twins = twinImports(upstream, state.water);
+    for (const h of upstream.sort((x, y) => x.at - y.at || x.id.localeCompare(y.id))) {
+      const current = existingByExternal.get(h.id);
+      if (twins.has(h.id)) {
+        if (current) actions.push({ type: 'REMOVE_LOG', log: 'water', id: current.id });
+        continue;
+      }
+      if (current) {
+        // Edited in the other app: same record, new amount or time. The row keeps the zone it was
+        // recorded in, so its day stays the one that clock would give.
+        if (h.ml !== current.ml || h.at !== current.at) {
+          actions.push({ type: 'REMOVE_LOG', log: 'water', id: current.id });
+          actions.push({ type: 'ADD_WATER', entry: { ...current, at: h.at, day: trackingDayOf(h.at, current.zone, boundary), ml: h.ml } });
+        }
+        continue;
+      }
+      const entry: WaterEntry = { id: ctx.newId(), at: h.at, zone: ctx.zone, day: trackingDayOf(h.at, ctx.zone, boundary), ml: h.ml, source: 'AUTO_HC', externalId: h.id };
       actions.push({ type: 'ADD_WATER', entry });
+    }
+    for (const [externalId, w] of existingByExternal) {
+      // Deleted in the other app (or emptied to nothing), as far as this read can tell.
+      const gone = inBatch.has(externalId) ? !stillThere.has(externalId) : inWindow(w.day);
+      if (gone) actions.push({ type: 'REMOVE_LOG', log: 'water', id: w.id });
     }
   }
 
   return actions;
+}
+
+/**
+ * The upstream records that are copies of a drink logged here: each manual or widget row is paired
+ * with at most one import within `SAME_DRINK_WINDOW_MS` and 10 ml, closest pairs first.
+ */
+export function twinImports(upstream: readonly { id: string; at: number; ml: number }[], water: readonly WaterEntry[]): Set<string> {
+  const manual = water.filter((w) => w.source === 'MANUAL' || w.source === 'AUTO_WIDGET').sort((a, b) => a.at - b.at);
+  const pairs: { gap: number; importId: string; manualIndex: number }[] = [];
+  for (const h of upstream) {
+    // Binary search for the first manual row inside the window, then walk while rows stay inside it.
+    let lo = 0;
+    let hi = manual.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (manual[mid]!.at < h.at - SAME_DRINK_WINDOW_MS) lo = mid + 1;
+      else hi = mid;
+    }
+    for (let i = lo; i < manual.length && manual[i]!.at <= h.at + SAME_DRINK_WINDOW_MS; i++) {
+      if (Math.abs(manual[i]!.ml - h.ml) <= 10) pairs.push({ gap: Math.abs(manual[i]!.at - h.at), importId: h.id, manualIndex: i });
+    }
+  }
+  pairs.sort((a, b) => a.gap - b.gap || a.manualIndex - b.manualIndex || a.importId.localeCompare(b.importId));
+  const taken = new Set<number>();
+  const twins = new Set<string>();
+  for (const p of pairs) {
+    if (taken.has(p.manualIndex) || twins.has(p.importId)) continue;
+    taken.add(p.manualIndex);
+    twins.add(p.importId);
+  }
+  return twins;
 }

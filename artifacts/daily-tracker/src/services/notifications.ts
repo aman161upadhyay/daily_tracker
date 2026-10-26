@@ -15,6 +15,8 @@ export interface FiredRecord {
   habitIds: string[];
   day: string;
   at: number;
+  /** A merged notification: every slot id it stood for. */
+  mergedIds?: string[];
 }
 
 export interface NudgeResponse {
@@ -44,6 +46,11 @@ export function exactAlarmsAllowed(): boolean | null {
 }
 
 export async function prepare(_tapMl: number, _units?: 'ml' | 'oz'): Promise<void> {}
+
+/** What the OS delivered since the last sync, without touching the schedule. */
+export async function firedSinceLastSync(_nowMs: number): Promise<FiredRecord[]> {
+  return [];
+}
 
 /** Make the OS schedule match the plan. Returns nudges that fired since the last sync. */
 export async function syncPlan(_plan: ScheduledNudge[], _nowMs: number): Promise<FiredRecord[]> {

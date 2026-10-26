@@ -11,7 +11,8 @@ import { nudgePlan } from '@/src/state/selectors';
 import type { TrackerState } from '@/src/state/types';
 import { currentZone, newId, now } from '@/src/domain/time/clock';
 import { trackingDayOf } from '@/src/domain/time/trackingDay';
-import { prepare, syncPlan, type FiredRecord } from './notifications';
+import type { Action } from '@/src/state/reducer';
+import { firedSinceLastSync, prepare, syncPlan, type FiredRecord } from './notifications';
 
 const DIRTY_KEY = 'dailytracker.headless.dirty.v1';
 
@@ -26,12 +27,30 @@ export async function syncStateToOs(state: TrackerState, ctx: CommandContext): P
   return syncPlan(plan, ctx.nowMs);
 }
 
+/**
+ * The one re-plan sequence, over whatever holds the state: first write down what the OS delivered
+ * since the last sync, then plan from that state, then record anything that rang in between.
+ * Planning before the deliveries are known treats the delivered slots as still free and spends
+ * the daily cap twice (the plan would re-offer a slot the person just saw as a new one).
+ */
+export async function reconcileAndSync(current: () => TrackerState, apply: (build: (s: TrackerState) => Action[]) => Promise<unknown>, ctx: CommandContext): Promise<void> {
+  const delivered = await firedSinceLastSync(ctx.nowMs);
+  if (delivered.length > 0) await apply((s) => firedActions(s, delivered, ctx));
+  const fired = await syncStateToOs(current(), ctx);
+  await apply((s) => [...firedActions(s, fired, ctx), { type: 'PRUNE_EVENTS', beforeMs: ctx.nowMs - 60 * 60_000 }]);
+}
+
 /** Headless variant: sync, fold fired events into the state and return it (caller persists). */
 export async function replanHeadless(state: TrackerState, ctx: CommandContext): Promise<TrackerState> {
-  const fired = await syncStateToOs(state, ctx);
-  const actions = firedActions(state, fired, ctx);
-  actions.push({ type: 'PRUNE_EVENTS', beforeMs: ctx.nowMs - 60 * 60_000 });
-  return applyAll(state, actions, reducer);
+  let next = state;
+  await reconcileAndSync(
+    () => next,
+    async (build) => {
+      next = applyAll(next, build(next), reducer);
+    },
+    ctx,
+  );
+  return next;
 }
 
 /**
@@ -42,9 +61,8 @@ export async function replanHeadless(state: TrackerState, ctx: CommandContext): 
  * newest state.
  */
 export async function replanLive(live: LiveStore, ctx: CommandContext): Promise<TrackerState> {
-  const fired = await syncStateToOs(live.current(), ctx);
-  const { next } = await live.apply((s) => [...firedActions(s, fired, ctx), { type: 'PRUNE_EVENTS', beforeMs: ctx.nowMs - 60 * 60_000 }]);
-  return next;
+  await reconcileAndSync(() => live.current(), (build) => live.apply(build), ctx);
+  return live.current();
 }
 
 /**

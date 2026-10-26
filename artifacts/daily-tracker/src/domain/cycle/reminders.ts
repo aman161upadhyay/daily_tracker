@@ -54,8 +54,9 @@ export function nextFire(rule: CycleReminder, prediction: CyclePrediction | null
   if (!rule.enabled || !prediction) return null;
   if (prediction.lateDays > 0) return null;
   if (context.birthControl && isOvulationBased(rule)) return null;
-  if (rule.anchor === 'PHASE_START' && (rule.phase ?? 'period') === 'period' && rule.offsetDays > 0) {
-    // Counted from a logged start while that period's day is still ahead …
+  if (rule.anchor === 'PHASE_START' && (rule.phase ?? 'period') === 'period') {
+    // "When the period begins" and "N days into the period" count from a logged start (the
+    // expected first day is BEFORE_PERIOD with no offset) while that period's day is still ahead …
     const logged = addDays(prediction.lastStart, rule.offsetDays);
     if (logged >= today) return { day: logged, confirmed: true };
     // … otherwise from the predicted one: shown, not scheduled, until the period is logged.
