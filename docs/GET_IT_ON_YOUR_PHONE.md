@@ -1,0 +1,287 @@
+# Getting Daily Tracker onto your Android phone — step by step
+
+This is written for someone who has never built an Android app. Every step says what to type and
+what you should see. The technical version of the same recipe lives in `docs/BUILD_ANDROID.md`;
+you do not need it.
+
+**What you will end up with:** the real app installed on your phone — widget, reminders with
+buttons, Health Connect import, app lock, backups — working without the laptop, and a single
+`.apk` file you can send to friends.
+
+**How long:** about an hour for the one-time setup (mostly downloads), 10–20 minutes for the first
+build, 3–5 minutes for every build after that.
+
+---
+
+## Part 0 — The 2-minute preview (optional, limited)
+
+If you just want to *see* the app before setting anything up:
+
+1. Install **Expo Go** from the Play Store on your phone.
+2. Open the Replit project, run it, and scan the QR code shown for the `expo` app with Expo Go.
+
+This shows the whole interface and lets you log things, but the widget, Health Connect, and
+reminder buttons with the app closed do **not** work in Expo Go. Those need the real build below.
+
+---
+
+## Part 1 — One-time setup on your computer
+
+You need four things: **Android Studio** (makes Android apps), **Node** (runs the build tools),
+**pnpm** (installs the project's parts), and **Git** (downloads the project). Pick your computer.
+
+### On a Mac
+
+1. **Android Studio.** Download from https://developer.android.com/studio and drag it to
+   Applications. Open it once, choose *Standard* setup, accept the licences, and let it download
+   the Android SDK. Close it when the welcome window appears.
+2. **Node.** Download the **LTS** installer from https://nodejs.org and run it.
+3. **Git.** Open *Terminal* (Applications → Utilities → Terminal, or press ⌘-Space and type
+   `Terminal`). Type `git --version` and press Enter. If a window offers to install *command line
+   developer tools*, click Install and wait.
+4. **pnpm.** In Terminal:
+   ```bash
+   npm install -g pnpm@10
+   ```
+5. **Tell the terminal where Android Studio put things.** Still in Terminal, paste these four
+   lines one at a time (each adds a line to a settings file called `.zshrc`):
+   ```bash
+   echo 'export ANDROID_HOME="$HOME/Library/Android/sdk"' >> ~/.zshrc
+   echo 'export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"' >> ~/.zshrc
+   echo 'export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"' >> ~/.zshrc
+   source ~/.zshrc
+   ```
+6. **Check.** Type each of these; each should print a version number, not "command not found":
+   ```bash
+   node -v        # v22 or v24
+   pnpm -v        # 10.x
+   git --version
+   java -version  # 17 or 21
+   adb version
+   ```
+
+### On Windows
+
+1. **Android Studio.** Download from https://developer.android.com/studio and run the installer
+   with the defaults. Open it once, choose *Standard* setup, accept the licences, and let it
+   download the Android SDK. Close it when the welcome window appears.
+2. **Node.** Download the **LTS** installer from https://nodejs.org and run it (defaults are fine).
+3. **Git.** Download from https://git-scm.com/download/win and install with the defaults.
+4. **pnpm.** Open *PowerShell* (press the Windows key, type `PowerShell`, Enter) and type:
+   ```powershell
+   npm install -g pnpm@10
+   ```
+   If PowerShell complains that running scripts is disabled, type
+   `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, answer `Y`, and try again.
+5. **Tell Windows where Android Studio put things.** In PowerShell, paste these lines one at a time:
+   ```powershell
+   [Environment]::SetEnvironmentVariable("ANDROID_HOME", "$env:LOCALAPPDATA\Android\Sdk", "User")
+   [Environment]::SetEnvironmentVariable("JAVA_HOME", "C:\Program Files\Android\Android Studio\jbr", "User")
+   [Environment]::SetEnvironmentVariable("Path", "$env:LOCALAPPDATA\Android\Sdk\platform-tools;C:\Program Files\Android\Android Studio\jbr\bin;" + [Environment]::GetEnvironmentVariable("Path", "User"), "User")
+   ```
+   Then **close PowerShell and open it again** (the new settings only apply to new windows).
+6. **Check.** Type each of these; each should print a version number:
+   ```powershell
+   node -v        # v22 or v24
+   pnpm -v        # 10.x
+   git --version
+   java -version  # 17 or 21
+   adb version
+   ```
+7. **One Windows-only rule:** keep the project in a short folder path such as `C:\dev`
+   (long paths break Android builds). Create it with `mkdir C:\dev` if it does not exist.
+
+### Your phone
+
+1. Settings → *About phone* → tap **Build number** seven times (you will see "You are now a
+   developer"). On Samsung phones it is under About phone → Software information.
+2. Settings → *System* → **Developer options** → turn on **USB debugging**.
+3. Plug the phone into the computer with a cable that carries data (the charger cable usually
+   does). On the phone, choose *File transfer* if asked, and tap **Allow** on the
+   "Allow USB debugging?" box (tick *Always allow from this computer*).
+4. On the computer type `adb devices`. You should see one line with a long code followed by
+   `device`. If it says `unauthorized`, look at the phone for the Allow box. If nothing is
+   listed, try another cable or USB port.
+
+The phone needs Android 8 or newer. Health Connect is built into Android 14+; on Android 9–13
+install the free **Health Connect** app from the Play Store first.
+
+---
+
+## Part 2 — Get the project and build the app
+
+Open Terminal (Mac) or PowerShell (Windows). The commands are the same on both unless noted.
+
+1. **Download the project** (only the first time):
+   ```bash
+   cd ~            # Windows: cd C:\dev
+   git clone https://github.com/aman161upadhyay/daily_tracker.git
+   cd daily_tracker
+   ```
+2. **Install the project's parts** (run from the `daily_tracker` folder; 2–5 minutes the first time):
+   ```bash
+   pnpm install
+   ```
+   You should see it finish without red `ERR` lines. Warnings in yellow are fine.
+3. **Go into the app folder:**
+   ```bash
+   cd artifacts/daily-tracker
+   ```
+4. **Generate the Android project** (turns `app.json` + the plugins into a real Android project
+   in a folder called `android/`; 30–60 seconds):
+   ```bash
+   pnpm exec expo prebuild --platform android --clean
+   ```
+   If it asks "Continue?" or about overwriting, answer `y`. The `android/` folder it creates is
+   disposable — never edit it; this command rebuilds it every time.
+5. **Build and install the app on your phone** (10–20 minutes the first time — it downloads about
+   1 GB of build tools; later builds take a few minutes):
+   ```bash
+   pnpm exec expo run:android --variant release
+   ```
+   You will see hundreds of lines ending with `BUILD SUCCESSFUL`, then the app opens on your
+   phone. If the terminal keeps running afterwards, press **Ctrl-C** — the installed app does not
+   need the computer any more.
+
+   The file you just installed is also saved at
+   `artifacts/daily-tracker/android/app/build/outputs/apk/release/app-release.apk`. That is the
+   file to send to friends (Part 4).
+
+> **Why `--variant release`?** Without it you get a *debug* build that only runs while the
+> computer feeds it code over the cable. The release build has everything inside it.
+
+---
+
+## Part 3 — Set up the phone so everything works
+
+Do these once, in the app and in the phone's Settings:
+
+1. **Onboarding.** Open the app, enter your name, pick your habits, choose whether to track your
+   cycle. Nothing leaves the phone.
+2. **Notifications.** In the app: Settings (the letter in the top-right of Today) → *Reminders* →
+   **Allow notifications** → Allow on the system box. Then tap **Exact timing** → on the Android
+   screen that opens, allow *Alarms & reminders*. Without this, reminders can arrive minutes late.
+3. **Battery.** Phone Settings → Apps → Daily Tracker → *Battery* → **Unrestricted** (Samsung:
+   also Settings → Battery → Background usage limits → make sure Daily Tracker is not in
+   "Sleeping apps"). Otherwise the phone may silence reminders after a few days.
+4. **Widget.** Long-press an empty part of your home screen → *Widgets* → find *Daily Tracker* →
+   drag it onto the screen. Resize it by long-pressing it. Choose which habits it shows in the
+   app: Settings → *Widget*. Tapping a ring logs that habit; tapping a name opens it.
+5. **Health Connect** (steps, sleep, workouts, heart rate, weight, drinks from Samsung Health,
+   Google Fit, Garmin, Fitbit, etc.):
+   - Make sure your fitness app writes to Health Connect: Samsung Health → Settings → *Health
+     Connect* → turn on the data types; Google Fit → Profile → Settings → *Sync Fit with Health
+     Connect*.
+   - In Daily Tracker: *Body* tab → **Connect** → tick the data types → Allow. You can also allow
+     *background access* so it imports while the app is closed.
+6. **App lock** (optional): Settings → *Privacy* → App lock. It uses your phone's fingerprint/PIN,
+   so the phone must have a screen lock set. Widgets and reminder buttons keep working while locked.
+7. **Backups.** Settings → *Your data* → **Export backup** creates a file you can save to Drive or
+   send to yourself. Type a password there if you want the file encrypted (there is no recovery if
+   you forget it). **Import backup** restores it. Android's own backup also keeps a copy and offers
+   "Welcome back → Restore it" when you set up a new phone.
+
+Then try the list in `docs/DEVICE_CHECKLIST.md` if you want to check every feature carefully.
+
+---
+
+## Part 4 — Sharing the app with friends
+
+1. Find the file `artifacts/daily-tracker/android/app/build/outputs/apk/release/app-release.apk`
+   on your computer (Mac: Finder → Go → Go to Folder and paste the path; Windows: File Explorer).
+   Rename a copy to something like `DailyTracker-0.6.apk` if you like.
+2. Send it any way you want: Google Drive link, WhatsApp, email, AirDrop-style apps.
+3. On their phone they tap the file. Android asks to allow installing from that app (Files,
+   Chrome, WhatsApp…) → **Allow** → **Install**. If *Play Protect* shows a warning, tap *More
+   details* → *Install anyway* — the warning only means the app is not from the Play Store.
+4. They then do Part 3 on their own phone.
+
+Later versions install over the old one as long as they come from the same computer (or the same
+signing key — see Part 6). Friends never need to uninstall.
+
+---
+
+## Part 5 — Updating the app later
+
+Whenever the code on GitHub changes:
+
+```bash
+cd ~/daily_tracker                  # Windows: cd C:\dev\daily_tracker
+git pull
+pnpm install
+cd artifacts/daily-tracker
+pnpm exec expo prebuild --platform android --clean
+pnpm exec expo run:android --variant release
+```
+
+Your data stays on the phone; an update never erases it. (Each release raises the app's
+`versionCode` in `app.json`; the phone refuses an update whose number is not higher, which is why
+that number is part of every milestone.)
+
+---
+
+## Part 6 — Your own signing key (recommended once friends use the app)
+
+Android ties an app to the key it was signed with. Right now that is the *debug key* that
+Android Studio created on your computer — fine for your own phone, but if the computer is lost
+or replaced, nobody can update the app on your friends' phones without uninstalling it. A
+proper key, backed up, avoids that. Do this once, before the first APK you hand out, if you can.
+
+1. Create the key (answer the questions; the passwords are yours to choose and remember):
+   ```bash
+   mkdir -p ~/keystores          # Windows: mkdir $HOME\keystores
+   keytool -genkeypair -v -storetype PKCS12 -keystore ~/keystores/daily-tracker-release.jks -alias daily-tracker -keyalg RSA -keysize 2048 -validity 10000
+   ```
+   (On Windows write the path as `$HOME\keystores\daily-tracker-release.jks`.)
+2. **Back the file up in two places** (a USB stick and a cloud drive). Losing it means a new app
+   name for everyone.
+3. Tell the build about it by creating a text file called `gradle.properties` inside a folder
+   `.gradle` in your home folder (Mac: `~/.gradle/gradle.properties`; Windows:
+   `C:\Users\<you>\.gradle\gradle.properties`) with four lines:
+   ```
+   DT_RELEASE_STORE_FILE=/Users/<you>/keystores/daily-tracker-release.jks
+   DT_RELEASE_STORE_PASSWORD=the store password you chose
+   DT_RELEASE_KEY_ALIAS=daily-tracker
+   DT_RELEASE_KEY_PASSWORD=the key password you chose
+   ```
+   On Windows write the path with forward slashes: `C:/Users/<you>/keystores/daily-tracker-release.jks`.
+   This file is outside the project, so it is never uploaded to GitHub.
+4. Build again (Part 5). The app on **your** phone must be uninstalled once before the newly signed
+   build installs (Android refuses a different key): in the app, Settings → Your data → Export
+   backup first, uninstall, build/install, then Import backup. Friends who got an APK *before* this
+   step have to do the same once; everyone who gets an APK *after* it never will.
+
+---
+
+## Part 7 — When something goes wrong
+
+| What you see | What it means | What to do |
+|---|---|---|
+| `command not found` / `not recognized` (pnpm, adb, java) | The terminal does not know the new settings yet | Close the terminal, open a new one, try again. On Mac also run `source ~/.zshrc`. |
+| `SDK location not found` | The build cannot find Android Studio's SDK | Check Part 1 step 5 (`ANDROID_HOME`). Mac path `~/Library/Android/sdk`, Windows `%LOCALAPPDATA%\Android\Sdk`. |
+| `JAVA_HOME is not set` or `Unsupported class file major version` | Wrong or missing Java | Set `JAVA_HOME` to Android Studio's `jbr` folder as in Part 1 step 5. |
+| `adb devices` shows nothing | Phone not visible | Different cable/port, USB debugging on, choose *File transfer* on the phone, tap Allow. |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | The app on the phone was signed with a different key | Export a backup in the app, uninstall it, install again, import. |
+| `INSTALL_FAILED_VERSION_DOWNGRADE` | The phone has a newer version number | `git pull` to get the latest code, or uninstall first. |
+| `Could not resolve …` / `Connection timed out` during the build | A download failed | Check the internet (turn off VPN), run the same command again — it continues where it stopped. |
+| `Filename too long` (Windows) | Project folder path too deep | Move the project to `C:\dev\daily_tracker`. |
+| `EPERM` / `EBUSY` / file in use (Windows) | Another program holds a file | Close Android Studio and any Explorer window inside the project; try again. |
+| The app opens with "Unable to load script" | You installed the debug build | Run the build again with `--variant release`. |
+| Reminders arrive late or not at all | Exact alarms or battery settings | Part 3 steps 2–3. |
+| Widget says "Open Daily Tracker to choose habits…" or looks empty | The app has not run since install, or no habits yet | Open the app once (finish onboarding); the widget redraws within a minute. |
+| Body tab says Health Connect is not available | Health Connect missing on this phone | Android 9–13: install *Health Connect* from the Play Store; Android 8 is too old for imports. |
+| Play Protect blocks the install on a friend's phone | Unknown-source app | *More details* → *Install anyway*. |
+| Build fails with something else | — | Copy the last 30 lines of the terminal into the Replit chat; the agent reads them. |
+
+---
+
+## Part 8 — The short version, once it all works
+
+```bash
+cd ~/daily_tracker/artifacts/daily-tracker        # Windows: C:\dev\daily_tracker\artifacts\daily-tracker
+git pull && pnpm install
+pnpm exec expo prebuild --platform android --clean
+pnpm exec expo run:android --variant release
+```
+
+APK for friends: `android/app/build/outputs/apk/release/app-release.apk`.
