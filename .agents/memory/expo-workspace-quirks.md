@@ -1,6 +1,6 @@
 ---
 name: Expo workspace quirks
-description: Environment-specific facts for the daily-tracker Expo app — icon imports, test runner, node types, Metro path aliases, image tooling, web pitfalls.
+description: Environment-specific facts for the daily-tracker Expo app — icon imports, test runner, node types, Metro path aliases, platform splits, headless entry, widget library, prebuild here, image tooling, web pitfalls.
 ---
 
 ## Phosphor icons must be deep-required
@@ -35,8 +35,36 @@ x.native.ts -> x.native.ts" + "Maximum call stack size exceeded" at startup (re-
 not catch it because it resolves `./x` to the web file. Shared code goes in a third module (`transferFormat.ts`).
 The new expo-file-system API (`File`, `Paths.cache`, `file.write`, `file.text()`) is sync for writes.
 
+## Headless code must be registered from the entry file, not a route
+Expo Router's `require.context` loads route modules lazily (`getRoutes` runs inside `ExpoRoot`'s render), so a
+`TaskManager.defineTask` / `registerWidgetTaskHandler` placed in `app/_layout.tsx` does not exist when Android starts
+the bundle without a UI (notification response task, background task, widget click). The app has a custom
+`index.js` (`package.json` `main`) that imports the headless service modules and then `expo-router/entry`.
+**How to apply:** anything that must run in a headless start goes through `index.js`; verify with the Android
+bundle grep — the `index.js` module factory should require the task modules before `expo-router/entry`.
+
+## react-native-android-widget throws on import in Expo Go
+Under the new architecture its `AndroidWidget.ts` does `TurboModuleRegistry.getEnforcing('AndroidWidget')` at
+module evaluation, so a static import anywhere breaks every screen in Expo Go (same failure class as the FCM
+topic module). Pattern used: `src/services/widget.native.ts` gates on `Platform.OS === 'android' &&
+!isRunningInExpoGo()` (from `expo`) and `require`s the library and the widget component lazily inside functions;
+`widget.ts` is the web no-op. Metro still bundles the module (harmless; it is never evaluated in Expo Go).
+Widget text uses `fontFamily` = TTF file name without extension (the plugin copies `fonts: [...]` into
+`assets/fonts/`); custom fonts cannot be used inside the SVG, so values are `TextWidget`s overlapped on the ring.
+The library runs its headless task with `allowedInForeground = true`, so taps also work while the app is open;
+the app only notices through the headless-write flag on the next foreground.
+
+## `expo prebuild` works in the workspace
+`CI=1 pnpm exec expo prebuild --platform android --no-install` needs no Android SDK and is the way to check config
+plugin output (widget provider XML, manifest receiver, fonts, preview drawable). It rewrites `package.json` to list
+`expo`/`react`/`react-native` under `dependencies` (the scaffold had them in devDependencies — now moved for good) and
+warns that `edgeToEdgeEnabled` is obsolete in SDK 57 (removed). Delete `android/` afterwards.
+
 ## Image tooling
-No PIL, no sharp. ImageMagick `magick` is available and was used for app icons (icon/adaptive/splash/favicon).
+No PIL, no sharp. ImageMagick `magick` is available and was used for app icons (icon/adaptive/splash/favicon) and
+the widget preview (`scripts/widget-preview.sh`). Gotcha: `-gravity center -geometry -X-Y` with *both* offsets
+negative silently composites nothing; position text with `-gravity Center -draw "text x,y '…'"` instead, which
+takes signed offsets correctly. Settings like `-stroke` leak into later `label:` images unless reset (`-stroke none`).
 
 ## Expo Go on Android lacks the FCM topic module
 `expo-notifications@57.0.24` does `requireNativeModule('ExpoTopicSubscriptionModule')` at import time in its

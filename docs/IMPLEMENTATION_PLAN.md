@@ -176,11 +176,33 @@ beat automatic ones**; streaks are recomputed from raw entries, never stored.
 **Verified in the browser:** planner + settings + Sugar Shield + widget picker. **Needs the phone** (see `docs/DEVICE_CHECKLIST.md` N1–N12): delivery under Doze, action buttons with the app killed, exact-alarm grant, boot re-plan.
 **Deferred to M3:** week-start setting; per-habit notification sounds; a dedicated "confirm" screen if headless actions prove unreliable.
 
-### M3 — Widgets + first installed build (laptop)
-- `react-native-android-widget` config; Water 2×2 and 4×1, Move 2×1 (Sugar Shield / Move now); headless click handlers writing through the repositories; widget refresh from every write path.
-- Laptop recipe verified: `git pull` → `npm ci` → `npx expo prebuild -p android` → `npx expo run:android` on the phone (Android Studio's SDK + adb). Debug build id suffix `.debug`.
-- Device checklist part 1 (`docs/DEVICE_CHECKLIST.md`, ported from Cadence E1–E17): widget with app swiped away, after reboot, nudges under Doze (`adb shell dumpsys deviceidle force-idle`), time-zone change.
-**Done when:** the widget on Aman's home screen logs water with the app closed, and nudges fire on time with the phone idle.
+### M3 — Widgets + first installed build (laptop) ✅ (v0.3)
+- One resizable app-widget "Daily Tracker" (`react-native-android-widget` 0.24, plugin config in `app.json`; the
+  Water 2×2 / Move 2×1 trio from the original spec collapsed into one widget that adapts to its size). Up to three
+  tiles: the habits chosen in Settings → Home-screen widget, else water · the snack up next in the movement rotation
+  · mind. Tap a ring = log through `widgetTapActions` (the notification "Done" rule: one tap of water, one snack set,
+  the day's remainder for count/timer habits, "done" for yes/no — never a double log), tap the name = deep link to the
+  habit, background = open the app. Rings are SVG strings in the app's category colours, text in Manrope (fonts
+  bundled from `assets/fonts/` by the plugin); picker preview from `scripts/widget-preview.sh` (ImageMagick).
+- `src/widget/`: `model.ts` (pure view model + `widgetModelKey`), `layout.ts` (breakpoints: 1 tile < 150 dp, 2 < 230 dp,
+  else 3; inline row below 110 dp tall), `ring.ts`, `TrackerWidget.tsx` (RNAW primitives), `handler.tsx` (headless task:
+  load SQLite → apply → re-plan nudges → persist → flag the app → redraw every instance). `src/services/widget[.native].ts`
+  is the only bridge; it requires the library lazily because importing it in Expo Go throws at load.
+- Refresh from every write path: `components/system/WidgetSync.tsx` redraws when the model key changes (debounced), the
+  headless notification tasks redraw after they persist, the click handler redraws itself, and Android's 30-min
+  `updatePeriodMillis` covers the 3 am rollover.
+- **Entry file**: `index.js` now registers the headless tasks (nudge response, 3-hourly re-plan, widget) before
+  `expo-router/entry`. Expo Router only evaluates `app/_layout.tsx` when it renders, which never happens when Android
+  starts the bundle for a background task — so M2's headless notification buttons, with the app fully closed, depended
+  on this fix as well (re-run N6 on the device).
+- `docs/BUILD_ANDROID.md`: the laptop recipe (pnpm, not `npm ci`: the repo is a pnpm workspace with a patched
+  dependency), debug vs. release APK, keystore rule, failure table. `versionCode` 3. The `.debug` id suffix idea is dropped:
+  one install, one database.
+- Tests: 106 (widget model/taps/layout/ring added). Verified here: typecheck, tests, web preview with the new entry,
+  `expo prebuild -p android` output (widget provider XML, receiver, fonts, preview drawable). **Needs the phone**
+  (`docs/DEVICE_CHECKLIST.md` W1–W8, plus N6/N17 again).
+**Deferred to M4:** a cycle tile ("day N · next period in X days") and a steps tile once Health Connect data exists;
+week-start setting; per-habit notification sounds.
 
 ### M4 — Health Connect + Body tab
 - Permissions flow and rationale; reads for steps, sleep, exercise sessions, heart rate, weight, hydration; background-read permission when available.
@@ -271,7 +293,7 @@ cycle notifications, birth-control mode, luteal length, app lock + timeout, them
 - **Store contract (`node --test` + `node:sqlite` / in-memory JSON):** load/replace/apply round-trips, identity diff, migrations (every schema version opens), `parseState` rejects bad imports; later: manual beats auto, de-dup of Health Connect imports, day closer idempotency.
 - **Components (RNTL):** HabitRow states and colors by adherence, SummaryCard formatting (thousands separators, units), TodayRings values.
 - **Device checklist** (`docs/DEVICE_CHECKLIST.md`, ported from Cadence §11): fresh install, widget with app killed and after reboot, nudges under Doze, sticky water reminder, action buttons from the lock screen, time-zone change, Health Connect flow, upgrade keeps data, backup round trip, dark/light + large text + TalkBack, "a real day".
-- CI (GitHub Actions, optional in M3): `npm ci && npm test && npx tsc --noEmit` on every push.
+- CI (GitHub Actions, optional): `pnpm install && pnpm --filter @workspace/daily-tracker run test && pnpm --filter @workspace/daily-tracker run typecheck` on every push.
 
 ---
 
@@ -279,12 +301,13 @@ cycle notifications, birth-control mode, luteal length, app lock + timeout, them
 
 **Daily (Replit):** `npx expo start` → scan with Expo Go. UI, data, nudges testable there.
 
-**Native build (laptop, Android Studio installed):**
+**Native build (laptop, Android Studio installed)** — full recipe in `docs/BUILD_ANDROID.md`:
 ```bash
 git clone https://github.com/aman161upadhyay/daily_tracker.git && cd daily_tracker
-npm ci
-npx expo prebuild --platform android          # generates android/ from app.json + config plugins
-npx expo run:android                          # debug build on the connected phone (USB or wireless adb)
+pnpm install                                   # repo root (pnpm workspace; npm/yarn are refused)
+cd artifacts/daily-tracker
+pnpm exec expo prebuild --platform android --clean   # generates android/ from app.json + config plugins
+pnpm exec expo run:android                     # debug build on the connected phone (USB or wireless adb)
 ```
 **Release APK:** keystore at `~/keystores/daily-tracker-release.jks` (create once with `keytool`,
 back it up twice); credentials in `~/.gradle/gradle.properties` (never in the repo);

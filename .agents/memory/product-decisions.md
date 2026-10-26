@@ -33,6 +33,13 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
 - Headless notification actions (app killed) run through expo-notifications' response task on Android and
   write to SQLite directly via the shared command layer; the running app reloads on foreground when a
   "headless write" flag is set. Expo Go cannot run these; only the dev build can — device checklist N5/N6.
+- Widget decisions (2026-10-26, M3): one resizable widget instead of the spec's Water 2×2 / Move 2×1 set — the
+  user wanted "any habit", so the tiles come from `widgetHabitIds` (order = priority; a small widget shows only
+  the first). Automatic mode = water · the snack *up next* in the rotation (so the widget, Today card and
+  notification agree) · mind. A ring tap mirrors the notification "Done" rule (`completeFromNudge` with source
+  AUTO_WIDGET / trigger WIDGET): water adds one tap size, snacks add a set, count/timer habits log the day's
+  remainder, yes/no never double-logs. Name tap deep-links to the habit; background opens the app. Cycle and
+  steps tiles wait for M4 data. **Why:** a widget that can silently log twice is worse than one that does less.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app

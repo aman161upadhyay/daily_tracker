@@ -4,8 +4,7 @@ Things that can only be verified on a real Android phone (Expo Go stubs notifica
 widgets and Health Connect). Run after each native build; tick the row in the PR / commit message.
 Ported from Cadence E1–E17 where the behaviour carried over.
 
-**Build under test:** dev build from `npx expo prebuild -p android && npx expo run:android` (debug) or the
-release APK. Phone: Android 12+ (exact alarms need the user's grant from 12, notifications need runtime
+**Build under test:** dev build or release APK from the laptop (`docs/BUILD_ANDROID.md`). Phone: Android 12+ (exact alarms need the user's grant from 12, notifications need runtime
 permission from 13).
 
 ## G — Expo Go (Replit's Android emulator, or the QR code on a phone)
@@ -37,13 +36,23 @@ permission from 13).
 | N16 | Pause | Settings → Pause → 2 hours | "Next up" starts after the pause; switch Reminders off entirely → all scheduled notifications cancelled (`adb shell dumpsys notification --noredact | grep dailytracker` is empty of ours) |
 | N17 | Headless write + foreground | Press Done on a nudge while the app is in the background, then open the app | The log is visible immediately (provider reloads from SQLite on foreground); make another change → both survive a restart |
 
-## W — Widget (M3, placeholder rows)
+## W — Widget (M3)
+
+The widget is one app-widget ("Daily Tracker" in the picker), resizable. Up to three tiles: the habits chosen in
+Settings → Home-screen widget, in that order, or automatically water · the snack that is up next in the movement
+rotation · mind. Tap a ring = log its natural unit (one tap of water, one snack set, the day's target for a
+count/timer habit, "done" for a yes/no habit); tap the name = open that habit; tap the background = open the app.
 
 | # | Scenario | Steps | Expect |
 |---|---|---|---|
-| W1 | Add widget | Long-press home screen → Widgets → Daily Tracker | The habits chosen in Settings → Home-screen widget (or the automatic three) with one-tap logging |
-| W2 | Widget with the app swiped away | Swipe the app away; tap a widget action | Value updates within seconds; open app → same value |
-| W3 | After reboot | Reboot | Widget shows current values, not zeros |
+| W1 | Add widget | Long-press home screen → Widgets → Daily Tracker → place it at 4×2 | Three tiles with rings, values and names in the app's fonts/colours (Manrope, teal/green/violet on the dark card with the gold hairline); the preview in the picker matches |
+| W2 | Sizes | Resize to 2×2, then to 4×1 | 2×2: one big ring (the first habit); 4×1: three small rings beside their text. Nothing clipped or overlapping; names truncate with "…" |
+| W3 | Tap to log, app in background | Home button; tap the water ring twice, then the movement ring | Water value rises by one tap size each time (e.g. 0 ml → 250 ml → 500 ml) within a second; movement count +1 and the tile's name changes to the next snack in the rotation; open the app → Today shows the same numbers (source "widget") |
+| W4 | Tap with the app swiped away | Swipe the app from Recents; tap a ring | Same as W3 (headless task, no app window opens). If the value does not change, note the Android version and whether battery optimisation is on for the app |
+| W5 | Tap the name / background | Tap "Water"; go back; tap the empty card area | Name opens the app on that habit's page; background opens the app on Today |
+| W6 | Stays in sync | In the app, log water, archive a habit, change the widget picks in Settings, change units to oz | Widget redraws within a second each time; after a notification "Done" with the app closed the widget also updates |
+| W7 | Day rollover & reboot | Leave it overnight (3 am boundary); reboot the phone | Morning: zeros again by the next periodic update (≤ 30 min after 3 am) or immediately after opening the app; after reboot: current values, not an empty card |
+| W8 | Yes/no habit | Choose a yes/no habit in Settings; tap its ring twice | First tap: ring full, "✓", caption "Done"; second tap: nothing changes (no double log) |
 
 ## H — Health Connect (M4, placeholder)
 

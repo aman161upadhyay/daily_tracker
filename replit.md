@@ -22,13 +22,19 @@ original Kotlin spec being ported (this plan wins where they disagree).
   `$REPLIT_EXPO_DEV_DOMAIN`; phone preview via Expo Go (widgets/Health Connect/notifications are stubbed there).
 - `pnpm run typecheck` — `tsc --noEmit`; `pnpm run test` — `node --test` via tsx (`tests/*.test.ts`, node:assert).
   Both green before every push. Vitest is **not** used (its install is blocked in this workspace).
-- Native builds happen on Aman's laptop (Android Studio): `npx expo prebuild -p android && npx expo run:android`.
+- Native builds happen on Aman's laptop (Android Studio) — `docs/BUILD_ANDROID.md` (`pnpm install` at the repo root, then
+  `pnpm exec expo prebuild -p android --clean && pnpm exec expo run:android` in the artifact). `expo prebuild` runs here
+  too (no SDK needed) to check plugin output; delete the generated `android/` afterwards (git-ignored anyway).
 - `patches/expo-notifications@57.0.24.patch` (applied by pnpm via `patchedDependencies` in `pnpm-workspace.yaml`) makes the
   Android FCM topic module optional: Expo Go's Android client ships without it, and without the patch importing
   `expo-notifications` throws on load and every screen fails ("Cannot find native module 'ExpoTopicSubscriptionModule'").
   Re-create the patch (`pnpm patch expo-notifications@<ver>`) whenever the package version changes.
 - Platform-split pairs (`x.ts` + `x.native.ts`): the native file must never import `./x` — on Android/iOS that resolves to
   itself (infinite getter loop at startup). Put shared code in a third module (see `src/data/transferFormat.ts`).
+- `index.js` is the entry (package.json `main`), not `expo-router/entry` directly: it imports the headless task modules
+  (`src/services/nudgeTasks`, `src/services/widget`) before the router. Expo Router evaluates `app/_layout.tsx` only when it
+  renders, and Android runs the bundle without rendering for notification buttons, the periodic re-plan and widget taps —
+  anything that must exist in those runs is registered from `index.js`.
 
 ## Layout
 - `src/domain/` pure logic (time/tracking day, adherence scale, water pace, streaks, nudges, cycle, formatting) — no React,
@@ -48,6 +54,14 @@ original Kotlin spec being ported (this plan wins where they disagree).
   button presses with the app closed, 3-hourly re-plan). Button presses become reducer actions only through
   `src/state/commands.ts`, which both paths share. Web/Expo Go: planner runs, OS parts are honest no-ops.
   Device-only behaviour is listed in `docs/DEVICE_CHECKLIST.md`.
+- Widget (Android dev/release builds only): `src/widget/` — `model.ts` (pure view model: chosen habits or water · next
+  rotation snack · mind), `layout.ts` (size breakpoints), `ring.ts` (SVG string), `TrackerWidget.tsx`
+  (`react-native-android-widget` primitives → RemoteViews; never React Native views), `handler.tsx` (headless task: load
+  SQLite → `widgetTapActions` → `replanHeadless` → persist → `markHeadlessWrite` → redraw). `src/services/widget[.native].ts`
+  is the only place that touches the library and `require`s it lazily: importing it in Expo Go throws at load.
+  `components/system/WidgetSync.tsx` redraws on model changes; the headless nudge tasks redraw after persisting. Plugin
+  config, fonts (`assets/fonts/`, copied from `@expo-google-fonts/manrope`) and the picker preview
+  (`assets/widget/preview.png`, regenerate with `scripts/widget-preview.sh`) live in `app.json`.
 - Icons: Phosphor, imported only through `components/ui/icons.tsx` using
   `require('phosphor-react-native/src/icons/<Name>').<Name>Icon` (the root import would bundle every icon; the
   package only exports `.` and `./src/icons/*`). Add new icons there, never import Phosphor elsewhere.
@@ -60,5 +74,7 @@ original Kotlin spec being ported (this plan wins where they disagree).
 5. Notification channel ids and importance are permanent once shipped; add channels, don't change them. Nudge ids are deterministic so re-planning is idempotent.
 6. Privacy: no analytics, crash reporting, ads or network SDKs. The only network use is opening an evidence link the user taps.
 7. Design: tokens from `docs/DESIGN_SYSTEM.md` only; adherence colors apply to fills, never to text; ≥ 48 dp touch targets with accessibility labels; never nest pressables (web renders them as `<button>`); US English, no exclamation marks in notifications.
-8. Native modules (`src/native/`, from M2 on) must degrade to stubs in Expo Go so the UI always runs there.
+8. Native modules must degrade to stubs in Expo Go and on web so the UI always runs there: platform-split service files
+   (`src/services/*.native.ts` + `*.ts`), lazy `require` for libraries that throw on import (widget), and a runtime
+   `isRunningInExpoGo()` guard before touching them.
 9. Keep `docs/` current when behaviour changes; add a device-checklist row for anything that can only be verified on a phone.
