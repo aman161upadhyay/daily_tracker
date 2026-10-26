@@ -396,6 +396,18 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   then is reported on screen / as a toast). `ringsCentre` names what the person tracks — "Start empty"
   archives Water, so it is never owed "2,000 ml to go"; the nudge card is shown only with movement habits.
   Headless snapshot failures stay console-only on purpose (the next foreground attempt reports).
+- Round 26 (2026-10-26 night) rules, paradigms 110–112: code that runs outside React is compiled as if
+  it did not — `src/widget/TrackerWidget.tsx` must open with `'use no memo'` (react-native-android-widget
+  calls components as plain functions; the React Compiler, on via `experiments.reactCompiler`, made them
+  throw "Invalid hook call"; `tests/round26.test.ts` compiles the file as Metro does — babel-preset-expo
+  resolved from expo's own dir, caller `{name:'metro', supportsReactCompiler:true}` — and asserts no
+  compiler runtime). A library promise is read from its source: `requestWidgetUpdate` renders in a
+  detached forEach(async) so draw per widget via `getWidgetInfo` + `requestWidgetUpdateById`;
+  `preventScreenCaptureAsync` caches its key in JS while FLAG_SECURE lives on a recreatable window, so
+  release + re-apply on every foreground. A Retry retries the failed operation at its scope
+  (`BackupFailure.what`: write / delete / delete-kept). `buildEmptyState` writes the kept water goal into
+  the new Water rule; "Days met" uses `adherenceSpan` for the numerator too; FIXED movement reminders
+  are not "off" (`fixedMovementReminders`). Headless 30 s budget stays the paradigm-76 tradeoff.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app
