@@ -4,6 +4,8 @@ import { lastNDays } from '@/src/domain/time/trackingDay';
 /** What the Steps summary card shows (Body tab and Today's pinned card read the same figures). */
 export interface StepsCardView {
   present: boolean;
+  /** Where the figures come from: the card opens that history (Body's chart, or the habit's page). */
+  source: 'health' | 'habit';
   today: number;
   series7: number[];
   avg7: number | undefined;
@@ -18,5 +20,5 @@ export interface StepsCardView {
 export function stepsCardViewFromHabit(valueOn: (day: string) => number, today: string): StepsCardView {
   const days = lastNDays(today, 7);
   const series7 = days.map((d) => valueOn(d));
-  return { present: true, today: valueOn(today), series7, avg7: averageOf(series7) };
+  return { present: true, source: 'habit', today: valueOn(today), series7, avg7: averageOf(series7) };
 }

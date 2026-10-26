@@ -21,7 +21,7 @@ import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import { adherenceColor, FLOW_THRESHOLD, STAGE_LABELS } from '@/src/domain/adherence/adherenceScale';
 import { withAlpha } from '@/src/domain/color/oklch';
-import { daysMet } from '@/src/domain/habits/progress';
+import { adherenceSpan, daysMet } from '@/src/domain/habits/progress';
 import { describePolicy, isPaused, nextRingText, type PolicyContext } from '@/src/domain/nudges/describePolicy';
 import { describeRule, formatDayShort, formatHabitValue, formatVolume, formatWeekdayShort, habitAmountText, habitUnit, mlToOz } from '@/src/domain/time/format';
 import { lastNDays } from '@/src/domain/time/trackingDay';
@@ -109,7 +109,9 @@ export default function HabitDetailScreen() {
   // Each day about itself — for a weekly habit `ratio` is the week's accumulated progress, and one
   // Monday session would otherwise count as seven days met by Sunday.
   const completed14 = daysMet(view.ratios14);
-  const last14 = lastNDays(today, 14);
+  // Only days since the habit existed count as "last N": a two-day-old habit is not 1 of 14.
+  const span = adherenceSpan(habit.createdDay, today);
+  const last14 = lastNDays(today, span.days);
   const periodNoun = view.rule.cadence === 'DAILY' ? 'day' : view.rule.cadence === 'WEEKLY' ? 'week' : 'month';
   const plural = (n: number) => (n === 1 ? periodNoun : `${periodNoun}s`);
   const isWater = habit.presetId === 'water';
@@ -209,7 +211,7 @@ export default function HabitDetailScreen() {
           <AdherenceBar adherence={view.adherence} height={8} />
           <Row style={{ justifyContent: 'space-between', marginTop: 6 }}>
             <Txt role="caption" tone="tertiary">
-              14-day adherence
+              {span.label}
             </Txt>
             <Txt role="caption" tone="secondary">
               {Math.round(view.adherence * 100)}%
@@ -378,12 +380,12 @@ export default function HabitDetailScreen() {
         <Divider />
         <Row style={{ justifyContent: 'space-between', paddingVertical: 10 }}>
           <View>
-            <Txt role="title2" heading>Pin to Today</Txt>
+            <Txt role="title2" heading>Show first</Txt>
             <Txt role="footnote" tone="secondary">
-              Keeps this habit near the top
+              At the top of the habit lists on Today and Habits
             </Txt>
           </View>
-          <Switch value={habit.pinned} onValueChange={(v) => actions.updateHabit(habit.id, { pinned: v })} trackColor={{ false: c.hairline, true: c.green }} thumbColor={c.text} accessibilityLabel="Pin to Today" />
+          <Switch value={habit.pinned} onValueChange={(v) => actions.updateHabit(habit.id, { pinned: v })} trackColor={{ false: c.hairline, true: c.green }} thumbColor={c.text} accessibilityLabel="Show first in the habit lists" />
         </Row>
         <Divider />
         <Row gap={8} style={{ marginTop: 12 }}>

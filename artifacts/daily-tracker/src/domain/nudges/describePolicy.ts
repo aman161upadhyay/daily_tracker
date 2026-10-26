@@ -116,6 +116,11 @@ export function describePolicy(policy: NudgePolicy | undefined, ctx: PolicyConte
  */
 export function shortPolicyText(policy: NudgePolicy | undefined, ctx: PolicyContext): string | undefined {
   if (!policy || policy.kind === 'NONE') return undefined;
+  // A paused reminder keeps its schedule but rings nothing: the row says so rather than "Rotation".
+  if (isPaused(policy)) {
+    const kept = shortPolicyText({ ...policy, enabled: true }, ctx);
+    return kept ? `Paused · ${kept}` : 'Paused';
+  }
   switch (policy.kind) {
     case 'FIXED': {
       const minutes = (policy.times ?? []).map(clockMinutes).filter((m): m is number => m !== null);
@@ -176,6 +181,18 @@ export const POLICY_INTERVAL_MAX = 8 * 60;
 export const POLICY_MAX_PER_DAY = 12;
 
 /** A schedule that is kept but not running: the switch on the habit page is off. */
+/**
+ * How long the global pause (Settings → Reminders → Pause) still runs: "until 3:30 PM" today,
+ * "until Oct 29, 9:00 AM" on a later day; undefined once it has passed. Today's card and Settings
+ * read the same words.
+ */
+export function pausedUntilText(offUntil: number | undefined, nowMs: number, zone: string, clock: ClockFormat): string | undefined {
+  if (offUntil === undefined || offUntil <= nowMs) return undefined;
+  const day = calendarDayOf(offUntil, zone);
+  const time = formatClock(minutesOfDay(offUntil, zone), clock);
+  return day === calendarDayOf(nowMs, zone) ? `until ${time}` : `until ${formatDayShort(day)}, ${time}`;
+}
+
 export const isPaused = (policy: Partial<NudgePolicy> | undefined): boolean => !!policy && policy.kind !== undefined && policy.kind !== 'NONE' && policy.enabled === false;
 
 /**

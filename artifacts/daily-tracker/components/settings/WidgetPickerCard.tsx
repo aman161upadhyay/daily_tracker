@@ -35,7 +35,7 @@ export function WidgetPickerCard() {
           <View style={{ flex: 1 }}>
             <Txt role="title2" heading>Home-screen widget</Txt>
             <Txt role="footnote" tone="secondary">
-              Up to {WIDGET_MAX} habits, each with a one-tap log. Automatic picks water, movement and mind.
+              Up to {WIDGET_MAX} habits, each with a one-tap log (Steps shows its count; it is logged in the app). Automatic picks water, movement and mind.
             </Txt>
           </View>
         </Row>

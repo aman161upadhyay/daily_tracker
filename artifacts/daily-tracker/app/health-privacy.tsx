@@ -51,7 +51,7 @@ export default function HealthPrivacyScreen() {
         <Txt role="body" style={{ marginTop: 14 }}>
           Daily Tracker reads a few health figures so the habits you track can tick themselves. What it reads is kept inside the app on this
           phone and used only to show you your own numbers. The one copy that can leave is Android's phone backup, if you left that on in
-          Settings → Backup (encrypted with your screen lock); the app itself sends nothing anywhere.
+          Settings → Your data (encrypted with your screen lock); the app itself sends nothing anywhere.
         </Txt>
       </Card>
 

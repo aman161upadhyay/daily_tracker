@@ -23,7 +23,7 @@ import { useColors } from '@/hooks/useColors';
 import type { Habit } from '@/src/domain/models';
 import { formatClock, formatDayLong, formatNumber, formatVolume, settledLegend } from '@/src/domain/time/format';
 import { minutesOfDay } from '@/src/domain/time/trackingDay';
-import { shortPolicyText } from '@/src/domain/nudges/describePolicy';
+import { pausedUntilText, shortPolicyText } from '@/src/domain/nudges/describePolicy';
 import { useClockFormat, useHabitViews, useHighlights, useLiveNudge, useTodaySummary } from '@/src/state/hooks';
 import { type PinnedCardId } from '@/src/domain/today/pinned';
 import { cycleTimeline, habitDayValue, mindSeries, policyFor, rotationItems, ruleFor, snackSeries, snackSuggestion, waterSeries } from '@/src/state/selectors';
@@ -35,7 +35,7 @@ import { useTracker } from '@/src/state/TrackerProvider';
 export default function TodayScreen() {
   const c = useColors();
   const router = useRouter();
-  const { state, today, calendarToday, nowMin, zone, actions } = useTracker();
+  const { state, today, calendarToday, nowMin, nowMs, zone, actions } = useTracker();
   const clock = useClockFormat();
   const summary = useTodaySummary();
   const nudge = useLiveNudge();
@@ -165,7 +165,14 @@ export default function TodayScreen() {
     cycle: () => <CycleSummary />,
     steps: () =>
       stepsView && stepsView.present ? (
-        <StepsSummaryCard view={stepsView} goal={stepsGoal} hasHabit={!!stepsHabit} onPress={() => router.push({ pathname: '/body/[metric]', params: { metric: 'steps' } })} onAddHabit={() => router.push('/habits')} />
+        // Hand-logged steps open the habit's own page; Body's chart reads only Health Connect and would show an empty history.
+        <StepsSummaryCard
+          view={stepsView}
+          goal={stepsGoal}
+          hasHabit={!!stepsHabit}
+          onPress={() => (stepsView.source === 'habit' && stepsHabit ? router.push({ pathname: '/habit/[id]', params: { id: stepsHabit.id } }) : router.push({ pathname: '/body/[metric]', params: { metric: 'steps' } }))}
+          onAddHabit={() => router.push('/habits')}
+        />
       ) : (
         <PinnedEmptyCard id="steps" onPress={() => router.push('/body')} />
       ),
@@ -218,7 +225,9 @@ export default function TodayScreen() {
         hasRotation={rotationItems(state).length > 0}
         suggestion={nudge ? snackSuggestion(nudge.item.snackType) : undefined}
         activeStartMin={s.activeStartMin}
+        activeEndMin={s.activeEndMin}
         nowMin={nowMin}
+        pausedUntil={pausedUntilText(s.offUntil, nowMs, zone, clock)}
         onDone={() => nudge && actions.logSnack(nudge.item.snackType, { habitId: nudge.item.habitId, trigger: 'NUDGE' })}
         onSnooze={() => actions.snoozeNudge(10)}
         onSwap={() => actions.swapNudge()}

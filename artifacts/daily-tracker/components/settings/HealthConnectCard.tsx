@@ -70,7 +70,7 @@ export function HealthConnectCard({ confirm }: Props) {
         </Row>
       ) : null}
       <Row gap={8} style={{ marginTop: 10, flexWrap: 'wrap' }}>
-        <PillButton label="Sources and rules" kind="ghost" compact Leading={UI.Info} onPress={() => router.push('/body/setup')} />
+        <PillButton label="How Health Connect works" kind="ghost" compact Leading={UI.Info} onPress={() => router.push('/body/setup')} />
       </Row>
       {imported > 0 || autoEntries > 0 ? (
         <>

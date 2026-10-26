@@ -58,6 +58,16 @@ export function adherenceOf(ratiosAsc: DayRatio[], createdDay: string, today: st
   return clamp01(sum / window.length);
 }
 
+/**
+ * How many days the adherence figure actually covers, so a habit added on Monday says
+ * "3-day adherence" on Wednesday — not "14-day adherence 100%" over eleven days that never were.
+ * Under three days the figure is today's own progress (`adherenceOf`), and the label says so.
+ */
+export function adherenceSpan(createdDay: string, today: string): { days: number; label: string } {
+  const days = Math.max(1, Math.min(ADHERENCE_WINDOW_DAYS, dayDiff(createdDay, today) + 1));
+  return { days, label: days < 3 ? "Today's progress" : `${days}-day adherence` };
+}
+
 /** Consecutive completed days ending today (or yesterday, if today is still open). */
 export function currentStreak(ratiosAsc: DayRatio[]): number {
   let i = ratiosAsc.length - 1;

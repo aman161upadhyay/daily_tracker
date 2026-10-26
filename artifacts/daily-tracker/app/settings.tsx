@@ -121,7 +121,7 @@ export default function SettingsScreen() {
       <SectionHeader title="Reminders" />
       <RemindersCard />
 
-      <SectionHeader title="Nudge cadence" />
+      <SectionHeader title="Reminder schedule" />
       <Card>
         <Setting label="Active hours" hint="Automatic nudges only inside this window; fixed times you set yourself are kept">
           <View style={{ gap: 10 }}>
@@ -140,7 +140,7 @@ export default function SettingsScreen() {
           </View>
         </Setting>
         <Divider />
-        <Setting label="Movement interval" hint="One snack slot every…">
+        <Setting label="Movement interval" hint="Time between movement nudges">
           <Row gap={8} style={{ flexWrap: 'wrap' }}>
             {INTERVALS.map((m) => (
               <Chip key={m} label={`${m} min`} selected={s.nudgeIntervalMin === m} onPress={() => actions.updateSettings({ nudgeIntervalMin: m })} />
@@ -148,7 +148,7 @@ export default function SettingsScreen() {
           </Row>
         </Setting>
         <Divider />
-        <Setting label="Daily cap" hint="Across all habits">
+        <Setting label="Daily cap" hint="The most nudges in a day, across all habits">
           <Stepper value={s.dailyNudgeCap} onChange={(dailyNudgeCap) => actions.updateSettings({ dailyNudgeCap })} min={2} max={24} label="daily nudge cap" />
         </Setting>
       </Card>
@@ -169,7 +169,7 @@ export default function SettingsScreen() {
         <Setting label="Day starts at" hint="Water after midnight counts for the evening before">
           <Row gap={8} style={{ flexWrap: 'wrap' }}>
             {BOUNDARIES.map((h) => (
-              <Chip key={h} label={h === 0 ? 'Midnight' : `${h} am`} selected={s.dayBoundaryHour === h} onPress={() => actions.updateSettings({ dayBoundaryHour: h })} />
+              <Chip key={h} label={h === 0 ? 'Midnight' : formatClock(h * 60, clock)} selected={s.dayBoundaryHour === h} onPress={() => actions.updateSettings({ dayBoundaryHour: h })} />
             ))}
           </Row>
         </Setting>

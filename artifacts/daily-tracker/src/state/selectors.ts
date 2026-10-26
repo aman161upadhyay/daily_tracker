@@ -594,11 +594,26 @@ export function highlights(state: TrackerState, today: string): Highlight[] {
     // Two empty weeks are not a highlight (a fresh install read "0 of the last 7 days" as history it
     // did not have); one empty week after a logged one is said plainly.
     const prevTotal = prev.reduce((a, b) => a + b, 0);
-    if (daysLogged > 0 || prevTotal > 0) {
+    // The first week says what it has: "2 of your first 3 days", averaged over days that existed —
+    // one drink on day one is not "1 of the last 7 days, 36 ml a day". Under three days, nothing yet.
+    const observed = Math.min(7, dayDiff(water.createdDay, today) + 1);
+    const total = cur.reduce((a, b) => a + b, 0);
+    if (observed < 7) {
+      if (observed >= 3 && daysLogged > 0) {
+        out.push({
+          id: 'water-week',
+          title: `You logged water ${daysLogged} of your first ${observed} days`,
+          body: `${volumeText(total / observed)} a day on average so far.`,
+          category: 'hydration',
+          series: cur.slice(-observed),
+          habitId: water.id,
+        });
+      }
+    } else if (daysLogged > 0 || prevTotal > 0) {
       out.push({
         id: 'water-week',
         title: daysLogged === 0 ? 'No water logged in the last 7 days' : `You logged water ${daysLogged} of the last 7 days`,
-        body: daysLogged === 0 ? `Last week averaged ${volumeText(prevTotal / 7)} a day.` : `${volumeText(cur.reduce((a, b) => a + b, 0) / 7)} a day on average.${trend}`,
+        body: daysLogged === 0 ? `Last week averaged ${volumeText(prevTotal / 7)} a day.` : `${volumeText(total / 7)} a day on average.${trend}`,
         category: 'hydration',
         series: cur,
         habitId: water.id,

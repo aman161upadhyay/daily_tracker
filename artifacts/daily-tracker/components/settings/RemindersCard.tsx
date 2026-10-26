@@ -6,6 +6,7 @@ import { Chip, Divider, PillButton, Row, Stepper } from '@/components/ui/primiti
 import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import type { ScheduledNudge } from '@/src/domain/nudges/planner';
+import { pausedUntilText } from '@/src/domain/nudges/describePolicy';
 import { formatClock, parseClockInput, weekdayName, type ClockFormat } from '@/src/domain/time/format';
 import { addDays, calendarDayOf, instantOf, minutesOfDay } from '@/src/domain/time/trackingDay';
 import { NOTIFICATIONS_SUPPORTED, SupersededError, cancelTestRing, exactAlarmsAllowed, getPermission, onSyncHealth, openExactAlarmSettings, openNotificationSettings, requestPermission, scheduleTestRing, syncHealth, type PermissionState, type SyncHealth } from '@/src/services/notifications';
@@ -299,8 +300,7 @@ export function RemindersCard() {
               <Row gap={8} style={{ alignItems: 'center' }}>
                 <UI.BellSlash size={18} color={c.violet} />
                 <Txt role="body" style={{ flex: 1 }}>
-                  Paused until {calendarDayOf(s.offUntil!, zone) === calendarDayOf(nowMs, zone) ? '' : `${calendarDayOf(s.offUntil!, zone)} `}
-                  {formatClock(minutesOfDay(s.offUntil!, zone), clock)}
+                  Paused {pausedUntilText(s.offUntil, nowMs, zone, clock)}
                 </Txt>
                 <PillButton label="Resume" kind="ghost" onPress={() => actions.updateSettings({ offUntil: undefined })} />
               </Row>

@@ -62,7 +62,7 @@ export function PinnedCardsSheet({ visible, onClose }: PinnedCardsSheetProps) {
   return (
     <Sheet visible={visible} title="Cards on Today" onClose={onClose}>
       <Txt role="footnote" tone="secondary" style={{ marginBottom: 4 }}>
-        Pick the summary cards under Pinned and their order. A card shows once it has something to show — the Water card needs the Water habit, Steps and Sleep need Health Connect (or the Steps habit).
+        Pick the summary cards under Pinned and their order. A card shows once it has something to show — the Water card needs the Drink water habit, Steps and Sleep need Health Connect (or the Steps habit).
       </Txt>
       {shown.map((id, i) => row(id, i, shown.length, i === shown.length - 1 && off.length === 0))}
       {off.length > 0 ? (

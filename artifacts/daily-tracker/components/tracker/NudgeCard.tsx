@@ -15,6 +15,9 @@ export interface NudgeCardProps {
   /** Whether any movement snack is enabled for nudging. */
   hasRotation: boolean;
   activeStartMin: number;
+  activeEndMin: number;
+  /** "until 3:30 PM" while the global pause runs (`pausedUntilText`); the card then says so instead of guessing. */
+  pausedUntil?: string;
   nowMin: number;
   onDone: () => void;
   onSnooze: () => void;
@@ -23,22 +26,28 @@ export interface NudgeCardProps {
 }
 
 /** "Next: 10 squats · in 24 min" with Done now / Snooze / Swap. Gold frame while live. */
-export function NudgeCard({ nudge, suggestion, hasRotation, activeStartMin, nowMin, onDone, onSnooze, onSwap, onSettings }: NudgeCardProps) {
+export function NudgeCard({ nudge, suggestion, hasRotation, activeStartMin, activeEndMin, nowMin, pausedUntil, onDone, onSnooze, onSwap, onSettings }: NudgeCardProps) {
   const c = useColors();
   const clock = useClockFormat();
 
   if (!nudge) {
+    // Says why nothing is planned, and promises no clock time the planner did not set: the first
+    // slot of a day follows the active start by the interval, so "resume at 9:00 AM" was never true.
     const text = !hasRotation
       ? 'Add a movement snack from the Library to get nudges.'
-      : nowMin < activeStartMin
-        ? `Movement nudges start at ${formatClock(activeStartMin, clock)}.`
-        : `Movement nudges are done for today. They resume at ${formatClock(activeStartMin, clock)}.`;
+      : pausedUntil
+        ? `Nudges are paused ${pausedUntil}. Resume them in Settings → Reminders.`
+        : nowMin < activeStartMin
+          ? `Movement nudges start after ${formatClock(activeStartMin, clock)}, your active hours' start.`
+          : nowMin >= activeEndMin
+            ? `Movement nudges are done for today; your active hours ended at ${formatClock(activeEndMin, clock)}.`
+            : 'Movement nudges are done for today: every snack is logged or the day\'s reminders are used up.';
     return (
       <Card>
         <Row gap={12}>
           <IconTile Glyph={UI.Bell} color={c.textTertiary} size={40} />
           <View style={{ flex: 1 }}>
-            <Txt role="title2">{hasRotation ? 'Nudges paused' : 'No nudges yet'}</Txt>
+            <Txt role="title2">{!hasRotation ? 'No nudges yet' : pausedUntil ? 'Nudges paused' : 'No nudge due'}</Txt>
             <Txt role="footnote" tone="secondary">
               {text}
             </Txt>

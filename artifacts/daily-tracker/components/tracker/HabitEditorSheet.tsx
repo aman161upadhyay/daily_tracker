@@ -119,7 +119,8 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
   const isWater = habit?.presetId === 'water';
   const targetMin = isWater ? WATER_GOAL_MIN_ML : targetStep;
   const targetMax = isWater ? WATER_GOAL_MAX_ML : 100_000;
-  const targetLabel = d.cadence === 'DAILY' ? 'Daily target' : 'Target on each day you do it';
+  // The Water figure is the same number as Settings → Water → "Daily goal", so it keeps that name here.
+  const targetLabel = isWater ? 'Daily goal' : d.cadence === 'DAILY' ? 'Daily target' : 'Target on each day you do it';
   const canSave = d.name.trim().length > 0;
 
   const save = () => {
@@ -284,12 +285,12 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
         <Divider />
         <Row style={{ justifyContent: 'space-between' }}>
           <View>
-            <Txt role="title2" heading>Pin to Today</Txt>
+            <Txt role="title2" heading>Show first</Txt>
             <Txt role="footnote" tone="secondary">
-              Keeps this habit near the top
+              At the top of the habit lists on Today and Habits
             </Txt>
           </View>
-          <Switch value={d.pinned} onValueChange={(pinned) => set({ pinned })} trackColor={{ false: c.hairline, true: c.green }} thumbColor={c.text} accessibilityLabel="Pin to Today" />
+          <Switch value={d.pinned} onValueChange={(pinned) => set({ pinned })} trackColor={{ false: c.hairline, true: c.green }} thumbColor={c.text} accessibilityLabel="Show first in the habit lists" />
         </Row>
 
         <PillButton label={editing ? 'Save changes' : 'Create habit'} onPress={save} disabled={!canSave} Leading={editing ? UI.Check : UI.Plus} />

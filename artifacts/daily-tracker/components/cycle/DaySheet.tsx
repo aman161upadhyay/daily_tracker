@@ -206,6 +206,10 @@ export function DaySheet({ day, today, timeline, birthControl, log, onClose, onS
         accessibilityLabel="Note"
       />
       <PillButton label="Done" onPress={close} style={{ marginTop: 16 }} />
+      {/* This sheet keeps what was tapped on any exit, unlike the editors that ask — said once, so Back is not a worry. */}
+      <Txt role="caption" tone="tertiary" style={{ marginTop: 8, textAlign: 'center' }}>
+        Changes are kept when the sheet closes.
+      </Txt>
     </Sheet>
   );
 }

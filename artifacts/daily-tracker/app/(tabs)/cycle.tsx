@@ -299,7 +299,7 @@ export default function CycleScreen() {
 
       <Card>
         <Txt role="footnote" tone="tertiary">
-          {`${NOT_CONTRACEPTION} Everything here is kept inside the app on this phone; if Android phone backup is on (Settings → Backup), it is part of that encrypted backup too.`}
+          {`${NOT_CONTRACEPTION} Everything here is kept inside the app on this phone; if Android phone backup is on (Settings → Your data), it is part of that encrypted backup too.`}
         </Txt>
       </Card>
 

@@ -10,7 +10,7 @@ import { FlexWidget, OverlapWidget, SvgWidget, TextWidget } from 'react-native-a
 import type { HexColor } from 'react-native-android-widget';
 import colors from '@/constants/colors';
 import { TILE_GAP, ringValue, widgetLayout, type WidgetLayout } from './layout';
-import { widgetDayLabel, type WidgetModel, type WidgetTile } from './model';
+import { ringLabel, widgetDayLabel, type WidgetModel, type WidgetTile } from './model';
 import { ringSvg } from './ring';
 
 /** Tap on a ring: log the habit's natural unit (handled in the headless task). */
@@ -30,13 +30,6 @@ export interface TrackerWidgetProps {
   height: number;
   /** The system font scale; read from the device when not given (tests pass one). */
   fontScale?: number;
-}
-
-/** What TalkBack reads for the ring: the progress, then what a tap does. */
-export function ringLabel(tile: WidgetTile): string {
-  const progress = `${tile.name}: ${tile.value} ${tile.caption}`.trim();
-  const action = tile.kind === 'water' ? 'Double-tap to log a glass.' : tile.kind === 'rotation' ? 'Double-tap to log the next snack.' : tile.done ? 'Double-tap to log again.' : 'Double-tap to log it.';
-  return `${progress}. ${action}`;
 }
 
 function Ring({ tile, layout }: { tile: WidgetTile; layout: WidgetLayout }) {

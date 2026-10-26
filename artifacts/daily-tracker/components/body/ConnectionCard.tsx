@@ -58,7 +58,7 @@ export function ConnectionCard({ hc, nowMs, zone, sample, hasData }: Props) {
             : 'Samsung Health, Fitbit and Google Fit data arrive through Android’s Health Connect. That needs the installed build of this app, not Expo Go or the web preview, so nothing is shown here rather than made-up numbers.'}
         </Txt>
         <Row gap={8} style={{ marginTop: 12, flexWrap: 'wrap' }}>
-          <PillButton label="How it works" kind="ghost" Leading={UI.Info} onPress={() => router.push('/body/setup')} />
+          <PillButton label="How Health Connect works" kind="ghost" Leading={UI.Info} onPress={() => router.push('/body/setup')} />
         </Row>
         <Txt role="footnote" tone="tertiary" style={{ marginTop: 10 }}>
           Import is read-only; what is read is kept inside the app (and in the phone backup, if that is on). Manual entries always win over imported ones.
@@ -104,7 +104,7 @@ export function ConnectionCard({ hc, nowMs, zone, sample, hasData }: Props) {
         <Row gap={8} style={{ marginTop: 12, flexWrap: 'wrap' }}>
           <PillButton label={update ? 'Update Health Connect' : 'Install Health Connect'} Leading={UI.External} onPress={() => void hc.openInstallPage()} />
           <PillButton label="I installed it" kind="ghost" onPress={() => void hc.refreshStatus()} />
-          <PillButton label="How it works" kind="ghost" Leading={UI.Info} onPress={() => router.push('/body/setup')} />
+          <PillButton label="How Health Connect works" kind="ghost" Leading={UI.Info} onPress={() => router.push('/body/setup')} />
         </Row>
       </Card>
     );
@@ -133,7 +133,7 @@ export function ConnectionCard({ hc, nowMs, zone, sample, hasData }: Props) {
         ) : null}
         <Row gap={8} style={{ marginTop: 12, flexWrap: 'wrap' }}>
           <PillButton label={hc.busy ? 'Connecting…' : 'Connect'} Leading={UI.Connect} onPress={() => void hc.connect()} disabled={hc.busy} />
-          <PillButton label="How it works" kind="ghost" Leading={UI.Info} onPress={() => router.push('/body/setup')} />
+          <PillButton label="How Health Connect works" kind="ghost" Leading={UI.Info} onPress={() => router.push('/body/setup')} />
         </Row>
         <Txt role="footnote" tone="tertiary" style={{ marginTop: 10 }}>
           Read-only. Nothing is written back to Health Connect; what is read is kept inside the app (and in the phone backup, if that is on).
@@ -174,7 +174,7 @@ export function ConnectionCard({ hc, nowMs, zone, sample, hasData }: Props) {
       <Row gap={8} style={{ marginTop: 12, flexWrap: 'wrap' }}>
         <PillButton label={hc.busy ? 'Syncing…' : 'Sync now'} kind="ghost" Leading={UI.Shuffle} onPress={() => void hc.syncNow()} disabled={hc.busy} />
         <PillButton label="Permissions" kind="ghost" Leading={UI.Gear} onPress={() => void hc.openSettings()} />
-        <PillButton label="Sources" kind="ghost" Leading={UI.Info} onPress={() => router.push('/body/setup')} />
+        <PillButton label="How Health Connect works" kind="ghost" Leading={UI.Info} onPress={() => router.push('/body/setup')} />
       </Row>
     </Card>
   );

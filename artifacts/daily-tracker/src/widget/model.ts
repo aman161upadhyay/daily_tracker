@@ -6,7 +6,6 @@
  */
 import colors from '@/constants/colors';
 import type { Habit } from '@/src/domain/models';
-import { SNACK_LABELS } from '@/src/domain/models';
 import { formatNumber, formatOneDecimal, mlToOz } from '@/src/domain/time/format';
 import { activeHabits, habitView, rotationHabit, todaySummary, waterHabit } from '@/src/state/selectors';
 import { parseDay, weekdayOf } from '@/src/domain/time/trackingDay';
@@ -32,6 +31,8 @@ export interface WidgetTile {
   ratio: number;
   done: boolean;
   color: string;
+  /** The Steps habit: its count comes from the phone or the app, a tap on the ring logs nothing. */
+  steps?: boolean;
 }
 
 export interface WidgetModel {
@@ -103,19 +104,16 @@ function habitTile(state: TrackerState, habit: Habit, today: string): WidgetTile
   const weekly = view.rule.cadence !== 'DAILY';
   const doneToday = view.todayValue >= view.target;
   const done = weekly ? view.todayRatio >= 1 : doneToday;
-  const base = { habitId: habit.id, kind: 'habit' as const, name: habit.name, ratio: clamp01(view.todayRatio), done, color };
+  const base = { habitId: habit.id, kind: 'habit' as const, name: habit.name, ratio: clamp01(view.todayRatio), done, color, ...(habit.presetId === 'steps' ? { steps: true } : {}) };
 
   if (habit.type === 'YES_NO') {
     const caption = weekly ? `${view.periodDone ?? 0} of ${view.periodQuota ?? view.rule.timesPerPeriod} days` : doneToday ? 'Done' : 'Tap to log';
     return { ...base, value: doneToday ? '✓' : '–', caption };
   }
-  const unit = habit.snackType ? SNACK_LABELS[habit.snackType].unit : habit.unit;
+  // A snack habit counts in its own unit ("4 walks", "2 climbs", "6 sets"), as its row does; "sets" fits only the squat kind.
+  const unit = habit.snackType ? habit.unit || (view.target === 1 ? 'set' : 'sets') : habit.unit;
   const value = doneToday && habit.type !== 'TIMER' && !habit.snackType ? '✓' : compactValue(view.todayValue);
-  const caption = weekly
-    ? `${view.periodDone ?? 0} of ${view.periodQuota ?? view.rule.timesPerPeriod} days`
-    : habit.snackType
-      ? `of ${formatNumber(view.target)} ${view.target === 1 ? 'set' : 'sets'}`
-      : `of ${formatNumber(view.target)} ${unit}`.trimEnd();
+  const caption = weekly ? `${view.periodDone ?? 0} of ${view.periodQuota ?? view.rule.timesPerPeriod} days` : `of ${formatNumber(view.target)} ${unit}`.trimEnd();
   return { ...base, value, caption };
 }
 
@@ -137,20 +135,31 @@ export function widgetModel(state: TrackerState, today: string, nowMs: number, z
       };
     }
     if (automatic && habit.snackType) {
+      // A met week or month ("nothing due", a full ring on Today) reads the same here: "of 0 snacks"
+      // under a full ring looked broken. A day with nothing asked and nothing met stays "today".
+      const settled = summary.snacksSettled;
       return {
         habitId: habit.id,
         kind: 'rotation',
         name: habit.name,
         value: String(summary.snacksDone),
-        caption: `of ${summary.snacksTarget} snacks`,
+        caption: summary.snacksTarget > 0 ? `of ${summary.snacksTarget} snacks` : settled ? 'nothing due' : 'snacks today',
         ratio: clamp01(summary.rings.movement),
-        done: summary.snacksTarget > 0 && summary.snacksDone >= summary.snacksTarget,
+        done: settled || (summary.snacksTarget > 0 && summary.snacksDone >= summary.snacksTarget),
         color: colors.dark.cat.movement,
       };
     }
     return habitTile(state, habit, today);
   });
   return { day: today, tiles };
+}
+
+/** What TalkBack reads for a ring: the progress, then what a tap does (pure, so tests can read it). */
+export function ringLabel(tile: WidgetTile): string {
+  const progress = `${tile.name}: ${tile.value} ${tile.caption}`.trim();
+  // A tap logs only what the tap handler would log: a met daily target and the Steps count take no more (widgetTapActions).
+  const action = tile.kind === 'water' ? 'Double-tap to log a glass.' : tile.kind === 'rotation' ? 'Double-tap to log the next snack.' : tile.steps ? 'Opens the habit.' : tile.done ? 'Done for today.' : 'Double-tap to log it.';
+  return `${progress}. ${action}`;
 }
 
 /** Stable key: when it changes, the widget needs a redraw. */

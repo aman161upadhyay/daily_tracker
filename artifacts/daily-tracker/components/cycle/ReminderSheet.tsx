@@ -34,11 +34,17 @@ export function ReminderSheet({ reminder, birthControl, onClose, onSave, onDelet
   useEffect(() => setDraft(reminder), [reminder]);
   if (!reminder || !draft) return null;
   const isNew = reminder.id === '';
+  // Back, the scrim and Close ask before an edited draft is lost, as the habit reminder editor does (paradigm 100).
+  const dirty = JSON.stringify({ ...draft, label: draft.label.trim() }) !== JSON.stringify(reminder);
+  const requestClose = () => {
+    if (dirty) confirmDestructive('Discard changes?', isNew ? 'The new reminder is not saved.' : 'The reminder edits are not saved.', 'Discard', onClose);
+    else onClose();
+  };
   // Hormonal birth control: nothing to count ovulation from, so only period-anchored phases are offered.
   const phases = birthControl ? PHASES.filter((p) => p.value === 'period') : PHASES;
 
   return (
-    <Sheet visible={!!reminder} title={isNew ? 'New cycle reminder' : 'Edit reminder'} onClose={onClose}>
+    <Sheet visible={!!reminder} title={isNew ? 'New cycle reminder' : 'Edit reminder'} onClose={requestClose}>
       <Txt role="title2" style={styles.label}>
         Name
       </Txt>

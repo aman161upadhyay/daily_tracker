@@ -21,7 +21,7 @@ export type { StepsCardView } from '@/src/domain/body/stepsCard';
 export function stepsCardView(body: BodyState, calendarToday: string): StepsCardView {
   const steps = metricDayValues(body, 'steps');
   const series7 = seriesOf(steps, lastNDays(calendarToday, 7));
-  return { present: steps.size > 0, today: steps.get(calendarToday) ?? 0, series7, avg7: averageOf(series7) };
+  return { present: steps.size > 0, source: 'health', today: steps.get(calendarToday) ?? 0, series7, avg7: averageOf(series7) };
 }
 
 export { stepsCardViewFromHabit } from '@/src/domain/body/stepsCard';

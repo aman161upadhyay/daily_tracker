@@ -159,7 +159,7 @@ export function ReminderPolicyForm({ draft: d, onChange, context, preview }: Rem
 
       {d.mode === 'ROTATION' ? (
         <Txt role="footnote" tone="secondary" style={{ marginTop: 12 }}>
-          Movement snacks take turns in one shared series, about every {durationText(context.rotationIntervalMin)} of your active day (the interval is in Settings → Reminders). Done advances the turn; Swap skips to the next snack.
+          Movement snacks take turns in one shared series, about every {durationText(context.rotationIntervalMin)} of your active day (the interval is in Settings → Reminder schedule). Done advances the turn; Swap skips to the next snack.
         </Txt>
       ) : null}
 
@@ -180,7 +180,7 @@ export function ReminderPolicyForm({ draft: d, onChange, context, preview }: Rem
           <View style={{ flex: 1 }}>
             <Txt role="body">Daily maximum</Txt>
             <Txt role="footnote" tone="secondary">
-              The most this habit reminds you in a day. The overall cap in Settings → Reminders still applies.
+              The most this habit reminds you in a day. The overall cap in Settings → Reminder schedule still applies.
             </Txt>
           </View>
           {/* Shows the value that will be saved (the preview's): set times cannot ring more often than there are distinct times. */}
