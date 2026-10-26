@@ -19,7 +19,10 @@ import { formatClock, formatDayLong, formatNumber, formatVolume } from '@/src/do
 import { minutesOfDay } from '@/src/domain/time/trackingDay';
 import { PRESET_BY_ID } from '@/src/library/presets';
 import { useHabitViews, useHighlights, useLiveNudge, useTodaySummary } from '@/src/state/hooks';
-import { mindSeries, rotationItems, snackSeries, snackSuggestion, waterSeries } from '@/src/state/selectors';
+import { cycleTimeline, mindSeries, rotationItems, snackSeries, snackSuggestion, waterSeries } from '@/src/state/selectors';
+import { displayPhase, PHASE_LABELS } from '@/src/domain/cycle/timeline';
+import { formatDayShort } from '@/src/domain/time/format';
+import { dayDiff } from '@/src/domain/time/trackingDay';
 import { useTracker } from '@/src/state/TrackerProvider';
 
 export default function TodayScreen() {
@@ -172,6 +175,8 @@ export default function TodayScreen() {
         onPress={() => router.push('/mind')}
       />
 
+      {s.cycleEnabled ? <CycleSummary /> : null}
+
       {highlights.length > 0 ? (
         <>
           <SectionHeader title="Highlights" />
@@ -232,3 +237,33 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
 });
+
+/** The cycle at a glance: day and phase, when the next period is expected. Only with tracking on. */
+function CycleSummary() {
+  const c = useColors();
+  const router = useRouter();
+  const { state, calendarToday } = useTracker();
+  const timeline = cycleTimeline(state, calendarToday);
+  const prediction = timeline.prediction;
+  const info = timeline.infoOn(calendarToday);
+  const birthControl = state.settings.cycle.birthControl;
+  const until = prediction ? dayDiff(calendarToday, prediction.nextStart) : 0;
+  const detail = !prediction
+    ? 'Log your first period on the Cycle tab'
+    : prediction.lateDays > 0
+      ? `Period expected ${formatDayShort(prediction.nextStart)} · ${prediction.lateDays} ${prediction.lateDays === 1 ? 'day' : 'days'} late`
+      : until === 0
+        ? 'Period expected today'
+        : `Next period around ${formatDayShort(prediction.nextStart)} · in ${until} ${until === 1 ? 'day' : 'days'}`;
+  return (
+    <SummaryCard
+      title="Cycle"
+      color={c.cat.cycle}
+      Glyph={UI.Cycle}
+      value={info ? `Day ${info.cycleDay}` : '—'}
+      unit={info ? PHASE_LABELS[displayPhase(info.phase, birthControl)] : undefined}
+      detail={detail}
+      onPress={() => router.push('/cycle')}
+    />
+  );
+}

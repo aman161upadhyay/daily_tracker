@@ -50,11 +50,17 @@ type LedgerEntry = FiredRecord & { sig: string };
 
 const signature = (n: ScheduledNudge) => `${n.at}|${n.habitIds.join(',')}|${n.title}|${n.body}`;
 
-const CHANNELS: Record<NudgeChannel, { name: string; description: string; importance: Notifications.AndroidImportance }> = {
+const CHANNELS: Record<NudgeChannel, { name: string; description: string; importance: Notifications.AndroidImportance; lockscreenVisibility?: Notifications.AndroidNotificationVisibility }> = {
   nudges: { name: 'Movement & habit nudges', description: 'Snack-sized reminders during your active hours.', importance: Notifications.AndroidImportance.DEFAULT },
   water: { name: 'Water', description: 'Pace checks, only when you are behind.', importance: Notifications.AndroidImportance.DEFAULT },
   summary: { name: 'Weekly summary', description: 'One message a week about how it went.', importance: Notifications.AndroidImportance.LOW },
-  cycle: { name: 'Cycle', description: 'A discreet prompt around the expected day.', importance: Notifications.AndroidImportance.DEFAULT },
+  // Private on the lock screen: the text shows only once the phone is unlocked.
+  cycle: {
+    name: 'Cycle',
+    description: 'Prompts around the expected day and the reminders you set. Hidden on the lock screen.',
+    importance: Notifications.AndroidImportance.DEFAULT,
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE,
+  },
   mind: { name: 'Timer', description: 'The bell at the end of a meditation or breathing session.', importance: Notifications.AndroidImportance.HIGH },
 };
 
@@ -115,6 +121,7 @@ export async function prepare(tapMl: number): Promise<void> {
           importance: CHANNELS[id].importance,
           lightColor: '#1DB954',
           vibrationPattern: id === 'summary' ? undefined : [0, 120],
+          ...(CHANNELS[id].lockscreenVisibility !== undefined ? { lockscreenVisibility: CHANNELS[id].lockscreenVisibility } : {}),
         }),
       ),
     );

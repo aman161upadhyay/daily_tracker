@@ -176,15 +176,58 @@ export interface NudgePolicy {
 }
 
 export interface PeriodSpan {
+  /** Calendar day the period started (unique per span). */
   start: string;
   end?: string;
+  /** Left out of the prediction averages (an odd cycle the user excluded). */
+  excluded?: boolean;
+}
+
+export type CycleReminderAnchor = 'BEFORE_PERIOD' | 'PHASE_START';
+export type CyclePhaseKey = 'period' | 'fertile' | 'luteal';
+
+/** A cycle-relative reminder ("Vitamin C, 5 days before the period"). */
+export interface CycleReminder {
+  id: string;
+  label: string;
+  anchor: CycleReminderAnchor;
+  /** BEFORE_PERIOD: days before the expected start; PHASE_START: days after the phase begins. */
+  offsetDays: number;
+  phase?: CyclePhaseKey;
+  /** Minutes after midnight (calendar day). */
+  minute: number;
+  enabled: boolean;
 }
 
 export interface CycleSettings {
   avgCycleDays: number;
   periodDays: number;
+  /** Days from ovulation to the next period (10–16). */
+  lutealDays: number;
+  /** Hides the fertile window and ovulation (display only). */
+  birthControl: boolean;
+  /** Cycle notifications say only "You have a reminder", in the shade as well as on the lock screen. */
+  discreet: boolean;
+  reminders: CycleReminder[];
   history: PeriodSpan[];
 }
+
+export type Severity = 1 | 2 | 3;
+export type Mood = 1 | 2 | 3 | 4 | 5;
+export type Flow = 1 | 2 | 3;
+
+/** What one calendar day felt like: flow, mood, symptoms with severity, a note. */
+export interface CycleDayLog {
+  day: string;
+  flow?: Flow;
+  mood?: Mood;
+  symptoms: Record<string, Severity>;
+  note?: string;
+}
+
+export const DEFAULT_CYCLE_REMINDERS: CycleReminder[] = [
+  { id: 'vitamin-c', label: 'Vitamin C', anchor: 'BEFORE_PERIOD', offsetDays: 5, minute: 9 * 60, enabled: true },
+];
 
 export type Units = 'ml' | 'oz';
 
@@ -231,7 +274,7 @@ export const DEFAULT_SETTINGS: Settings = {
   cycleEnabled: false,
   pinned: ['water', 'snacks', 'mind'],
   sampleData: false,
-  cycle: { avgCycleDays: 28, periodDays: 5, history: [] },
+  cycle: { avgCycleDays: 28, periodDays: 5, lutealDays: 14, birthControl: false, discreet: false, reminders: DEFAULT_CYCLE_REMINDERS, history: [] },
   onboardingDone: false,
   tapSizeMl: 250,
   remindersEnabled: true,

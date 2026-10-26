@@ -72,6 +72,19 @@ from the Library so the auto-fill has somewhere to land.
 | H8 | Background | Allow background access; leave the phone overnight with the app closed | Morning: last-night sleep and the step count are already there when the app opens (Synced time earlier than the open). If not, note whether battery optimisation is on for the app |
 | H9 | Remove and reconnect | Settings → Connections → Remove imported data (accept) | Body tab empty again, automatic steps/strength/water entries gone, manual ones kept; Connect again re-reads 30 days without duplicates |
 
+## C — Cycle notifications (M5)
+
+Before starting: Settings → Cycle tracking on; log a period start about 23 days ago through the calendar (so the
+"Vitamin C" reminder — 5 days before the expected start — falls on today or tomorrow). Everything else about the
+cycle (phases, calendar, day sheet, insights) was verified in the web preview and needs no phone step.
+
+| # | Scenario | Steps | Expect |
+|---|---|---|---|
+| C1 | Lock-screen privacy | Let the Vitamin C reminder fire while the phone is locked | On the lock screen the notification shows only the app name / "Contents hidden" (channel is PRIVATE); the title "Vitamin C" appears once unlocked. Android → App info → Notifications → Cycle shows "Lock screen: hide sensitive content" |
+| C2 | Discreet wording | Settings → Discreet notifications on; move the reminder time to a minute ahead; wait | Title "Daily Tracker", body "You have a reminder." both in the shade and on the lock screen; tapping opens the Cycle tab |
+| C3 | Expected-day prompt | Set the typical length so the expected day is today; no period logged | At 9:00 a "Cycle" notification ("Around the expected day — log it when it starts."); logging "Period started today" removes any pending copy |
+| C4 | Late suppression | Make the period 2 days late (log the last start ≥ typical + 2 days ago) | Cycle tab shows "n days late" and "Cycle reminders pause while the period is late"; no Vitamin C notification arrives until a start is logged |
+
 ## Recording results
 
 Add a dated line under the milestone in `docs/IMPLEMENTATION_PLAN.md` ("Device run YYYY-MM-DD, Pixel 7 / Android 15: N1–N17 pass except …") and open follow-ups for anything that failed.

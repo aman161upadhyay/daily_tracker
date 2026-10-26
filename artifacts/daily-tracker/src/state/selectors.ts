@@ -13,7 +13,9 @@ import {
 import { evaluateStreak, type PeriodResult } from '@/src/domain/habits/streaks';
 import type { Category, Habit, HabitRule, MovementSnack, NudgePolicy, SnackType } from '@/src/domain/models';
 import { SNACK_LABELS } from '@/src/domain/models';
-import { averageCycleLength, isPeriodOpen, lastPeriodStart, predictedNextStart } from '@/src/domain/cycle/predict';
+import { habitSymptomCorrelations, symptomPatterns, type CompletedCycle, type Correlation, type HabitPerCycle, type SymptomPattern } from '@/src/domain/cycle/insights';
+import { upcomingReminders, type ReminderFire } from '@/src/domain/cycle/reminders';
+import { buildTimeline, cycleLengths, isPeriodOpen, type CycleTimeline } from '@/src/domain/cycle/timeline';
 import { nextNudge, type NextNudge, type RotationItem } from '@/src/domain/nudges/nextNudge';
 import { planNudges, type PlanHabit, type PlanInput, type ScheduledNudge } from '@/src/domain/nudges/planner';
 import { addDays, calendarDayOf, dayDiff, lastNDays, minutesOfDay, weekStartOf } from '@/src/domain/time/trackingDay';
@@ -491,16 +493,86 @@ export function weekSummaryText(state: TrackerState, today: string): { title: st
   return { title: 'Your week', body: total > 0 ? `${hit} of ${total} daily targets hit (${pct}%)${streakLine}.` : 'Add a habit or two and next week has a story.' };
 }
 
+// ── Cycle ──────────────────────────────────────────────────────────────────
+
+const timelineCache = new WeakMap<TrackerState['settings']['cycle'], { today: string; timeline: CycleTimeline }>();
+
+/** Prediction + phases for the current history; memoized per cycle settings object and day. */
+export function cycleTimeline(state: TrackerState, calendarToday: string): CycleTimeline {
+  const cycle = state.settings.cycle;
+  const cached = timelineCache.get(cycle);
+  if (cached && cached.today === calendarToday) return cached.timeline;
+  const timeline = buildTimeline(cycle.history, cycle, calendarToday);
+  timelineCache.set(cycle, { today: calendarToday, timeline });
+  return timeline;
+}
+
 /** Day a period is expected, for the discreet cycle prompt; undefined when nothing is due. */
 export function cycleExpectedDay(state: TrackerState, calendarToday: string): string | undefined {
   const s = state.settings;
   if (!s.cycleEnabled) return undefined;
-  const history = s.cycle.history;
-  const last = lastPeriodStart(history);
-  if (!last || isPeriodOpen(history)) return undefined;
-  const expected = predictedNextStart(last, averageCycleLength(history, s.cycle.avgCycleDays));
-  if (dayDiff(calendarToday, expected) < -2) return undefined;
-  return expected;
+  if (isPeriodOpen(s.cycle.history)) return undefined;
+  const prediction = cycleTimeline(state, calendarToday).prediction;
+  if (!prediction) return undefined;
+  if (dayDiff(calendarToday, prediction.nextStart) < -2) return undefined;
+  return prediction.nextStart;
+}
+
+/** Enabled cycle reminders and the day each fires next (empty when tracking is off). */
+export function cycleReminderFires(state: TrackerState, calendarToday: string): ReminderFire[] {
+  const s = state.settings;
+  if (!s.cycleEnabled) return [];
+  return upcomingReminders(s.cycle.reminders, cycleTimeline(state, calendarToday).prediction, calendarToday);
+}
+
+/** Completed cycles (a start followed by another), oldest first, excluded ones left out. */
+export function completedCycles(state: TrackerState): CompletedCycle[] {
+  return cycleLengths(state.settings.cycle.history)
+    .filter((c) => !c.excluded)
+    .map((c) => ({ start: c.start, nextStart: c.nextStart }));
+}
+
+/** Per-cycle adherence (share of days met) for every active, non-water habit. */
+export function habitsPerCycle(state: TrackerState, cycles: readonly CompletedCycle[]): HabitPerCycle[] {
+  const out: HabitPerCycle[] = [];
+  for (const habit of activeHabits(state)) {
+    if (habit.presetId === 'water') continue;
+    const perCycle = cycles.map((c) => {
+      const days: string[] = [];
+      for (let d = c.start; d < c.nextStart; d = addDays(d, 1)) if (d >= habit.createdDay) days.push(d);
+      if (days.length === 0) return NaN;
+      const ratios = habitRatios(state, habit, days);
+      return ratios.filter((r) => r.ratio >= 1).length / ratios.length;
+    });
+    if (perCycle.every((v) => Number.isNaN(v))) continue;
+    out.push({ habitId: habit.id, name: habit.name, perCycle });
+  }
+  return out;
+}
+
+export interface CycleInsights {
+  patterns: SymptomPattern[];
+  correlations: Correlation[];
+  /** Completed cycles that have at least one day log. */
+  loggedCycles: number;
+}
+
+const insightsCache = new WeakMap<TrackerState, CycleInsights>();
+
+export function cycleInsights(state: TrackerState): CycleInsights {
+  const cached = insightsCache.get(state);
+  if (cached) return cached;
+  const cycles = completedCycles(state);
+  const patterns = symptomPatterns(state.cycleLogs, cycles);
+  const correlations = habitSymptomCorrelations(state.cycleLogs, cycles, habitsPerCycle(state, cycles)).slice(0, 3);
+  const loggedDays = new Set(state.cycleLogs.map((l) => l.day));
+  const logged = cycles.filter((c) => {
+    for (let d = c.start; d < c.nextStart; d = addDays(d, 1)) if (loggedDays.has(d)) return true;
+    return false;
+  }).length;
+  const result = { patterns, correlations, loggedCycles: logged };
+  insightsCache.set(state, result);
+  return result;
 }
 
 export function planInputFor(state: TrackerState, today: string, nowMs: number, zone: string): PlanInput {
@@ -547,8 +619,12 @@ export function planInputFor(state: TrackerState, today: string, nowMs: number, 
     };
   }
   if (state.nudgeSnoozedUntil && state.nudgeSnoozedUntil > nowMs) input.snoozedUntilMs = state.nudgeSnoozedUntil;
-  const expected = cycleExpectedDay(state, calendarTodayOf(nowMs, zone));
+  const calendarToday = calendarTodayOf(nowMs, zone);
+  const expected = cycleExpectedDay(state, calendarToday);
   if (expected) input.cycleExpectedDay = expected;
+  const fires = cycleReminderFires(state, calendarToday);
+  if (fires.length > 0) input.cycleReminders = fires.map((f) => ({ id: f.reminder.id, day: f.day, minute: f.minute, label: f.reminder.label }));
+  if (s.cycle.discreet) input.cycleDiscreet = true;
   return input;
 }
 

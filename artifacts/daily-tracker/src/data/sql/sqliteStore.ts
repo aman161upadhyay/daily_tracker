@@ -5,7 +5,7 @@
  */
 import { normalizeBody } from '@/src/domain/body/merge';
 import type { BodySync, HeartDay, SleepNight, StepDay, WeightEntry, Workout } from '@/src/domain/body/types';
-import type { Habit, HabitEntry, HabitRule, MindSession, MovementSnack, NudgeEvent, NudgePolicy, ScheduledEvent } from '@/src/domain/models';
+import type { CycleDayLog, Habit, HabitEntry, HabitRule, MindSession, MovementSnack, NudgeEvent, NudgePolicy, ScheduledEvent } from '@/src/domain/models';
 import type { WaterEntry } from '@/src/domain/models';
 import type { TrackerState } from '@/src/state/types';
 import { diffById, normalizeSettings, StorageError, type TrackerStore } from '../store';
@@ -218,6 +218,23 @@ const EVENT: Table<ScheduledEvent> = {
   orderBy: 'at, rowid',
 };
 
+const CYCLE_DAY: Table<CycleDayLog> = {
+  name: 'cycle_day',
+  columns: ['day', 'flow', 'mood', 'symptoms_json', 'note'],
+  keyColumns: ['day'],
+  key: (l) => l.day,
+  toRow: (l) => [l.day, opt(l.flow), opt(l.mood), JSON.stringify(l.symptoms), opt(l.note)],
+  fromRow: (r) =>
+    compact<CycleDayLog>({
+      day: str(r, 'day'),
+      flow: optNum(r, 'flow') as CycleDayLog['flow'],
+      mood: optNum(r, 'mood') as CycleDayLog['mood'],
+      symptoms: JSON.parse(str(r, 'symptoms_json')) as CycleDayLog['symptoms'],
+      note: optStr(r, 'note'),
+    }),
+  orderBy: 'day',
+};
+
 const STEP_DAY: Table<StepDay> = {
   name: 'step_day',
   columns: ['day', 'steps', 'origin'],
@@ -292,7 +309,7 @@ const WORKOUT: Table<Workout> = {
   orderBy: 'start_at, rowid',
 };
 
-const ALL_TABLES = [HABIT, RULE, POLICY, ENTRY, WATER, SNACK, MIND, NUDGE_EVENT, EVENT, STEP_DAY, SLEEP_NIGHT, HEART_DAY, WEIGHT, WORKOUT] as const;
+const ALL_TABLES = [HABIT, RULE, POLICY, ENTRY, WATER, SNACK, MIND, NUDGE_EVENT, EVENT, STEP_DAY, SLEEP_NIGHT, HEART_DAY, WEIGHT, WORKOUT, CYCLE_DAY] as const;
 
 function upsertSql<T>(t: Table<T>): string {
   const placeholders = t.columns.map(() => '?').join(', ');
@@ -325,7 +342,7 @@ export class SqliteStore implements TrackerStore {
     const kv = await this.readKv();
     const settingsJson = kv.get(KV_SETTINGS);
     if (settingsJson === undefined) return null;
-    const [habits, rules, policies, entries, water, snacks, mind, nudgeEvents, events, steps, sleep, heart, weight, workouts] = await Promise.all([
+    const [habits, rules, policies, entries, water, snacks, mind, nudgeEvents, events, steps, sleep, heart, weight, workouts, cycleLogs] = await Promise.all([
       this.readAll(HABIT),
       this.readAll(RULE),
       this.readAll(POLICY),
@@ -340,6 +357,7 @@ export class SqliteStore implements TrackerStore {
       this.readAll(HEART_DAY),
       this.readAll(WEIGHT),
       this.readAll(WORKOUT),
+      this.readAll(CYCLE_DAY),
     ]);
     const snooze = kv.get(KV_SNOOZE);
     const swap = kv.get(KV_SWAP);
@@ -358,6 +376,7 @@ export class SqliteStore implements TrackerStore {
       events,
       settings: normalizeSettings(JSON.parse(settingsJson)),
       body: normalizeBody({ steps, sleep, heart, weight, workouts, sync }),
+      cycleLogs,
       nudgeSnoozedUntil: snooze === undefined ? undefined : Number(snooze),
       nudgeSwap: swap === undefined ? undefined : (JSON.parse(swap) as TrackerState['nudgeSwap']),
     });
@@ -380,6 +399,7 @@ export class SqliteStore implements TrackerStore {
       await this.sync(HEART_DAY, prev.body.heart, next.body.heart);
       await this.sync(WEIGHT, prev.body.weight, next.body.weight);
       await this.sync(WORKOUT, prev.body.workouts, next.body.workouts);
+      await this.sync(CYCLE_DAY, prev.cycleLogs, next.cycleLogs);
       if (prev.body.sync !== next.body.sync) await this.writeKv(KV_BODY_SYNC, JSON.stringify(next.body.sync));
       if (prev.settings !== next.settings) await this.writeKv(KV_SETTINGS, JSON.stringify(next.settings));
       if (prev.nudgeSnoozedUntil !== next.nudgeSnoozedUntil) await this.writeKv(KV_SNOOZE, next.nudgeSnoozedUntil === undefined ? null : String(next.nudgeSnoozedUntil));
@@ -405,6 +425,7 @@ export class SqliteStore implements TrackerStore {
       await this.insertAll(HEART_DAY, state.body.heart);
       await this.insertAll(WEIGHT, state.body.weight);
       await this.insertAll(WORKOUT, state.body.workouts);
+      await this.insertAll(CYCLE_DAY, state.cycleLogs);
       await this.writeKv(KV_BODY_SYNC, JSON.stringify(state.body.sync));
       await this.writeKv(KV_SETTINGS, JSON.stringify(state.settings));
       await this.writeKv(KV_SNOOZE, state.nudgeSnoozedUntil === undefined ? null : String(state.nudgeSnoozedUntil));

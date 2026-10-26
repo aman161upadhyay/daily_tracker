@@ -108,7 +108,7 @@ describe('reducer', () => {
     s = reducer(s, { type: 'SWAP', day: '2026-10-26' });
     assert.deepEqual(s.nudgeSwap, { day: '2026-10-26', offset: 1 });
 
-    s = reducer(s, { type: 'PERIOD_START', day: TODAY });
+    s = reducer(s, { type: 'PERIOD_START', day: TODAY, today: TODAY });
     assert.deepEqual(s.settings.cycle.history, [{ start: TODAY }]);
     s = reducer(s, { type: 'PERIOD_END', day: '2026-10-29' });
     assert.deepEqual(s.settings.cycle.history, [{ start: TODAY, end: '2026-10-29' }]);

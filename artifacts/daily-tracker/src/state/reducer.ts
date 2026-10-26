@@ -1,6 +1,8 @@
 import { mergeBody } from '@/src/domain/body/merge';
 import { EMPTY_BODY, type BodyBatch, type BodySync } from '@/src/domain/body/types';
-import type { Habit, HabitEntry, HabitRule, MindSession, MovementSnack, NudgeEvent, NudgePolicy, ScheduledEvent, Settings, WaterEntry } from '@/src/domain/models';
+import { isEmptyLog } from '@/src/domain/cycle/symptoms';
+import { applyPeriodEnd, applyPeriodStart, closeOlderOpenSpans, normalizeHistory } from '@/src/domain/cycle/timeline';
+import type { CycleDayLog, Habit, HabitEntry, HabitRule, MindSession, MovementSnack, NudgeEvent, NudgePolicy, PeriodSpan, ScheduledEvent, Settings, WaterEntry } from '@/src/domain/models';
 import type { TrackerState } from './types';
 
 export type Action =
@@ -33,8 +35,16 @@ export type Action =
   | { type: 'REMOVE_EVENT'; id: string }
   /** Drop one-off events that are already in the past. */
   | { type: 'PRUNE_EVENTS'; beforeMs: number }
-  | { type: 'PERIOD_START'; day: string }
+  /** Log a period start; `today` bounds it (no future starts). Moves a start that follows within 7 days. */
+  | { type: 'PERIOD_START'; day: string; today: string }
   | { type: 'PERIOD_END'; day: string }
+  /** Edit one span by its current start (move it, set/clear the end, exclude it from predictions). */
+  | { type: 'UPDATE_PERIOD'; start: string; patch: { start?: string; end?: string | null; excluded?: boolean } }
+  | { type: 'DELETE_PERIOD'; start: string }
+  /** Upsert the day sheet for a calendar day; an empty log deletes the row. */
+  | { type: 'SET_CYCLE_LOG'; log: CycleDayLog }
+  /** Forget every period and day log (settings and reminders stay). */
+  | { type: 'CLEAR_CYCLE' }
   /** Fold a Health Connect read into the body mirrors. */
   | { type: 'IMPORT_BODY'; batch: BodyBatch }
   /** Replace the automatic (Health Connect) entries of a habit-day with `entry`, or remove them. */
@@ -196,20 +206,52 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
     }
 
     case 'PERIOD_START': {
-      const history = state.settings.cycle.history.filter((p) => p.start !== action.day);
-      return {
-        ...state,
-        settings: { ...state.settings, cycle: { ...state.settings.cycle, history: [...history, { start: action.day }] } },
-      };
+      const result = applyPeriodStart(state.settings.cycle.history, action.day, state.settings.cycle, action.today);
+      if (!result.ok) return state;
+      return withHistory(state, result.history);
     }
 
     case 'PERIOD_END': {
-      const history = [...state.settings.cycle.history].sort((a, b) => (a.start < b.start ? -1 : 1));
-      const last = history[history.length - 1];
-      if (!last || last.end) return state;
-      history[history.length - 1] = { ...last, end: action.day };
-      return { ...state, settings: { ...state.settings, cycle: { ...state.settings.cycle, history } } };
+      const history = applyPeriodEnd(state.settings.cycle.history, action.day);
+      return history ? withHistory(state, history) : state;
     }
+
+    case 'UPDATE_PERIOD': {
+      const history = normalizeHistory(state.settings.cycle.history);
+      const span = history.find((p) => p.start === action.start);
+      if (!span) return state;
+      const next: PeriodSpan = { ...span };
+      if (action.patch.start !== undefined) {
+        if (history.some((p) => p.start === action.patch.start && p.start !== action.start)) return state;
+        next.start = action.patch.start;
+      }
+      if (action.patch.end === null) delete next.end;
+      else if (action.patch.end !== undefined) next.end = action.patch.end;
+      if (action.patch.excluded !== undefined) {
+        if (action.patch.excluded) next.excluded = true;
+        else delete next.excluded;
+      }
+      const merged = history.map((p) => (p.start === action.start ? next : p));
+      return withHistory(state, closeOlderOpenSpans(merged, state.settings.cycle));
+    }
+
+    case 'DELETE_PERIOD': {
+      const history = state.settings.cycle.history.filter((p) => p.start !== action.start);
+      return history.length === state.settings.cycle.history.length ? state : withHistory(state, normalizeHistory(history));
+    }
+
+    case 'SET_CYCLE_LOG': {
+      const rest = state.cycleLogs.filter((l) => l.day !== action.log.day);
+      if (isEmptyLog(action.log)) return rest.length === state.cycleLogs.length ? state : { ...state, cycleLogs: rest };
+      const log: CycleDayLog = { day: action.log.day, symptoms: { ...action.log.symptoms } };
+      if (action.log.flow !== undefined) log.flow = action.log.flow;
+      if (action.log.mood !== undefined) log.mood = action.log.mood;
+      if (action.log.note && action.log.note.trim()) log.note = action.log.note.trim();
+      return { ...state, cycleLogs: [...rest, log].sort((a, b) => (a.day < b.day ? -1 : 1)) };
+    }
+
+    case 'CLEAR_CYCLE':
+      return state.cycleLogs.length === 0 && state.settings.cycle.history.length === 0 ? state : { ...withHistory(state, []), cycleLogs: [] };
 
     case 'IMPORT_BODY': {
       const body = mergeBody(state.body, action.batch);
@@ -245,4 +287,8 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
     default:
       return state;
   }
+}
+
+function withHistory(state: TrackerState, history: PeriodSpan[]): TrackerState {
+  return { ...state, settings: { ...state.settings, cycle: { ...state.settings.cycle, history } } };
 }

@@ -234,11 +234,43 @@ week-start setting; per-habit notification sounds.
   (`docs/DEVICE_CHECKLIST.md` H1–H9).
 **Deferred to M5/M6:** steps and cycle widget tiles; sleep stages chart; write-back of water/mind sessions (v2).
 
-### M5 — Cycle (opt-in) + insights
+### M5 — Cycle (opt-in) + insights ✅ (built 2026-10-26, verified in the web preview; notifications need the phone)
 - Port `CyclePredictor`, `CycleTimeline` (`periodContaining` is the only period-day rule), alerts, reminder planner, with their tests.
 - Cycle tab: phase ring, calendar, day sheet with 14 symptoms + mood, upcoming, history; discreet notifications (`VISIBILITY_PRIVATE` with a neutral public text); birth-control mode; "Track cycle" toggle removes everything when off.
 - Symptom-window insights (≥ 3 cycles) and habit ↔ symptom correlations (Spearman, n ≥ 4, |ρ| ≥ 0.5, "tends to" wording).
 **Done when:** predictions, phases and reminders match the ported test fixtures; nothing cycle-related is visible when the toggle is off.
+
+**Built:**
+- Domain `src/domain/cycle/`: `timeline.ts` (normalised history, usable lengths 10–90 / last ≤ 6, the existing
+  3-cycle blend with the typical length, ±2 or ±ceil(SD) ≤ 7, ovulation = next − luteal with the short-cycle clamp,
+  `buildTimeline().infoOn(date)` for any past, current, late or projected day, `periodContaining`, `todayOffer`
+  (ended-today prominent within the usual length, subtle through day 14), `applyPeriodStart` (moves a start logged
+  ≤ 7 days before an existing one, refuses future days / days inside a period / starts < 8 days after one, closes an
+  older open period at its usual length), `applyPeriodEnd`), `alerts.ts` (short < 21 / long > 35 / variable SD > 7 /
+  period > 8 days, outliers > 7 days from the median offered for exclusion, never excluded silently),
+  `reminders.ts` (BEFORE_PERIOD / PHASE_START rules, roll over one cycle once passed, silent while late),
+  `insights.ts` (3-day symptom windows anchored to the start or the next start in ≥ 60 % of ≥ 3 logged cycles;
+  Spearman habit adherence ↔ symptom burden / mean mood, n ≥ 4, |ρ| ≥ 0.5, symptom in ≥ 3 cycles), `symptoms.ts`
+  (14 symptoms, 5 moods, 3 flows; keys permanent).
+- State: `cycleLogs: CycleDayLog[]` (flow, mood, symptoms with severity 1–3, note; empty log = deleted row) in a
+  `cycle_day` table (schema v4); `PeriodSpan.excluded`; `settings.cycle` gains `lutealDays`, `birthControl`,
+  `discreet`, `reminders` (default "Vitamin C", 5 days before, 9:00). Reducer: `PERIOD_START{day,today}`,
+  `PERIOD_END`, `UPDATE_PERIOD`, `DELETE_PERIOD`, `SET_CYCLE_LOG`, `CLEAR_CYCLE`. "Track cycle" off hides the tab,
+  the Today card and the planner input but keeps the data; Settings → "Cycle data → Delete" wipes it.
+- Planner: `cycleReminders` (ids `cycle:r:<ruleId>:<day>`, channel `cycle`, not counted against the cap) next to the
+  expected-day prompt; `cycleDiscreet` turns every cycle notification into "Daily Tracker · You have a reminder.".
+  The `cycle` channel is created with `lockscreenVisibility: PRIVATE` (changed before any build was installed, so
+  no channel migration was needed).
+- UI: Cycle tab (`PhaseRing` with one arc per phase and a today marker, `CycleCalendar` month grid — solid = logged,
+  soft = predicted, ring = ovulation, dot = has a log — `DaySheet` with period actions + flow / mood / symptoms /
+  note, Upcoming rows, "Worth knowing" alerts with Exclude, `InsightsCard`, Reminders list + `ReminderSheet`,
+  History with exclude / delete, disclaimer), Today "Cycle" summary card, Settings (luteal length, birth control,
+  discreet notifications, delete cycle data). Sample data: five periods (30 / 28 / 29 / 29-day cycles) with a
+  premenstrual symptom cluster whose headaches ease as meditation adherence rises.
+- Tests: 158 (`tests/cycle.test.ts`: lengths / blend / range, prediction + clamp, timeline phases for past, current,
+  late, open and projected days, period logging rules, alerts and outliers, reminder timing and suppression,
+  symptom windows and Spearman, reducer, planner input + discreet wording, sample data). **Needs the phone:**
+  `docs/DEVICE_CHECKLIST.md` C1–C4 (lock-screen visibility, discreet text, reminder delivery, late suppression).
 
 ### M6 — Polish, lock, release
 - App lock (biometric/PIN, lock after N minutes; widgets and notification buttons keep working); Auto Backup rules + restore prompt; export password (PBKDF2 + AES-GCM).

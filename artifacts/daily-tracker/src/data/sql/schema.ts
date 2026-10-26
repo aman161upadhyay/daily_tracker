@@ -161,6 +161,16 @@ export const MIGRATIONS: readonly string[] = [
   );
   CREATE INDEX IF NOT EXISTS workout_day ON workout (day);
   `,
+  // v4 — the cycle day sheet (flow, mood, symptoms, note per calendar day)
+  `
+  CREATE TABLE IF NOT EXISTS cycle_day (
+    day TEXT PRIMARY KEY NOT NULL,
+    flow INTEGER,
+    mood INTEGER,
+    symptoms_json TEXT NOT NULL,
+    note TEXT
+  );
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

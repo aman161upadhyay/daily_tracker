@@ -98,7 +98,7 @@ function storeContract(name: string, open: () => Promise<TrackerStore>) {
       await step({ type: 'UPDATE_SETTINGS', patch: { units: 'oz', name: 'Sam' } });
       await step({ type: 'SNOOZE', untilMs: NOW + 600_000 });
       await step({ type: 'SWAP', day: TODAY });
-      await step({ type: 'PERIOD_START', day: TODAY });
+      await step({ type: 'PERIOD_START', day: TODAY, today: TODAY });
       await step({
         type: 'ADD_HABIT',
         habit: { id: 'h_custom', name: 'Floss', category: 'body', type: 'YES_NO', unit: '', icon: 'shield', createdDay: TODAY, archived: false, pinned: false },
@@ -127,7 +127,7 @@ describe('schema migrations', () => {
     const tables = driver.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as { name: string }[];
     assert.deepEqual(
       tables.map((t) => t.name),
-      ['habit', 'habit_entry', 'habit_rule', 'heart_day', 'kv', 'mind_session', 'movement_snack', 'nudge_event', 'nudge_policy', 'scheduled_event', 'sleep_night', 'step_day', 'water_entry', 'weight_entry', 'workout'],
+      ['cycle_day', 'habit', 'habit_entry', 'habit_rule', 'heart_day', 'kv', 'mind_session', 'movement_snack', 'nudge_event', 'nudge_policy', 'scheduled_event', 'sleep_night', 'step_day', 'water_entry', 'weight_entry', 'workout'],
     );
   });
 

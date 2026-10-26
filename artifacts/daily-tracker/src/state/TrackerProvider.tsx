@@ -3,8 +3,9 @@ import { AppState } from 'react-native';
 import { createStore } from '@/src/data/createStore';
 import { consumeHeadlessWrite } from '@/src/services/replan';
 import type { TrackerStore } from '@/src/data/store';
-import type { Cadence, Category, Habit, HabitIcon, HabitRule, HabitType, MindKind, NudgePolicy, Settings, SnackTrigger, SnackType } from '@/src/domain/models';
+import type { Cadence, Category, CycleDayLog, CycleReminder, Habit, HabitIcon, HabitRule, HabitType, MindKind, NudgePolicy, Settings, SnackTrigger, SnackType } from '@/src/domain/models';
 import { SNACK_LABELS } from '@/src/domain/models';
+import { applyPeriodStart } from '@/src/domain/cycle/timeline';
 import { currentZone, newId, now } from '@/src/domain/time/clock';
 import { addDays, calendarDayOf, instantOf, minutesOfDay, trackingDayOf, weekStartOf } from '@/src/domain/time/trackingDay';
 import { PRESET_BY_ID } from '@/src/library/presets';
@@ -85,8 +86,16 @@ export interface TrackerActions {
   loadSample(): void;
   /** Replace everything with an imported state (already validated). */
   importState(state: TrackerState): void;
-  periodStart(day?: string): void;
+  /** Log a period start (today by default); returns the reason when the day is refused. */
+  periodStart(day?: string): string | null;
   periodEnd(day?: string): void;
+  updatePeriod(start: string, patch: { start?: string; end?: string | null; excluded?: boolean }): void;
+  deletePeriod(start: string): void;
+  setCycleLog(log: CycleDayLog): void;
+  setCycleReminders(reminders: CycleReminder[]): void;
+  updateCycle(patch: Partial<Omit<Settings['cycle'], 'history' | 'reminders'>>): void;
+  /** Forget every period and day log. */
+  clearCycle(): void;
 }
 
 const TrackerContext = createContext<TrackerContextValue | null>(null);
@@ -447,10 +456,33 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
         dispatch({ type: 'REPLACE', state: { ...next, settings: { ...next.settings, onboardingDone: true } } });
       },
       periodStart(day) {
-        dispatch({ type: 'PERIOD_START', day: day ?? calendarDayOf(now(), zone) });
+        const today = calendarDayOf(now(), zone);
+        const cycle = stateRef().settings.cycle;
+        const result = applyPeriodStart(cycle.history, day ?? today, cycle, today);
+        if (!result.ok) return result.reason;
+        dispatch({ type: 'PERIOD_START', day: day ?? today, today });
+        return null;
       },
       periodEnd(day) {
         dispatch({ type: 'PERIOD_END', day: day ?? calendarDayOf(now(), zone) });
+      },
+      updatePeriod(start, patch) {
+        dispatch({ type: 'UPDATE_PERIOD', start, patch });
+      },
+      deletePeriod(start) {
+        dispatch({ type: 'DELETE_PERIOD', start });
+      },
+      setCycleLog(log) {
+        dispatch({ type: 'SET_CYCLE_LOG', log });
+      },
+      setCycleReminders(reminders) {
+        dispatch({ type: 'UPDATE_SETTINGS', patch: { cycle: { ...stateRef().settings.cycle, reminders } } });
+      },
+      updateCycle(patch) {
+        dispatch({ type: 'UPDATE_SETTINGS', patch: { cycle: { ...stateRef().settings.cycle, ...patch } } });
+      },
+      clearCycle() {
+        dispatch({ type: 'CLEAR_CYCLE' });
       },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

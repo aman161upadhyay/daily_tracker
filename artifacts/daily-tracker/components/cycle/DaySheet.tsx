@@ -1,0 +1,195 @@
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, TextInput, View } from 'react-native';
+import { Sheet } from '@/components/ui/Sheet';
+import { Chip, Divider, PillButton, Row } from '@/components/ui/primitives';
+import { Txt } from '@/components/ui/Txt';
+import { TYPE } from '@/constants/typography';
+import { useColors } from '@/hooks/useColors';
+import { FLOWS, isEmptyLog, MOODS, nextSeverity, SEVERITY_LABELS, SYMPTOMS } from '@/src/domain/cycle/symptoms';
+import { displayPhase, PHASE_LABELS, type CycleTimeline } from '@/src/domain/cycle/timeline';
+import type { CycleDayLog, Flow, Mood, Severity } from '@/src/domain/models';
+import { formatDayLong, formatDayShort } from '@/src/domain/time/format';
+import { dayDiff } from '@/src/domain/time/trackingDay';
+
+export interface DaySheetProps {
+  day: string | null;
+  today: string;
+  timeline: CycleTimeline;
+  birthControl: boolean;
+  log: CycleDayLog | undefined;
+  onClose: () => void;
+  onSave: (log: CycleDayLog) => void;
+  /** Period edits for this day; each returns an error message to show, or null. */
+  onPeriodStart: (day: string) => string | null;
+  onPeriodEnd: (day: string) => void;
+  onRemovePeriod: (start: string) => void;
+}
+
+const EMPTY = (day: string): CycleDayLog => ({ day, symptoms: {} });
+
+/**
+ * The day sheet: period actions for the day, flow, mood, symptoms with a
+ * tap-to-cycle severity (mild → moderate → severe → off), and a note.
+ * Saves on close; an empty sheet deletes the day's log.
+ */
+export function DaySheet({ day, today, timeline, birthControl, log, onClose, onSave, onPeriodStart, onPeriodEnd, onRemovePeriod }: DaySheetProps) {
+  const c = useColors();
+  const [draft, setDraft] = useState<CycleDayLog>(log ?? EMPTY(day ?? today));
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (day) setDraft(log ?? EMPTY(day));
+    setError(null);
+  }, [day, log]);
+
+  if (!day) return null;
+  const info = timeline.infoOn(day);
+  const period = timeline.periodContaining(day);
+  const future = day > today;
+  const phaseLabel = info ? PHASE_LABELS[displayPhase(info.phase, birthControl)] : undefined;
+  const subtitle = [phaseLabel ? `${phaseLabel}${info?.predicted ? ' (predicted)' : ''}` : null, info ? `cycle day ${info.cycleDay}` : null].filter(Boolean).join(' · ');
+
+  const close = () => {
+    const changed = JSON.stringify(draft) !== JSON.stringify(log ?? EMPTY(day));
+    if (changed || (log && isEmptyLog(draft))) onSave(draft);
+    onClose();
+  };
+
+  const setSymptom = (key: string) => {
+    const next = nextSeverity(draft.symptoms[key]);
+    const symptoms: Record<string, Severity> = { ...draft.symptoms };
+    if (next === undefined) delete symptoms[key];
+    else symptoms[key] = next;
+    setDraft({ ...draft, symptoms });
+  };
+
+  const openSpan = timeline.history.at(-1);
+  const canEnd = !!openSpan && !openSpan.end && day >= openSpan.start && dayDiff(openSpan.start, day) <= 13 && !future;
+
+  return (
+    <Sheet visible={!!day} title={formatDayLong(day)} onClose={close}>
+      {subtitle ? (
+        <Txt role="footnote" tone="secondary" style={{ marginBottom: 12 }}>
+          {subtitle}
+        </Txt>
+      ) : null}
+
+      {!future ? (
+        <Row gap={8} style={{ flexWrap: 'wrap', marginBottom: 14 }}>
+          {period && period.start === day ? (
+            <PillButton
+              label="Remove this period"
+              kind="danger"
+              compact
+              onPress={() => {
+                onRemovePeriod(period.start);
+                onClose();
+              }}
+            />
+          ) : period ? (
+            <Txt role="footnote" tone="secondary">
+              {`Day ${dayDiff(period.start, day) + 1} of the period that started ${formatDayShort(period.start)}.`}
+            </Txt>
+          ) : (
+            <PillButton
+              label="Period started here"
+              color={c.cat.cycle}
+              compact
+              onPress={() => {
+                const reason = onPeriodStart(day);
+                if (reason) setError(reason);
+                else onClose();
+              }}
+            />
+          )}
+          {canEnd ? (
+            <PillButton
+              label="Period ended here"
+              kind="ghost"
+              compact
+              onPress={() => {
+                onPeriodEnd(day);
+                onClose();
+              }}
+            />
+          ) : null}
+        </Row>
+      ) : null}
+      {error ? (
+        <Txt role="footnote" color={c.danger} style={{ marginBottom: 12 }}>
+          {error}
+        </Txt>
+      ) : null}
+
+      <Txt role="title2" style={styles.label}>
+        Flow
+      </Txt>
+      <Row gap={8} style={{ flexWrap: 'wrap' }}>
+        {FLOWS.map((f) => (
+          <Chip key={f.value} label={f.label} color={c.cat.cycle} selected={draft.flow === f.value} onPress={() => setDraft({ ...draft, flow: draft.flow === f.value ? undefined : (f.value as Flow) })} />
+        ))}
+      </Row>
+
+      <Txt role="title2" style={styles.label}>
+        Mood
+      </Txt>
+      <Row gap={8} style={{ flexWrap: 'wrap' }}>
+        {MOODS.map((m) => (
+          <Chip key={m.value} label={m.label} color={c.violetSoft} selected={draft.mood === m.value} onPress={() => setDraft({ ...draft, mood: draft.mood === m.value ? undefined : (m.value as Mood) })} />
+        ))}
+      </Row>
+
+      <Txt role="title2" style={styles.label}>
+        Symptoms
+      </Txt>
+      <Txt role="footnote" tone="tertiary" style={{ marginBottom: 8 }}>
+        Tap to cycle: mild, moderate, severe, off.
+      </Txt>
+      <Row gap={8} style={{ flexWrap: 'wrap' }}>
+        {SYMPTOMS.map((s) => {
+          const sev = draft.symptoms[s.key];
+          return (
+            <Chip
+              key={s.key}
+              label={sev ? `${s.label} · ${SEVERITY_LABELS[sev].toLowerCase()}` : s.label}
+              color={c.gold}
+              selected={!!sev}
+              onPress={() => setSymptom(s.key)}
+              accessibilityLabel={sev ? `${s.label}, ${SEVERITY_LABELS[sev]}` : s.label}
+            />
+          );
+        })}
+      </Row>
+
+      <Divider />
+      <Txt role="title2" style={styles.label}>
+        Note
+      </Txt>
+      <TextInput
+        value={draft.note ?? ''}
+        onChangeText={(note) => setDraft({ ...draft, note })}
+        placeholder="Anything worth remembering"
+        placeholderTextColor={c.textTertiary}
+        multiline
+        style={[TYPE.body, styles.input, { color: c.text, backgroundColor: c.surface, borderColor: c.hairline }]}
+        accessibilityLabel="Note"
+      />
+      <PillButton label="Done" onPress={close} style={{ marginTop: 16 }} />
+    </Sheet>
+  );
+}
+
+const styles = StyleSheet.create({
+  label: {
+    marginTop: 14,
+    marginBottom: 8,
+  },
+  input: {
+    minHeight: 72,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    textAlignVertical: 'top',
+  },
+});

@@ -50,6 +50,19 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   READ_HEALTH_DATA_HISTORY permission), later syncs from the day before the last sync, cap 14, and a partly
   failed read keeps the old watermark. Sample data is the only place body numbers can be synthetic, and the
   Body tab labels it. Deferred: steps/cycle widget tiles, sleep stages chart, write-back (v2).
+- Cycle decisions (2026-10-26, M5): periods stay in `settings.cycle.history`; a span can be *excluded* (kept,
+  but the cycle it starts leaves the averages — offered for outliers > 7 days from the median, never applied
+  silently). Logging rules: a start ≤ 7 days before an existing start moves it; a start < 8 days after one, a
+  day inside a period, or a future day is refused with a reason the sheet shows; a new start closes an older
+  open period at the typical length. An open period displays/predicts as [start, min(today, start+periodDays−1)];
+  "Period ended today" is prominent within the usual length and subtle through day 14. Late period → phase
+  "late luteal", projection re-anchored at today+1, cycle reminders silent until a start is logged. Birth-control
+  mode only hides fertile/ovulation (predictions unchanged). Discreet is a settings flag that neutralises every
+  cycle notification's text; the `cycle` channel is lock-screen PRIVATE regardless. Insight thresholds: symptom
+  windows ≥ 3 logged cycles / 3-day window hit ≥ 60 %; correlations Spearman n ≥ 4, |ρ| ≥ 0.5, symptom in
+  ≥ 3 cycles, "tended to" wording, never causal. Turning tracking off hides all cycle UI but keeps data; only
+  the explicit Delete wipes it. **Why:** irregular cycles are the norm, so the user — not a heuristic — decides
+  what counts, and a notification must never reveal cycle details on a shared or locked screen.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app

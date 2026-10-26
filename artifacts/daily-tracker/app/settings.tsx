@@ -186,6 +186,48 @@ export default function SettingsScreen() {
             <Setting label="Period length">
               <Stepper value={s.cycle.periodDays} onChange={(periodDays) => actions.updateSettings({ cycle: { ...s.cycle, periodDays } })} min={2} max={10} label="period length" format={(v) => `${v} days`} />
             </Setting>
+            <Setting label="Luteal phase" hint="Ovulation to the next period; 14 is typical">
+              <Stepper value={s.cycle.lutealDays} onChange={(lutealDays) => actions.updateCycle({ lutealDays })} min={10} max={16} label="luteal length" format={(v) => `${v} days`} />
+            </Setting>
+            <Divider />
+            <Row style={{ justifyContent: 'space-between', paddingVertical: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Txt role="title2">Birth control</Txt>
+                <Txt role="footnote" tone="secondary">
+                  Hides the fertile window and ovulation; periods and phases stay.
+                </Txt>
+              </View>
+              <Switch value={s.cycle.birthControl} onValueChange={(birthControl) => actions.updateCycle({ birthControl })} trackColor={{ false: c.hairline, true: c.green }} thumbColor={c.text} accessibilityLabel="Birth control mode" />
+            </Row>
+            <Divider />
+            <Row style={{ justifyContent: 'space-between', paddingVertical: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Txt role="title2">Discreet notifications</Txt>
+                <Txt role="footnote" tone="secondary">
+                  Cycle reminders say only “You have a reminder”. They are hidden on the lock screen either way.
+                </Txt>
+              </View>
+              <Switch value={s.cycle.discreet} onValueChange={(discreet) => actions.updateCycle({ discreet })} trackColor={{ false: c.hairline, true: c.green }} thumbColor={c.text} accessibilityLabel="Discreet cycle notifications" />
+            </Row>
+          </>
+        ) : null}
+        {s.cycle.history.length > 0 || state.cycleLogs.length > 0 ? (
+          <>
+            <Divider />
+            <Row style={{ justifyContent: 'space-between', paddingVertical: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Txt role="title2">Cycle data</Txt>
+                <Txt role="footnote" tone="secondary">
+                  {`${s.cycle.history.length} ${s.cycle.history.length === 1 ? 'period' : 'periods'}, ${state.cycleLogs.length} day ${state.cycleLogs.length === 1 ? 'log' : 'logs'}. Turning tracking off keeps them.`}
+                </Txt>
+              </View>
+              <PillButton
+                label="Delete"
+                kind="danger"
+                compact
+                onPress={() => confirm('Delete cycle data?', 'Every period and day log is removed from this phone. Reminders and settings stay.', 'Delete', () => actions.clearCycle())}
+              />
+            </Row>
           </>
         ) : null}
       </Card>

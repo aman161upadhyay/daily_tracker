@@ -1,5 +1,6 @@
 import type { BodyState } from '@/src/domain/body/types';
 import type {
+  CycleDayLog,
   Habit,
   HabitEntry,
   HabitRule,
@@ -28,6 +29,8 @@ export interface TrackerState {
   settings: Settings;
   /** Health Connect mirrors (steps, sleep, heart, weight, workouts) and the sync status. */
   body: BodyState;
+  /** Cycle day sheet: flow, mood, symptoms and notes per calendar day. */
+  cycleLogs: CycleDayLog[];
   /** Epoch ms until which the live nudge is snoozed. */
   nudgeSnoozedUntil?: number;
   /** Manual "Swap" presses advance the rotation for the rest of the day. */

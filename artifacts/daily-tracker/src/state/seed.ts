@@ -2,7 +2,19 @@
  * Deterministic sample data so the design can be judged with realistic
  * history on first launch. "Start fresh" (Today chip or Settings) clears it.
  */
-import { DEFAULT_SETTINGS, type Habit, type HabitEntry, type HabitRule, type MindSession, type MovementSnack, type NudgePolicy, type WaterEntry } from '@/src/domain/models';
+import {
+  DEFAULT_SETTINGS,
+  type CycleDayLog,
+  type Flow,
+  type Habit,
+  type HabitEntry,
+  type HabitRule,
+  type MindSession,
+  type MovementSnack,
+  type NudgePolicy,
+  type Severity,
+  type WaterEntry,
+} from '@/src/domain/models';
 import { addDays, minutesOfDay, wallClock, weekdayOf } from '@/src/domain/time/trackingDay';
 import { PRESET_BY_ID, type Preset } from '@/src/library/presets';
 import { EMPTY_BODY } from '@/src/domain/body/types';
@@ -206,14 +218,11 @@ export function buildSampleState(today: string, zone: string, nowMs: number): Tr
     }
   }
 
-  // Cycle history: four cycles of 28–30 days, the last one started 19 days ago.
+  // Cycle history: five periods (cycles of 30, 28, 29 and 29 days), the latest started 19 days ago.
   const lastStart = addDays(today, -19);
-  const history = [
-    { start: addDays(lastStart, -87), end: addDays(lastStart, -83) },
-    { start: addDays(lastStart, -58), end: addDays(lastStart, -54) },
-    { start: addDays(lastStart, -29), end: addDays(lastStart, -25) },
-    { start: lastStart, end: addDays(lastStart, 4) },
-  ];
+  const starts = [addDays(lastStart, -116), addDays(lastStart, -86), addDays(lastStart, -58), addDays(lastStart, -29), lastStart];
+  const history = starts.map((start) => ({ start, end: addDays(start, 4) }));
+  const cycleLogs = buildSampleCycleLogs(starts, today);
 
   // Sample Health Connect mirrors; the Steps habit is filled from them the way a real sync would.
   const sampleBody = buildSampleBody({ today, zone, nowMs, nowMin, days: HISTORY_DAYS, rand, at, nextId }, habits.find((h) => h.presetId === 'steps')?.id);
@@ -230,8 +239,9 @@ export function buildSampleState(today: string, zone: string, nowMs: number): Tr
     mind,
     nudgeEvents: [],
     events: [],
-    settings: { ...settings, cycle: { avgCycleDays: 29, periodDays: 5, history } },
+    settings: { ...settings, cycle: { ...settings.cycle, avgCycleDays: 29, periodDays: 5, history } },
     body: sampleBody.body,
+    cycleLogs,
   };
 }
 
@@ -251,6 +261,7 @@ export function buildEmptyState(today: string, keepSettings?: TrackerState['sett
     events: [],
     settings: { ...base, sampleData: false, healthConnectEnabled: false, cycle: { ...base.cycle, history: [] } },
     body: EMPTY_BODY,
+    cycleLogs: [],
   };
   if (opts.withWater ?? true) {
     const { habit, rule, policy } = habitFromPreset(PRESET_BY_ID.water!, 'h_water', today);
@@ -259,4 +270,65 @@ export function buildEmptyState(today: string, keepSettings?: TrackerState['sett
     state.policies.push(policy);
   }
   return state;
+}
+
+/**
+ * Day logs for the sample cycles: flow and cramps on period days, a
+ * premenstrual cluster (headache, bloating, low mood) in the three days
+ * before each start. Headaches ease cycle by cycle, so the correlation with
+ * the (improving) meditation habit shows up in Insights.
+ */
+function buildSampleCycleLogs(starts: string[], today: string): CycleDayLog[] {
+  const byDay = new Map<string, CycleDayLog>();
+  const log = (day: string): CycleDayLog => {
+    if (day > today) return { day, symptoms: {} };
+    let l = byDay.get(day);
+    if (!l) {
+      l = { day, symptoms: {} };
+      byDay.set(day, l);
+    }
+    return l;
+  };
+  const flows: Flow[] = [2, 3, 2, 1, 1];
+  const headache: Severity[][] = [
+    [3, 3],
+    [3, 2],
+    [2, 2],
+    [2, 1],
+  ];
+  starts.forEach((start, i) => {
+    flows.forEach((flow, d) => {
+      const l = log(addDays(start, d));
+      l.flow = flow;
+      if (d === 0) {
+        l.symptoms.cramps = 2;
+        l.symptoms.fatigue = 2;
+        l.mood = 2;
+      }
+      if (d === 1) {
+        l.symptoms.cramps = 1;
+        l.mood = 3;
+      }
+    });
+    if (i < starts.length - 1) {
+      const next = starts[i + 1]!;
+      const sev = headache[i] ?? [1, 1];
+      log(addDays(next, -3)).symptoms.bloating = 1;
+      const two = log(addDays(next, -2));
+      two.symptoms.headache = sev[0]!;
+      two.symptoms.bloating = 2;
+      two.symptoms['low-mood'] = 1;
+      two.mood = 2;
+      const one = log(addDays(next, -1));
+      one.symptoms.headache = sev[1]!;
+      one.symptoms.bloating = 2;
+      one.symptoms.cravings = 2;
+      one.mood = 2;
+      const mid = log(addDays(start, 12));
+      mid.mood = 4;
+      mid.note = i === starts.length - 2 ? 'Good energy all day.' : undefined;
+      if (!mid.note) delete mid.note;
+    }
+  });
+  return [...byDay.values()].filter((l) => l.day <= today).sort((a, b) => (a.day < b.day ? -1 : 1));
 }

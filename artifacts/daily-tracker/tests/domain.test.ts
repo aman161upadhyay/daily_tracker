@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { adherenceColor, adherenceStage, ADHERENCE_LUT_OUTPUT, FLOW_THRESHOLD } from '../src/domain/adherence/adherenceScale';
-import { averageCycleLength, cycleDay, isPeriodOpen, phaseOf, predictedNextStart } from '../src/domain/cycle/predict';
+import { averageCycleLength, cycleDay, isPeriodOpen, predictedNextStart } from '../src/domain/cycle/timeline';
 import { adherenceOf, bestStreak, currentStreak, percentChange, ratioOf, type DayRatio } from '../src/domain/habits/progress';
 import { nextNudge, nextSlotMin, swapRotation, type RotationItem } from '../src/domain/nudges/nextNudge';
 import { formatClock, formatIn, formatVolume } from '../src/domain/time/format';
@@ -140,12 +140,8 @@ describe('cycle prediction', () => {
     assert.equal(predictedNextStart('2026-09-28', 28), '2026-10-26');
   });
 
-  it('knows the cycle day, phase and whether a period is open', () => {
+  it('knows the cycle day and whether a period is open', () => {
     assert.equal(cycleDay('2026-10-25', '2026-09-28'), 28);
-    assert.equal(phaseOf(3, 28, 5), 'menstrual');
-    assert.equal(phaseOf(9, 28, 5), 'follicular');
-    assert.equal(phaseOf(14, 28, 5), 'ovulation');
-    assert.equal(phaseOf(22, 28, 5), 'luteal');
     assert.equal(isPeriodOpen(history), false);
     assert.equal(isPeriodOpen([...history, { start: '2026-10-25' }]), true);
   });

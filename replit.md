@@ -72,6 +72,15 @@ original Kotlin spec being ported (this plan wins where they disagree).
   `components/system/WidgetSync.tsx` redraws on model changes; the headless nudge tasks redraw after persisting. Plugin
   config, fonts (`assets/fonts/`, copied from `@expo-google-fonts/manrope`) and the picker preview
   (`assets/widget/preview.png`, regenerate with `scripts/widget-preview.sh`) live in `app.json`.
+- Cycle (opt-in, `settings.cycleEnabled`): `src/domain/cycle/` — `timeline.ts` (prediction + `buildTimeline().infoOn()`
+  for the phase of any day; `periodContaining()` is the only period-day rule; `applyPeriodStart/End` hold the logging
+  rules), `alerts.ts`, `reminders.ts`, `insights.ts` (symptom windows, Spearman habit ↔ symptom), `symptoms.ts` (keys are
+  permanent). Periods live in `settings.cycle.history` (`PeriodSpan`, `excluded` keeps a span but drops its cycle from
+  the averages); day logs in `state.cycleLogs` / table `cycle_day` (an empty log deletes the row). Cycle data uses the
+  calendar day, never the tracking day. The planner adds `cycleReminders` on channel `cycle` (lock-screen PRIVATE;
+  `settings.cycle.discreet` swaps every cycle notification for "Daily Tracker · You have a reminder."). Tracking off
+  hides the tab, the Today card and the planner input but keeps the data; only Settings → Cycle data → Delete wipes it.
+  UI in `components/cycle/` (`PhaseRing`, `CycleCalendar`, `DaySheet`, `ReminderSheet`, `InsightsCard`, `phaseColors`).
 - Icons: Phosphor, imported only through `components/ui/icons.tsx` using
   `require('phosphor-react-native/src/icons/<Name>').<Name>Icon` (the root import would bundle every icon; the
   package only exports `.` and `./src/icons/*`). Add new icons there, never import Phosphor elsewhere.

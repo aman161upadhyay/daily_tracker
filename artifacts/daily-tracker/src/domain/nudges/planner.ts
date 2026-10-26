@@ -95,8 +95,15 @@ export interface PlanInput {
   weekSummary?: { title: string; body: string };
   /** Cycle prompt: the day a period is expected, when tracking is on and none is logged. */
   cycleExpectedDay?: string;
+  /** Cycle-relative reminders ("Vitamin C") already resolved to the day they fire next. */
+  cycleReminders?: { id: string; day: string; minute: number; label: string }[];
+  /** Discreet mode: every cycle notification reads "You have a reminder". */
+  cycleDiscreet?: boolean;
   horizonMs?: number;
 }
+
+export const DISCREET_TITLE = 'Daily Tracker';
+export const DISCREET_BODY = 'You have a reminder.';
 
 export const DEFAULT_HORIZON_MS = 36 * 60 * 60_000;
 export const MERGE_WINDOW_MS = 5 * 60_000;
@@ -356,7 +363,8 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
       }
     }
 
-    // ── Cycle: a discreet prompt on the expected day ─────────────────────
+    // ── Cycle: a prompt on the expected day, plus cycle-relative reminders ──
+    const discreet = !!input.cycleDiscreet;
     if (input.cycleExpectedDay === day) {
       const id = `cycle:${day}`;
       const when = effectiveAt(id, instantOf(day, 9 * 60, zone));
@@ -366,14 +374,32 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
           at: when,
           day,
           habitIds: [],
-          title: 'Cycle',
-          body: 'Around the expected day — log it when it starts.',
+          title: discreet ? DISCREET_TITLE : 'Cycle',
+          body: discreet ? DISCREET_BODY : 'Around the expected day — log it when it starts.',
           channel: 'cycle',
           kind: 'CYCLE',
           actions: ['OPEN'],
           counted: false,
         });
       }
+    }
+    for (const r of input.cycleReminders ?? []) {
+      if (r.day !== day) continue;
+      const id = `cycle:r:${r.id}:${day}`;
+      const when = effectiveAt(id, instantOf(day, r.minute, zone));
+      if (when === null) continue;
+      push({
+        id,
+        at: when,
+        day,
+        habitIds: [],
+        title: discreet ? DISCREET_TITLE : r.label,
+        body: discreet ? DISCREET_BODY : 'A cycle reminder you set.',
+        channel: 'cycle',
+        kind: 'CYCLE',
+        actions: ['OPEN'],
+        counted: false,
+      });
     }
   }
 
