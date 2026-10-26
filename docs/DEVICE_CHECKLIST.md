@@ -295,6 +295,17 @@ cycle (phases, calendar, day sheet, insights) was verified in the web preview an
 | AD6 | A hostile preset id | `adb shell am start -a android.intent.action.VIEW -d "daily-tracker://habits?preset=__proto__"` (and `constructor`) | The Habits tab shows, no sheet, no error screen |
 | AD7 | Fix an older day | On a habit older than a week tap "Fix an older day" under the 26-week heatmap; pick a day two weeks back; set an amount | The day's cell in the heatmap and the 2W chart update; "Logged → Show the last 7 days" is unaffected (the day is older); for a yes/no habit the picker's day flips in place |
 
+### AE — round 14 (a retired provider, a failed start, honest follow-ups, the card picker)
+
+| # | Check | Steps | Expected |
+|---|---|---|---|
+| AE1 | A crash during a failing save, then an erase | Fill the storage until saves fail (the red banner shows); force a render crash (dev: throw from a screen; release: not reproducible by hand — note it) and tap "Try again" on the error screen; Settings → Erase everything | After the erase nothing comes back: no drink or habit from before the crash reappears after a minute (the retired provider's retry must not write) |
+| AE2 | A notification press under a failed save | Storage full as in AE1; press "Done" on a movement nudge from the shade | The banner shows the failed save; the widget keeps the state on disk (no new snack); Settings → Backup shows no new snapshot time; once storage is freed and the app reopened, the press is applied once |
+| AE3 | The database cannot open at start | Corrupt or lock the database file (dev: rename `files/SQLite/tracker.db` to a directory, or `chmod 000` on a rooted device); open the app | "Your data could not be opened" with "Try again" — no onboarding, no empty Today; `dumpsys notification` still lists the planned reminders (none were cancelled); restore the file, tap "Try again", the data is back |
+| AE4 | Cards on Today | Today → "Choose cards": switch Steps and Sleep on, move Water below Mind; Settings → Today shows the same; turn cycle tracking off and on | The cards reorder at once; Steps / Sleep show a "Nothing from Health Connect yet" door until data arrives; the cycle row disappears from the picker while tracking is off and its card returns where it was switched on |
+| AE5 | Fix a day months back | On the Water habit, after at least seven months of data (sample data or a restored backup): "Fix an older day", go back seven or more months | Days with drinks show a ring or a full disc (not blank); a full day's number reads clearly on the disc in both themes; the grid's cells are at least 48 dp wide on a 360 dp screen |
+| AE6 | Clear day and the readers | On an older day with several drinks tap "Clear day"; with TalkBack on, swipe through the picker's month title and a day of last year | "Clear …?" names the day and the amount before anything happens; the title announces the month when it changes and says "Jumps to this month" only away from it; days of another year are read with their year |
+
 ## Recording results
 
-Add a dated line under the milestone in `docs/IMPLEMENTATION_PLAN.md` ("Device run YYYY-MM-DD, Pixel 7 / Android 15: N1–N17, Y1–Y14, Z1–Z13, AA1–AA16, AB1–AB11, AC1–AC8, AD1–AD7 pass except …") and open follow-ups for anything that failed.
+Add a dated line under the milestone in `docs/IMPLEMENTATION_PLAN.md` ("Device run YYYY-MM-DD, Pixel 7 / Android 15: N1–N17, Y1–Y14, Z1–Z13, AA1–AA16, AB1–AB11, AC1–AC8, AD1–AD7, AE1–AE6 pass except …") and open follow-ups for anything that failed.

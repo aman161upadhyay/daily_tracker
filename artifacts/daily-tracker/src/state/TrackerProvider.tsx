@@ -16,6 +16,7 @@ import { reducer, type Action } from './reducer';
 import { buildEmptyState, buildSampleState, habitFromPreset } from './seed';
 import { bumpBodyEpoch } from './epochs';
 import { setLiveStore, type LiveStore } from './liveStore';
+import { SaveQueue } from './saveQueue';
 import { latestRule } from './selectors';
 import type { TrackerState } from './types';
 
@@ -24,9 +25,17 @@ export const MAX_SNACKS_PER_LOG = 100;
 
 export interface TrackerContextValue {
   state: TrackerState;
+  /** True once saved data is loaded and this provider is the writer. Stays false after a failed load (see loadError). */
   ready: boolean;
   /** Set when loading or saving failed; the UI shows it instead of guessing. */
   storageError: string | null;
+  /**
+   * The database could not be opened or read at start: nothing is loaded, nothing is written and
+   * no reminder or widget bookkeeping runs (an empty placeholder must not cancel real reminders).
+   * The UI offers to try again (retryLoad).
+   */
+  loadError: string | null;
+  retryLoad(): void;
   nowMs: number;
   zone: string;
   /**
@@ -58,6 +67,8 @@ export interface TrackerContextValue {
    * "done" before the write is durable, such as a notification button.
    */
   commitPending(): Promise<boolean>;
+  /** What the database holds, as far as this provider knows (the rendered state while a save is in flight is newer). */
+  committed(): TrackerState;
 }
 
 export interface HabitDraft {
@@ -135,8 +146,6 @@ const TrackerContext = createContext<TrackerContextValue | null>(null);
 
 const PLACEHOLDER: TrackerState = buildEmptyState('1970-01-01');
 /** A failed save is retried a few times on its own (a busy database, a brief I/O hiccup) before waiting for the next change. */
-const MAX_SAVE_RETRIES = 5;
-const SAVE_RETRY_MS = 2000;
 
 function describe(err: unknown): string {
   if (err instanceof Error) {
@@ -182,107 +191,52 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   const renderGen = genOf.current.get(state) ?? 0;
   const [ready, setReady] = useState(false);
   const [storageError, setStorageError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const retryLoad = useCallback(() => {
+    setLoadError(null);
+    setLoadAttempt((n) => n + 1);
+  }, []);
   const [replaceEpoch, setReplaceEpoch] = useState(0);
   const [replacePending, setReplacePending] = useState(false);
-  const replacePendingRef = useRef(false);
   const replaceSeqRef = useRef(0);
   const replaceSeq = useCallback(() => replaceSeqRef.current, []);
+  /**
+   * The writes: what the database holds, the newest state that should end up there, retries and
+   * who waits for a commit (see saveQueue). One queue per hydration; the previous one is retired
+   * when this provider goes away or loads again, so a save it still had pending cannot land over
+   * a newer provider's state (the error boundary's reset mounts a new provider) or across an erase.
+   */
+  const queueRef = useRef<SaveQueue>(null as unknown as SaveQueue);
+  const newQueue = () =>
+    new SaveQueue({
+      onSaved: () => setStorageError((e) => (e && e.startsWith('Could not save') ? null : e)),
+      onFailed: (err) => {
+        console.error('Failed to save', err);
+        setStorageError(`Could not save your last change: ${describe(err)}`);
+      },
+      onReplaceCommitted: () => setReplacePending(false),
+    });
+  if (!queueRef.current) queueRef.current = newQueue();
+  const committed = useCallback(() => queueRef.current.committed ?? pendingRef.current, []);
   const liveStoreFor = (apply: LiveStore['apply']): LiveStore => ({
     apply,
     current: () => pendingRef.current,
-    committed: () => committedRef.current ?? pendingRef.current,
+    committed,
     replaceSeq,
-    replacePending: () => replacePendingRef.current,
+    replacePending: () => queueRef.current.replacePending,
   });
   const [nowMs, setNowMs] = useState(() => now());
   // The phone's zone can change while the app is open (travel); refreshed with the clock.
   const [zone, setZone] = useState(() => currentZone());
 
   const storeRef = useRef<TrackerStore | null>(null);
-  /** What the database holds, as far as we know: the base every persist diffs from. */
-  const committedRef = useRef<TrackerState | null>(null);
-  /** The newest state that should end up in the database. */
-  const targetRef = useRef<TrackerState | null>(null);
-  const flushRef = useRef<Promise<boolean>>(Promise.resolve(false));
   const reloadingRef = useRef(false);
-  const flushingRef = useRef(false);
-  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const failuresRef = useRef(0);
   /** Headless revision we last loaded (see services/replan). */
   const seenRevisionRef = useRef<number | null>(null);
-  /**
-   * The change that replaced the whole state (erase, restore, sample data), if the database does
-   * not hold it yet. Such a change is written with `replace`, not as a row diff: the service
-   * records beside the state (what the old state's alarms delivered, presses still to apply) go
-   * with the old state in the same transaction.
-   */
-  const replaceGenRef = useRef(0);
-  /** Dispatch generation of targetRef / committedRef, and who is waiting for a commit. */
-  const targetGenRef = useRef(0);
-  const committedGenRef = useRef(0);
-  const waitersRef = useRef<{ gen: number; resolve: (ok: boolean) => void }[]>([]);
-  const settleWaiters = (ok: boolean) => {
-    const rest: { gen: number; resolve: (ok: boolean) => void }[] = [];
-    for (const w of waitersRef.current) {
-      if (!ok || w.gen <= committedGenRef.current) w.resolve(ok);
-      else rest.push(w);
-    }
-    waitersRef.current = rest;
-  };
 
-  /**
-   * Write everything between the committed state and the newest state, in one
-   * diff per pass. The base only moves once a write succeeded, so a failed
-   * write is retried from the same base by the next pass instead of leaving a
-   * hole between what the screen shows and what the database holds.
-   */
-  const flush = useCallback((): Promise<boolean> => {
-    if (flushingRef.current) return flushRef.current;
-    const store = storeRef.current;
-    if (!store) return Promise.resolve(false);
-    flushingRef.current = true;
-    const run = (async (): Promise<boolean> => {
-      try {
-        while (committedRef.current && targetRef.current && targetRef.current !== committedRef.current) {
-          const base = committedRef.current;
-          const target = targetRef.current;
-          const targetGen = targetGenRef.current;
-          try {
-            if (replaceGenRef.current > committedGenRef.current && targetGen >= replaceGenRef.current) await store.replace(target);
-            else await store.persist(base, target);
-            committedRef.current = target;
-            committedGenRef.current = Math.max(committedGenRef.current, targetGen);
-            if (committedGenRef.current >= replaceGenRef.current && replacePendingRef.current) {
-              replacePendingRef.current = false;
-              setReplacePending(false);
-            }
-            failuresRef.current = 0;
-            setStorageError((e) => (e && e.startsWith('Could not save') ? null : e));
-            settleWaiters(true);
-          } catch (err) {
-            failuresRef.current += 1;
-            console.error('Failed to save', err);
-            setStorageError(`Could not save your last change: ${describe(err)}`);
-            if (failuresRef.current <= MAX_SAVE_RETRIES && retryRef.current === null) {
-              retryRef.current = setTimeout(() => {
-                retryRef.current = null;
-                void flush();
-              }, SAVE_RETRY_MS);
-            } else if (failuresRef.current > MAX_SAVE_RETRIES) {
-              settleWaiters(false); // out of retries: nobody should wait for a save that is not coming
-            }
-            break;
-          }
-        }
-        // True only when everything the screen shows is in the database.
-        return committedRef.current === targetRef.current;
-      } finally {
-        flushingRef.current = false;
-      }
-    })();
-    flushRef.current = run;
-    return run;
-  }, []);
+  /** Write everything between the committed state and the newest state (see saveQueue). */
+  const flush = useCallback((): Promise<boolean> => queueRef.current.flush(), []);
 
   /**
    * Pick up rows a headless writer (notification button, widget, background re-plan) added.
@@ -301,18 +255,17 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
       // is judged by the dispatch counter (bumped synchronously at dispatch time), not only by
       // the persisted target, which trails a dispatch by a render.
       for (let attempt = 0; attempt < 3; attempt++) {
+        const queue = queueRef.current;
         const genBefore = genRef.current;
         if (!(await flush())) return;
-        const before = targetRef.current;
+        const before = queue.target;
         const fresh = await store.load();
         if (!fresh) return;
-        if (targetRef.current !== before || genRef.current !== genBefore || targetGenRef.current !== genBefore) continue;
+        if (queue.disposed) return;
+        if (queue.target !== before || genRef.current !== genBefore || queue.targetGen !== genBefore) continue;
         seenRevisionRef.current = revision;
-        committedRef.current = fresh;
-        targetRef.current = fresh;
         dispatch({ type: 'HYDRATE', state: fresh });
-        targetGenRef.current = genRef.current;
-        committedGenRef.current = genRef.current;
+        queue.rebase(fresh, genRef.current);
         return;
       }
     } finally {
@@ -325,16 +278,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
    * is rendered and persisted (a dispatch that changes nothing is not a change), so the wait
    * always ends: with the write, when the save gives up, or when the provider goes away.
    */
-  const commitPending = useCallback((): Promise<boolean> => {
-    const gen = genRef.current;
-    if (committedGenRef.current >= gen) return Promise.resolve(true);
-    if (!storeRef.current) return Promise.resolve(false);
-    const wait = new Promise<boolean>((resolve) => waitersRef.current.push({ gen, resolve }));
-    // The save gave up earlier and no retry is coming: try once more for this caller, so the wait
-    // ends with that attempt (either way) instead of lasting until the next real change.
-    if (failuresRef.current > MAX_SAVE_RETRIES && !flushingRef.current && retryRef.current === null && targetRef.current !== committedRef.current) void flush();
-    return wait;
-  }, [flush]);
+  const commitPending = useCallback((): Promise<boolean> => queueRef.current.commitPending(genRef.current), []);
 
   /**
    * Compute actions from the newest state and apply them as one change. Used by the live store
@@ -356,6 +300,10 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   // Open the store and hydrate. A fresh install starts empty (onboarding takes over).
   useEffect(() => {
     let cancelled = false;
+    // A fresh queue per attempt: the previous one (a failed load, or the dev-time double mount)
+    // is retired below and stays retired.
+    if (queueRef.current.disposed) queueRef.current = newQueue();
+    const queue = queueRef.current;
     (async () => {
       try {
         // Under the headless writers' lock: a widget tap or notification button that is halfway
@@ -376,38 +324,34 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
           seenRevisionRef.current = revisionBefore;
           if (cancelled) return;
           storeRef.current = store;
-          committedRef.current = next;
-          targetRef.current = next;
           dispatch({ type: 'HYDRATE', state: next });
-          targetGenRef.current = genRef.current;
-          committedGenRef.current = genRef.current;
+          queue.attach(store, next, genRef.current);
           setLiveStore(liveStoreFor(apply));
         });
+        if (!cancelled) setReady(true);
       } catch (err) {
         console.error('Storage failed to open', err);
-        if (!cancelled) setStorageError(describe(err));
-      } finally {
-        if (!cancelled) setReady(true);
+        // Not ready: the screens, the reminder scheduler and the widget sync stay off an empty
+        // placeholder (it would read as "no reminders planned" and cancel the real ones). The
+        // layout shows the error and offers to try again.
+        if (!cancelled) setLoadError(describe(err));
       }
     })();
     return () => {
       cancelled = true;
-      if (retryRef.current !== null) {
-        clearTimeout(retryRef.current);
-        retryRef.current = null;
-      }
-      settleWaiters(false);
+      storeRef.current = null;
+      queue.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadAttempt]);
 
   // Persist every change after hydration, in order, writing only what changed.
   useEffect(() => {
-    if (!storeRef.current || !committedRef.current || state === committedRef.current) return;
-    targetRef.current = state;
-    targetGenRef.current = Math.max(targetGenRef.current, renderGen);
-    void flush();
-  }, [state, renderGen, flush]);
+    const queue = queueRef.current;
+    if (!queue.attached || !queue.committed || state === queue.committed) return;
+    queue.setTarget(state, renderGen);
+    void queue.flush();
+  }, [state, renderGen]);
 
   // While this store is alive it is the only writer on this runtime: a widget tap or a
   // notification button that runs here goes through the reducer instead of racing our saves.
@@ -465,16 +409,15 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
     [zone, boundary],
   );
 
-  /** Make `next` the whole state (erase, restore, sample data); see replaceGenRef. */
+  /** Make `next` the whole state (erase, restore, sample data); see SaveQueue.markReplace. */
   const replaceWith = useCallback(
     (next: TrackerState) => {
       bumpBodyEpoch();
       replaceSeqRef.current += 1;
-      replacePendingRef.current = true;
       setReplaceEpoch((n) => n + 1);
       setReplacePending(true);
       dispatch({ type: 'REPLACE', state: next });
-      replaceGenRef.current = genRef.current;
+      queueRef.current.markReplace(genRef.current);
     },
     [dispatch],
   );
@@ -779,8 +722,8 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   }, [stamp, zone, boundary, replaceWith]);
 
   const value = useMemo<TrackerContextValue>(
-    () => ({ state, ready, storageError, nowMs, zone, replaceEpoch, replacePending, replaceSeq, today, calendarToday, nowMin, dispatch, apply, actions, commitPending }),
-    [state, ready, storageError, nowMs, zone, replaceEpoch, replacePending, replaceSeq, today, calendarToday, nowMin, dispatch, apply, actions, commitPending],
+    () => ({ state, ready, storageError, loadError, retryLoad, nowMs, zone, replaceEpoch, replacePending, replaceSeq, today, calendarToday, nowMin, dispatch, apply, actions, commitPending, committed }),
+    [state, ready, storageError, loadError, retryLoad, nowMs, zone, replaceEpoch, replacePending, replaceSeq, today, calendarToday, nowMin, dispatch, apply, actions, commitPending, committed],
   );
 
   return <TrackerContext.Provider value={value}>{children}</TrackerContext.Provider>;

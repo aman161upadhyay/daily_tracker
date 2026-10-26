@@ -8,6 +8,7 @@ import { useColors } from '@/hooks/useColors';
 import { withAlpha } from '@/src/domain/color/oklch';
 import { displayPhase, PHASE_LABELS, phaseQualifier, type CyclePhase, type CycleTimeline } from '@/src/domain/cycle/timeline';
 import { monthCells, monthOf, monthTitle, shiftMonth } from '@/src/domain/time/month';
+import { formatDayLong, formatDayShort } from '@/src/domain/time/format';
 import { parseDay } from '@/src/domain/time/trackingDay';
 import { phaseColor, phaseFill } from './phaseColors';
 
@@ -50,8 +51,10 @@ export function CycleCalendar({ month, today, timeline, birthControl, loggedDays
     <View>
       <Row style={styles.header}>
         <IconButton Glyph={UI.Back} label="Previous month" onPress={() => onMonthChange(shiftMonth(month, -1))} size={36} color={c.text} />
-        <PressableScale haptic={false} onPress={() => onMonthChange(thisMonth)} accessibilityRole="button" accessibilityLabel="Jump to this month" style={{ flex: 1 }}>
-          <Txt role="title2" align="center">{monthTitle(month)}</Txt>
+        <PressableScale haptic={false} onPress={() => onMonthChange(thisMonth)} accessibilityRole="button" accessibilityLabel={monthTitle(month)} accessibilityHint={month === thisMonth ? undefined : 'Jumps to this month'} style={{ flex: 1 }}>
+          <Txt role="title2" align="center" accessibilityLiveRegion="polite">
+            {monthTitle(month)}
+          </Txt>
         </PressableScale>
         <IconButton Glyph={UI.Caret} label="Next month" onPress={() => onMonthChange(shiftMonth(month, 1))} size={36} color={c.text} />
       </Row>
@@ -72,7 +75,7 @@ export function CycleCalendar({ month, today, timeline, birthControl, loggedDays
           const isSelected = day === selected;
           const future = day > today;
           const { day: num } = parseDay(day);
-          const a11y = [`${day}`, phase ? PHASE_LABELS[phase] : '', phaseQualifier(info, day, today), loggedDays.has(day) ? 'has a log' : ''].filter(Boolean).join(', ');
+          const a11y = [parseDay(day).year === parseDay(today).year ? formatDayShort(day) : formatDayLong(day), isToday ? 'today' : '', phase ? PHASE_LABELS[phase] : '', phaseQualifier(info, day, today), loggedDays.has(day) ? 'has a log' : ''].filter(Boolean).join(', ');
           return (
             <PressableScale key={day} haptic={false} onPress={() => onSelect(day)} accessibilityRole="button" accessibilityLabel={a11y} accessibilityState={{ selected: isSelected }} style={styles.cell}>
               <View

@@ -22,6 +22,8 @@ const ArrowUUpLeftIcon = require('phosphor-react-native/src/icons/ArrowUUpLeft')
 const BarbellIcon = require('phosphor-react-native/src/icons/Barbell').BarbellIcon as Icon;
 const BellIcon = require('phosphor-react-native/src/icons/Bell').BellIcon as Icon;
 const CalendarBlankIcon = require('phosphor-react-native/src/icons/CalendarBlank').CalendarBlankIcon as Icon;
+const ArrowUpIcon = require('phosphor-react-native/src/icons/ArrowUp').ArrowUpIcon as Icon;
+const ArrowDownIcon = require('phosphor-react-native/src/icons/ArrowDown').ArrowDownIcon as Icon;
 const CalendarHeartIcon = require('phosphor-react-native/src/icons/CalendarHeart').CalendarHeartIcon as Icon;
 const CaretRightIcon = require('phosphor-react-native/src/icons/CaretRight').CaretRightIcon as Icon;
 const CheckIcon = require('phosphor-react-native/src/icons/Check').CheckIcon as Icon;
@@ -110,6 +112,8 @@ export const UI = {
   Cookie: CookieIcon,
   Widget: SquaresFourIcon,
   ArrowLeft: ArrowLeftIcon,
+  ArrowUp: ArrowUpIcon,
+  ArrowDown: ArrowDownIcon,
   Back: ArrowLeftIcon,
   Bell: BellIcon,
   Calendar: CalendarBlankIcon,

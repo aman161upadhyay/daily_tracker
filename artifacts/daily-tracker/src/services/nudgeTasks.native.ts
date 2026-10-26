@@ -39,7 +39,14 @@ async function afterHeadlessWrite(next: TrackerState, ctx: CommandContext): Prom
  * snapshot — awaited, because Android may freeze the app as soon as the task resolves, before
  * the in-app components' debounced timers run.
  */
-async function afterLiveWrite(live: LiveStore, ctx: CommandContext): Promise<void> {
+async function afterLiveWrite(live: LiveStore, ctx: CommandContext, persisted: boolean): Promise<void> {
+  // The store gave up saving (this press, or an earlier change it waited for): the app holds the
+  // change in memory and shows its storage error; the widget draws only what is on disk and
+  // nothing is snapshotted — the press stays in the inbox for a later replay.
+  if (!persisted) {
+    await refreshWidgets(live.committed(), ctx.today, ctx.nowMs, ctx.zone).catch((err) => console.warn('Widget refresh failed', err));
+    return;
+  }
   let next = live.current();
   try {
     next = await replanLive(live, ctx);
@@ -81,7 +88,7 @@ export async function handleResponse(r: NudgeResponse): Promise<void> {
     if (live) {
       const { applied, persisted } = await live.apply(build);
       committed = persisted;
-      if (applied) await afterLiveWrite(live, contextFor(live.current()));
+      if (applied) await afterLiveWrite(live, contextFor(live.current()), persisted);
       return;
     }
     type Written = { live: LiveStore } | { next: TrackerState; ctx: CommandContext } | null;
@@ -115,7 +122,7 @@ export async function handleResponse(r: NudgeResponse): Promise<void> {
     if (written && 'live' in written) {
       const { applied, persisted } = await written.live.apply(build);
       committed = persisted;
-      if (applied) await afterLiveWrite(written.live, contextFor(written.live.current()));
+      if (applied) await afterLiveWrite(written.live, contextFor(written.live.current()), persisted);
       return;
     }
     committed = true;

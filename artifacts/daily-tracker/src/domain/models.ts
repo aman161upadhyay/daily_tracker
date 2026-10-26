@@ -7,6 +7,8 @@
  * remove them.
  */
 
+import type { PinnedCardId } from './today/pinned';
+
 export type Category = 'hydration' | 'movement' | 'mind' | 'cycle' | 'body' | 'fuel' | 'craft';
 
 export type HabitType = 'YES_NO' | 'COUNT' | 'AMOUNT' | 'TIMER';
@@ -258,8 +260,8 @@ export interface Settings {
   nudgeIntervalMin: number;
   dailyNudgeCap: number;
   cycleEnabled: boolean;
-  /** Ids of pinned summary cards in display order. */
-  pinned: string[];
+  /** Today's summary cards in display order (see `src/domain/today/pinned.ts`; unknown ids are dropped on read). */
+  pinned: PinnedCardId[];
   sampleData: boolean;
   cycle: CycleSettings;
   /** Set once the welcome flow finished (or sample data was chosen). */
@@ -308,7 +310,7 @@ export const DEFAULT_SETTINGS: Settings = {
   nudgeIntervalMin: 60,
   dailyNudgeCap: 10,
   cycleEnabled: false,
-  pinned: ['water', 'snacks', 'mind'],
+  pinned: ['water', 'snacks', 'mind', 'cycle'],
   sampleData: false,
   // Discreet by default: a cycle reminder on a lock screen names nothing until the person turns that on.
   cycle: { avgCycleDays: 28, periodDays: 5, lutealDays: 14, birthControl: false, discreet: true, showOnToday: true, reminders: DEFAULT_CYCLE_REMINDERS, history: [] },

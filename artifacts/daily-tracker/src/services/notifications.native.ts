@@ -27,6 +27,7 @@ import { createStore } from '@/src/data/createStore';
 import { parseResponse } from './notificationPayload';
 import { deliveries, journalWith, journalWithout, parseBookkeeping, type Bookkeeping, type FiredRecord, type LedgerEntry } from './deliveryJournal';
 import { EMPTY_RESPONSES, parseResponses, pending, wasHandled, withFailed, withHandled, withReceived, type Responses } from './responseInbox';
+import { ClaimGate } from './claimGate';
 
 export type { FiredRecord } from './deliveryJournal';
 
@@ -542,31 +543,23 @@ function withResponses<T>(job: (r: Responses) => { next: Responses; out: T }): P
   return out;
 }
 
-const inFlight = new Set<string>();
+/** One handler per press per runtime (see claimGate). */
+const handling = new ClaimGate();
 
 /**
  * Start handling a press. False when the same press is being handled right now in this runtime
  * (headless task plus foreground listener) or was applied by an earlier process. The press is
  * written to the inbox first, so a crash before the state write lands replays it (see
  * responseInbox); the mark that ends the replay is written only after the state write committed.
+ * A second caller for the same key is answered only once that inbox write is in (claimGate).
  */
-export async function beginHandling(r: NudgeResponse): Promise<boolean> {
-  if (inFlight.has(r.key)) return false;
-  inFlight.add(r.key);
-  let fresh: boolean;
-  try {
-    fresh = await withResponses((rec) => {
+export function beginHandling(r: NudgeResponse): Promise<boolean> {
+  return handling.begin(r.key, () =>
+    withResponses((rec) => {
       if (wasHandled(rec, r.key)) return { next: rec, out: false };
       return { next: withReceived(rec, { key: r.key, payload: r.payload, action: r.action, receivedAt: r.receivedAt }, r.receivedAt), out: true };
-    });
-  } catch (err) {
-    // A claim that could not be written is released, or the press would stay blocked in this
-    // runtime for good; the caller fails and the OS's own replay (if any) tries again.
-    inFlight.delete(r.key);
-    throw err;
-  }
-  if (!fresh) inFlight.delete(r.key);
-  return fresh;
+    }),
+  );
 }
 
 /** Finish handling: a committed write marks the press for good; a failure leaves it in the inbox, one try spent. */
@@ -575,7 +568,7 @@ export async function endHandling(key: string, committed: boolean): Promise<void
     const nowMs = Date.now();
     await withResponses((rec) => ({ next: committed ? withHandled(rec, key, nowMs) : withFailed(rec, key, nowMs), out: undefined }));
   } finally {
-    inFlight.delete(key);
+    handling.end(key);
   }
 }
 
@@ -584,7 +577,7 @@ export async function pendingResponses(): Promise<NudgeResponse[]> {
   const store = await createStore();
   const rec = parseResponses((await store.readRecord(RESPONSES_RECORD)).value);
   return pending(rec, Date.now())
-    .filter((p) => !inFlight.has(p.key))
+    .filter((p) => !handling.has(p.key))
     .map((p) => ({ payload: p.payload, action: p.action, key: p.key, receivedAt: p.receivedAt }));
 }
 

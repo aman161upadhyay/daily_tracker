@@ -230,7 +230,7 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   records (bookkeeping, press inbox) are rows in the state's SQLite `kv` table via
   `TrackerStore.readRecord/writeRecord` (compare-and-set → `SupersededError`, start over, never overwrite),
   cleared by `replace` in the same transaction — never AsyncStorage for anything the state's erase/restore
-  must take with it. Erase/restore/sample data flush through `store.replace` (provider `replaceGenRef`);
+  must take with it. Erase/restore/sample data flush through `store.replace` (the provider's `SaveQueue.markReplace`);
   `replaceEpoch` is a dependency of the debounced re-plan (no separate cancel-all effect). A notification
   button press is written to a durable inbox before it is applied and marked handled only after the state
   write committed; the inbox is replayed at every runtime start with the *received* instant (so replays
@@ -252,6 +252,17 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   "Logged" activity list on every habit page (exact-record Remove; Health Connect rows listed, not
   removable) + "Fix an older day" month picker (yes/no flips in place; amounts via AmountSheet set mode;
   one sheet at a time). Backlog: Undo toast after Remove, B5 pinned-card picker. Dispositions in §6 Round 13.
+- Round 14 (2026-10-26 night) rules, paradigms 59–65: the provider's save loop is `src/state/saveQueue.ts`
+  (pure, tested) — one queue per hydration, `dispose()` on unmount/reload retires it (no retry, no pass,
+  waiters false); never add a retry/timer to the provider outside the queue. A failed open/load is
+  `loadError` + `retryLoad` (ready stays false; the layout shows "Your data could not be opened"), never a
+  ready placeholder. Every follow-up after a write (widget redraw, snapshot) uses `committed()` and runs
+  only when `persisted`; `BackupSync` awaits `commitPending()` first. Duplicate press claims go through
+  `ClaimGate` (answered after the first inbox write). Today's cards: `Settings.pinned` is the ordered
+  membership (sanitised; cycle always in the list, shown by `cycle.showOnToday`), rendered filtered by
+  availability; Steps/Sleep opt-in show a door to Body without data. The month picker computes its own
+  month (`ratiosFor`), never the heatmap strip. Solid fills with text use `inkFor` + `readableFill`
+  (test over every category colour, both themes). Backlog: Undo toast after Remove. Dispositions in §6 Round 14.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app

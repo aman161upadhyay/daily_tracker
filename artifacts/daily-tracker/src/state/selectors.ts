@@ -483,9 +483,13 @@ export function mindSeries(state: TrackerState, today: string, days: number): nu
 
 /** Adherence-scale values for the 26-week heatmap: day → ratio. */
 export function heatmapValues(state: TrackerState, habit: Habit, today: string): Record<string, number> {
-  const ratios = habitRatios(state, habit, lastNDays(today, 26 * 7));
+  return ratiosByDay(state, habit, lastNDays(today, 26 * 7));
+}
+
+/** Done ratio per day for the days given (ascending), from the habit's first day on. */
+export function ratiosByDay(state: TrackerState, habit: Habit, days: string[]): Record<string, number> {
   const out: Record<string, number> = {};
-  for (const r of ratios) if (r.day >= habit.createdDay) out[r.day] = r.ratio;
+  for (const r of habitRatios(state, habit, days)) if (r.day >= habit.createdDay) out[r.day] = r.ratio;
   return out;
 }
 

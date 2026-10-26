@@ -35,6 +35,51 @@ function srgbToLinear(c: number): number {
   return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
 }
 
+/** WCAG relative luminance of an "#RRGGBB" colour. */
+export function luminance(hex: string): number {
+  const [r, g, b] = hexToRgb(hex);
+  return 0.2126 * srgbToLinear(r) + 0.7152 * srgbToLinear(g) + 0.0722 * srgbToLinear(b);
+}
+
+/** WCAG contrast ratio between two opaque colours (1..21). */
+export function contrastRatio(a: string, b: string): number {
+  const la = luminance(a);
+  const lb = luminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+/**
+ * A fill close to `hex` on which `ink` reaches `minRatio` (4.5 = WCAG AA for small text): the
+ * lightness moves away from the ink in OKLCH, hue and chroma kept, until the contrast is there.
+ * Mid-tone category colours (a teal, an olive) reach neither 4.5 with white nor with near-black
+ * as they are; a solid disc with a number on it needs this.
+ */
+export function readableFill(hex: string, ink: string, minRatio = 4.5): string {
+  if (contrastRatio(hex, ink) >= minRatio) return hex;
+  const base = hexToOklch(hex);
+  const direction = luminance(ink) > 0.5 ? -1 : 1;
+  for (let step = 1; step <= 30; step++) {
+    const l = Math.max(0, Math.min(1, base.l + direction * step * 0.02));
+    const candidate = oklchToHex({ ...base, l });
+    if (contrastRatio(candidate, ink) >= minRatio) return candidate;
+  }
+  return direction < 0 ? '#000000' : '#FFFFFF';
+}
+
+/** The ink out of `inks` that reads best on an opaque `background` (the first one wins a tie). */
+export function inkFor(background: string, inks: readonly string[]): string {
+  let best = inks[0];
+  let bestRatio = -1;
+  for (const ink of inks) {
+    const ratio = contrastRatio(background, ink);
+    if (ratio > bestRatio) {
+      best = ink;
+      bestRatio = ratio;
+    }
+  }
+  return best;
+}
+
 function linearToSrgb(v: number): number {
   const c = v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
   return Math.max(0, Math.min(1, c)) * 255;

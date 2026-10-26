@@ -1,17 +1,21 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { SleepSummaryCard, StepsSummaryCard, sleepCardView, stepsCardView } from '@/components/body/BodySummaryCards';
+import { METRIC_META, metricColor } from '@/components/body/metrics';
 import { AmountSheet } from '@/components/tracker/AmountSheet';
 import { HabitRow } from '@/components/tracker/HabitRow';
 import { HighlightCard } from '@/components/tracker/HighlightCard';
 import { NudgeCard } from '@/components/tracker/NudgeCard';
+import { PinnedCardsSheet } from '@/components/tracker/PinnedCardsSheet';
 import { QuickLogSheet } from '@/components/tracker/QuickLogSheet';
 import { SampleDataChip } from '@/components/tracker/SampleDataChip';
 import { SummaryCard } from '@/components/tracker/SummaryCard';
 import { TodayRings } from '@/components/tracker/TodayRings';
+import { PressableScale } from '@/components/ui/PressableScale';
 import { Card } from '@/components/ui/Card';
 import { UI } from '@/components/ui/icons';
-import { Dot, IconButton, PillButton, Row, SectionHeader } from '@/components/ui/primitives';
+import { Dot, IconButton, IconTile, PillButton, Row, SectionHeader } from '@/components/ui/primitives';
 import { Avatar, Screen, ScreenHeader } from '@/components/ui/Screen';
 import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
@@ -20,7 +24,8 @@ import { formatClock, formatDayLong, formatNumber, formatVolume } from '@/src/do
 import { minutesOfDay } from '@/src/domain/time/trackingDay';
 import { presetById } from '@/src/library/presets';
 import { useHabitViews, useHighlights, useLiveNudge, useTodaySummary } from '@/src/state/hooks';
-import { cycleTimeline, mindSeries, rotationItems, snackSeries, snackSuggestion, waterSeries } from '@/src/state/selectors';
+import { PINNED_CARD_META, type PinnedCardId } from '@/src/domain/today/pinned';
+import { cycleTimeline, mindSeries, rotationItems, ruleFor, snackSeries, snackSuggestion, waterSeries } from '@/src/state/selectors';
 import { displayPhase, PHASE_LABELS, phaseQualifier } from '@/src/domain/cycle/timeline';
 import { formatDayShort } from '@/src/domain/time/format';
 import { dayDiff } from '@/src/domain/time/trackingDay';
@@ -29,12 +34,13 @@ import { useTracker } from '@/src/state/TrackerProvider';
 export default function TodayScreen() {
   const c = useColors();
   const router = useRouter();
-  const { state, today, nowMin, zone, actions } = useTracker();
+  const { state, today, calendarToday, nowMin, zone, actions } = useTracker();
   const summary = useTodaySummary();
   const nudge = useLiveNudge();
   const views = useHabitViews();
   const highlights = useHighlights();
   const [logOpen, setLogOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [amountHabit, setAmountHabit] = useState<Habit | null>(null);
   /** Amount / custom-minute habits need a value; everything else logs one tap. */
   const needsAmount = (h: Habit) => h.type === 'AMOUNT' || (h.type === 'TIMER' && !h.mindKind);
@@ -69,6 +75,92 @@ export default function TodayScreen() {
       : `of ${goal.value} ${goal.unit} · ${formatVolume(water.catchUpMl, units).value} ${units} would catch you up`;
 
   const openSettings = () => router.push('/settings');
+
+  // Each card only when it has something to show; the order is the person's (Settings → Today → Cards).
+  const stepsHabit = active.find((h) => h.presetId === 'steps');
+  const wantSteps = s.pinned.includes('steps');
+  const wantSleep = s.pinned.includes('sleep');
+  const stepsView = useMemo(() => (wantSteps ? stepsCardView(state.body, calendarToday) : null), [wantSteps, state.body, calendarToday]);
+  const sleepView = useMemo(() => (wantSleep ? sleepCardView(state.body, calendarToday, zone) : null), [wantSleep, state.body, calendarToday, zone]);
+  const stepsGoal = stepsHabit ? ruleFor(state, stepsHabit.id, today)?.target : undefined;
+  const available: Record<PinnedCardId, boolean> = {
+    water: showWater,
+    snacks: showMovement,
+    mind: showMind,
+    cycle: s.cycleEnabled && s.cycle.showOnToday,
+    steps: wantSteps,
+    sleep: wantSleep,
+  };
+  const shown = s.pinned.filter((id) => available[id]);
+  const cards: Record<PinnedCardId, React.ReactNode> = {
+    water: (
+      <SummaryCard
+        title="Water"
+        color={c.cat.hydration}
+        icon="drop"
+        value={logged.value}
+        unit={logged.unit}
+        detail={waterDetail}
+        timestamp={lastWater ? formatClock(minutesOfDay(lastWater.at, zone)) : undefined}
+        chart={{ values: waterSeries(state, today, 7), goal: s.waterGoalMl }}
+        onPress={() => {
+          // Water logged today without the Water habit (it was archived, or a drink came from the
+          // widget): the card is still a door — to the Library, where the habit can be added back.
+          const h = state.habits.find((x) => x.presetId === 'water' && !x.archived);
+          if (h) router.push({ pathname: '/habit/[id]', params: { id: h.id } });
+          // The instant makes the second knock distinct from the first: the Library opens again
+          // after the sheet was dismissed and the door tapped once more.
+          else router.push({ pathname: '/habits', params: { preset: 'water', t: String(Date.now()) } });
+        }}
+        footer={
+          <Row gap={8}>
+            <PillButton label={`+${formatVolume(s.tapSizeMl, units).value} ${units}`} Leading={UI.Drop} color={c.green} onPress={() => actions.addWater(s.tapSizeMl)} style={{ flex: 1 }} />
+            <IconButton Glyph={UI.Undo} label="Undo last water entry" onPress={() => actions.undoWater()} size={48} color={c.text} />
+          </Row>
+        }
+      />
+    ),
+    snacks: (
+      <SummaryCard
+        title="Movement snacks"
+        color={c.cat.movement}
+        icon="squat"
+        value={String(summary.snacksDone)}
+        unit={`of ${summary.snacksTarget}`}
+        detail={lastSnack ? `Last: ${snackSuggestion(lastSnack.type)}` : 'None yet today'}
+        timestamp={lastSnack ? formatClock(minutesOfDay(lastSnack.at, zone)) : undefined}
+        chart={{ values: snackSeries(state, today, 7), goal: summary.snacksTarget }}
+        onPress={() => router.push('/habits')}
+        footer={<PillButton label={shield ? 'Sugar Shield — squats before something sweet' : 'Something sweet coming? Start the Sugar Shield'} Leading={UI.Cookie} color={c.gold} kind="ghost" onPress={() => router.push('/shield')} />}
+      />
+    ),
+    mind: (
+      <SummaryCard
+        title="Mind"
+        color={c.cat.mind}
+        icon="lotus"
+        value={formatNumber(summary.mindMinutes)}
+        unit={`of ${formatNumber(summary.mindTarget)} min`}
+        detail={lastMind ? (lastMind.kind === 'MEDITATION' ? 'Meditation' : 'Breathing') : 'Open the timer to start'}
+        timestamp={lastMind ? formatClock(minutesOfDay(lastMind.endAt, zone)) : undefined}
+        chart={{ values: mindSeries(state, today, 7), goal: summary.mindTarget, kind: 'line' }}
+        onPress={() => router.push('/mind')}
+      />
+    ),
+    cycle: <CycleSummary />,
+    steps:
+      stepsView && stepsView.present ? (
+        <StepsSummaryCard view={stepsView} goal={stepsGoal} hasHabit={!!stepsHabit} onPress={() => router.push({ pathname: '/body/[metric]', params: { metric: 'steps' } })} onAddHabit={() => router.push('/habits')} />
+      ) : (
+        <PinnedEmptyCard id="steps" onPress={() => router.push('/body')} />
+      ),
+    sleep:
+      sleepView && sleepView.present && sleepView.night ? (
+        <SleepSummaryCard view={{ ...sleepView, night: sleepView.night }} zone={zone} onPress={() => router.push({ pathname: '/body/[metric]', params: { metric: 'sleep' } })} />
+      ) : (
+        <PinnedEmptyCard id="sleep" onPress={() => router.push('/body')} />
+      ),
+  };
 
   return (
     <Screen>
@@ -116,74 +208,19 @@ export default function TodayScreen() {
         onSettings={openSettings}
       />
 
-      <SectionHeader title="Pinned" action="Show all" onAction={() => router.push('/habits')} />
+      <SectionHeader title="Pinned" action="Choose cards" onAction={() => setPickerOpen(true)} />
 
-      {!showWater && !showMovement && !showMind ? (
+      {shown.length === 0 ? (
         <Card>
           <Txt role="body" tone="secondary">
-            Water, movement snacks and Mind get a card here once you add them from the Library.
+            {s.pinned.length <= 1 ? 'No cards chosen. Tap "Choose cards" to pin water, movement, Mind, steps or sleep here.' : 'Water, movement snacks and Mind get a card here once you add them from the Library.'}
           </Txt>
         </Card>
       ) : null}
 
-      {showWater ? (
-        <SummaryCard
-          title="Water"
-          color={c.cat.hydration}
-          icon="drop"
-          value={logged.value}
-          unit={logged.unit}
-          detail={waterDetail}
-          timestamp={lastWater ? formatClock(minutesOfDay(lastWater.at, zone)) : undefined}
-          chart={{ values: waterSeries(state, today, 7), goal: s.waterGoalMl }}
-          onPress={() => {
-            // Water logged today without the Water habit (it was archived, or a drink came from the
-            // widget): the card is still a door — to the Library, where the habit can be added back.
-            const h = state.habits.find((x) => x.presetId === 'water' && !x.archived);
-            if (h) router.push({ pathname: '/habit/[id]', params: { id: h.id } });
-            // The instant makes the second knock distinct from the first: the Library opens again
-            // after the sheet was dismissed and the door tapped once more.
-            else router.push({ pathname: '/habits', params: { preset: 'water', t: String(Date.now()) } });
-          }}
-          footer={
-            <Row gap={8}>
-              <PillButton label={`+${formatVolume(s.tapSizeMl, units).value} ${units}`} Leading={UI.Drop} color={c.green} onPress={() => actions.addWater(s.tapSizeMl)} style={{ flex: 1 }} />
-              <IconButton Glyph={UI.Undo} label="Undo last water entry" onPress={() => actions.undoWater()} size={48} color={c.text} />
-            </Row>
-          }
-        />
-      ) : null}
-
-      {showMovement ? (
-        <SummaryCard
-          title="Movement snacks"
-          color={c.cat.movement}
-          icon="squat"
-          value={String(summary.snacksDone)}
-          unit={`of ${summary.snacksTarget}`}
-          detail={lastSnack ? `Last: ${snackSuggestion(lastSnack.type)}` : 'None yet today'}
-          timestamp={lastSnack ? formatClock(minutesOfDay(lastSnack.at, zone)) : undefined}
-          chart={{ values: snackSeries(state, today, 7), goal: summary.snacksTarget }}
-          onPress={() => router.push('/habits')}
-          footer={<PillButton label={shield ? 'Sugar Shield — squats before something sweet' : 'Something sweet coming? Start the Sugar Shield'} Leading={UI.Cookie} color={c.gold} kind="ghost" onPress={() => router.push('/shield')} />}
-        />
-      ) : null}
-
-      {showMind ? (
-        <SummaryCard
-          title="Mind"
-          color={c.cat.mind}
-          icon="lotus"
-          value={formatNumber(summary.mindMinutes)}
-          unit={`of ${formatNumber(summary.mindTarget)} min`}
-          detail={lastMind ? (lastMind.kind === 'MEDITATION' ? 'Meditation' : 'Breathing') : 'Open the timer to start'}
-          timestamp={lastMind ? formatClock(minutesOfDay(lastMind.endAt, zone)) : undefined}
-          chart={{ values: mindSeries(state, today, 7), goal: summary.mindTarget, kind: 'line' }}
-          onPress={() => router.push('/mind')}
-        />
-      ) : null}
-
-      {s.cycleEnabled && s.cycle.showOnToday ? <CycleSummary /> : null}
+      {shown.map((id) => (
+        <React.Fragment key={id}>{cards[id]}</React.Fragment>
+      ))}
 
       {highlights.length > 0 ? (
         <>
@@ -220,8 +257,31 @@ export default function TodayScreen() {
       </Card>
 
       <QuickLogSheet visible={logOpen} onClose={() => setLogOpen(false)} />
+      <PinnedCardsSheet visible={pickerOpen} onClose={() => setPickerOpen(false)} />
       {amountHabit ? <AmountSheet visible onClose={() => setAmountHabit(null)} habit={amountHabit} /> : null}
     </Screen>
+  );
+}
+
+/** A pinned Steps or Sleep card with nothing behind it yet: says where the data comes from, opens Body. */
+function PinnedEmptyCard({ id, onPress }: { id: 'steps' | 'sleep'; onPress: () => void }) {
+  const c = useColors();
+  const meta = METRIC_META[id];
+  return (
+    <Card>
+      <PressableScale haptic={false} scaleTo={0.99} onPress={onPress} accessibilityRole="button" accessibilityLabel={`${meta.title}: nothing from Health Connect yet`} accessibilityHint="Opens the Body tab">
+        <Row gap={12}>
+          <IconTile icon={meta.icon} color={metricColor(c, id)} size={40} />
+          <View style={{ flex: 1 }}>
+            <Txt role="title2">{meta.title}</Txt>
+            <Txt role="footnote" tone="secondary">
+              Nothing from Health Connect yet · {meta.blurb.toLowerCase()} · connect on the Body tab
+            </Txt>
+          </View>
+          <UI.Caret size={16} color={c.textTertiary} weight="bold" />
+        </Row>
+      </PressableScale>
+    </Card>
   );
 }
 

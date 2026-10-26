@@ -134,11 +134,13 @@ export function RemindersCard() {
             Exact timing lets Android ring at the planned minute; without it nudges can arrive minutes late, longer while the phone sleeps.
           </Txt>
         ) : null}
-        {s.remindersEnabled && health.failure ? (
+        {health.failure ? (
           <Row gap={8} style={{ alignItems: 'center' }}>
             <UI.Info size={16} color={c.danger} weight="bold" />
             <Txt role="caption" tone="secondary" style={{ flex: 1 }}>
-              The last reminder update failed ({health.failure.message}). The schedule shown may be stale; the app retries on its own, and again when you return to it.
+              {s.remindersEnabled
+                ? `The last reminder update failed (${health.failure.message}). The schedule shown may be stale; the app retries on its own, and again when you return to it.`
+                : `Some reminders could not be cancelled yet (${health.failure.message}); they may still ring. The app keeps trying, and again when you return to it.`}
             </Txt>
           </Row>
         ) : null}

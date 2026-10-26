@@ -10,6 +10,7 @@
 import { normalizeBody } from '@/src/domain/body/merge';
 import { DEFAULT_SETTINGS, type CycleDayLog, type Settings } from '@/src/domain/models';
 import { isCalendarDay } from '@/src/domain/time/trackingDay';
+import { sanitizePinned } from '@/src/domain/today/pinned';
 import type { TrackerState } from '@/src/state/types';
 import { projectRecords, sanitizeCycleReminders, sanitizePeriodHistory, sanitizeSettings, validateRecords, ValidationError } from './validate';
 
@@ -74,7 +75,7 @@ export function normalizeSettings(raw: Partial<Settings> | undefined): Settings 
   return {
     ...DEFAULT_SETTINGS,
     ...base,
-    pinned: Array.isArray(base.pinned) ? base.pinned : DEFAULT_SETTINGS.pinned,
+    pinned: sanitizePinned(base.pinned),
     widgetHabitIds: Array.isArray(base.widgetHabitIds) ? base.widgetHabitIds : [],
     weeklySummary: { ...DEFAULT_SETTINGS.weeklySummary, ...(base.weeklySummary ?? {}) },
     theme: base.theme === 'light' || base.theme === 'system' ? base.theme : 'dark',

@@ -10,6 +10,7 @@ import { UI } from '../ui/icons';
 import { Chip, PillButton, Row } from '../ui/primitives';
 import { Sheet } from '../ui/Sheet';
 import { Txt } from '../ui/Txt';
+import { confirmDestructive } from '../ui/confirm';
 
 export interface AmountSheetProps {
   visible: boolean;
@@ -103,7 +104,16 @@ export function AmountSheet({ visible, onClose, habit, mode = 'add', day, curren
         {quick.map((v) => (
           <Chip key={v} label={mode === 'add' ? `+${label(v)}` : label(v)} color={c.cat[habit.category]} Leading={isWater ? UI.Drop : undefined} onPress={() => commit(v)} />
         ))}
-        {mode === 'set' && current > 0 ? <Chip label="Clear day" onPress={() => commit(0)} /> : null}
+        {mode === 'set' && current > 0 ? (
+          <Chip
+            label="Clear day"
+            onPress={() =>
+              // Clearing takes every record of that day with it (times and origins included), not
+              // only the total: named and confirmed, like Remove in the Logged list.
+              confirmDestructive(`Clear ${backfill ? formatDayLong(theDay) : 'today'}?`, `Everything logged for ${habit.name} that day — ${label(current)} — comes off, each entry with its time.`, 'Clear day', () => commit(0))
+            }
+          />
+        ) : null}
       </View>
       <Row gap={8} style={{ marginTop: 16 }}>
         <TextInput

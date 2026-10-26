@@ -22,6 +22,7 @@ import { WidgetSync } from "@/components/system/WidgetSync";
 import { AppLockGate } from "@/components/system/AppLockGate";
 import { BackupSync } from "@/components/system/BackupSync";
 import { UI } from "@/components/ui/icons";
+import { PillButton } from "@/components/ui/primitives";
 import { Txt } from "@/components/ui/Txt";
 import colors, { type Scheme } from "@/constants/colors";
 import { FONTS } from "@/constants/typography";
@@ -64,16 +65,39 @@ function StorageBanner({ message }: { message: string }) {
   );
 }
 
+/**
+ * The database could not be opened at start. Nothing is loaded, so no screen renders (an empty
+ * placeholder would read as a fresh install and its empty reminder plan would cancel the real
+ * reminders); the person sees why and can try again without killing the app.
+ */
+function LoadFailedScreen({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const insets = useSafeAreaInsets();
+  const c = useColors();
+  return (
+    <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: insets.top + 48, paddingHorizontal: 24, gap: 12 }} accessibilityRole="alert">
+      <UI.Info size={28} color={c.danger} weight="bold" />
+      <Txt role="title1">Your data could not be opened</Txt>
+      <Txt role="body" tone="secondary">
+        Nothing was changed. The on-device database did not open: {message}
+      </Txt>
+      <Txt role="footnote" tone="tertiary">
+        If this keeps happening, free some storage space or restart the phone. Your data is still on the device; Android's own backup keeps a copy too.
+      </Txt>
+      <PillButton label="Try again" color={c.green} onPress={onRetry} style={{ alignSelf: "flex-start", marginTop: 8 }} />
+    </View>
+  );
+}
+
 function RootLayoutNav() {
-  const { ready, storageError } = useTracker();
+  const { ready, storageError, loadError, retryLoad } = useTracker();
   const c = useColors();
 
   useEffect(() => {
-    if (ready) SplashScreen.hideAsync();
-  }, [ready]);
+    if (ready || loadError) SplashScreen.hideAsync();
+  }, [ready, loadError]);
 
   // Keep the splash up until saved data is loaded so no screen renders against an empty state.
-  if (!ready) return null;
+  if (!ready) return loadError ? <LoadFailedScreen message={loadError} onRetry={retryLoad} /> : null;
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>

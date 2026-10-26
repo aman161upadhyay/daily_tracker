@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { AppState, Platform } from 'react-native';
 import { cleanupPending, deleteKeptSnapshots, deleteSnapshot, markCleanupPending } from '@/src/services/backup';
 import { afterSnapshots, maybeSnapshot } from '@/src/services/snapshotSync';
@@ -26,11 +26,7 @@ export { hasUserData, shouldSnapshot } from '@/src/data/backupPolicy';
  *   finishes it on the next start instead of leaving the copy behind
  */
 export function BackupSync() {
-  const { state, ready } = useTracker();
-  const latest = useRef(state);
-  useLayoutEffect(() => {
-    latest.current = state;
-  });
+  const { state, ready, commitPending, committed } = useTracker();
   const lastWritten = useRef<TrackerState | null>(null);
   const enqueue = (job: () => Promise<void>) => {
     afterSnapshots(job).catch((err) => console.warn('[backup]', err));
@@ -40,12 +36,17 @@ export function BackupSync() {
     if (!ready || Platform.OS === 'web') return;
     // maybeSnapshot queues itself; never wrap it in `enqueue` (that would wait on its own queue).
     // It reads the state when its turn comes, so a write queued before an erase sees the erase.
+    // Only what the database holds goes into a snapshot: the rendered state may carry a change
+    // whose save is still in flight (or gave up), and a backup must not hold a drink the app's
+    // own store does not. The wait ends either way (the write, or the save giving up).
     const run = () => {
-      if (lastWritten.current === latest.current) return;
-      let used: TrackerState | null = null;
-      maybeSnapshot(() => (used = latest.current))
-        .then((written) => {
-          if (written) lastWritten.current = used;
+      commitPending()
+        .then(() => {
+          if (lastWritten.current === committed()) return;
+          let used: TrackerState | null = null;
+          return maybeSnapshot(() => (used = committed())).then((written) => {
+            if (written) lastWritten.current = used;
+          });
         })
         .catch((err) => console.warn('[backup]', err));
     };

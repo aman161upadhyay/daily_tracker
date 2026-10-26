@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { StyleSheet, Switch, TextInput, View } from 'react-native';
 import Constants from 'expo-constants';
 import { AppLockCard } from '@/components/settings/AppLockCard';
@@ -6,6 +6,7 @@ import { BackupCard } from '@/components/settings/BackupCard';
 import { HealthConnectCard } from '@/components/settings/HealthConnectCard';
 import { RemindersCard } from '@/components/settings/RemindersCard';
 import { WidgetPickerCard } from '@/components/settings/WidgetPickerCard';
+import { PinnedCardsSheet } from '@/components/tracker/PinnedCardsSheet';
 import { Card } from '@/components/ui/Card';
 import { UI } from '@/components/ui/icons';
 import { Chip, Divider, PillButton, Row, SectionHeader, Segmented, Stepper } from '@/components/ui/primitives';
@@ -17,6 +18,7 @@ import { useColors } from '@/hooks/useColors';
 import type { ThemePreference, Units } from '@/src/domain/models';
 import { WATER_GOAL_MAX_ML, WATER_GOAL_MIN_ML } from '@/src/data/validate';
 import { formatClock, formatVolume, parseClockInput, parseVolumeInput } from '@/src/domain/time/format';
+import { PINNED_CARD_META } from '@/src/domain/today/pinned';
 import { useTracker } from '@/src/state/TrackerProvider';
 
 const INTERVALS = [45, 60, 90, 120];
@@ -27,6 +29,7 @@ export default function SettingsScreen() {
   const c = useColors();
   const { state, actions } = useTracker();
   const s = state.settings;
+  const [cardsOpen, setCardsOpen] = useState(false);
 
   const confirm = confirmDestructive;
 
@@ -134,6 +137,14 @@ export default function SettingsScreen() {
           <Stepper value={s.dailyNudgeCap} onChange={(dailyNudgeCap) => actions.updateSettings({ dailyNudgeCap })} min={2} max={24} label="daily nudge cap" />
         </Setting>
       </Card>
+
+      <SectionHeader title="Today" />
+      <Card>
+        <Setting label="Cards on Today" hint={`Showing: ${s.pinned.filter((id) => id !== 'cycle' || (s.cycleEnabled && s.cycle.showOnToday)).map((id) => PINNED_CARD_META[id].title).join(', ') || 'none'}`}>
+          <PillButton label="Choose cards and order" kind="ghost" Leading={UI.Pin} onPress={() => setCardsOpen(true)} style={{ alignSelf: 'flex-start' }} />
+        </Setting>
+      </Card>
+      <PinnedCardsSheet visible={cardsOpen} onClose={() => setCardsOpen(false)} />
 
       <SectionHeader title="Widget" />
       <WidgetPickerCard />

@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { SleepSummaryCard, StepsSummaryCard, sleepCardView, stepsCardView } from '@/components/body/BodySummaryCards';
 import { ConnectionCard } from '@/components/body/ConnectionCard';
 import { BODY_METRICS, METRIC_META, formatWeight, formatWeightDelta, metricColor, metricDayValues, type BodyMetric } from '@/components/body/metrics';
 import { SummaryCard } from '@/components/tracker/SummaryCard';
@@ -13,11 +14,11 @@ import { SampleDataChip } from '@/components/tracker/SampleDataChip';
 import { useColors } from '@/hooks/useColors';
 import { useHealthConnect } from '@/hooks/useHealthConnect';
 import { exerciseLabel } from '@/src/domain/body/exerciseTypes';
-import { averageOf, bedtimeSpreadMin, countedWorkouts, formatSleep, lastNight, latestResting, latestWeight, originName, seriesOf, workoutsThisWeek } from '@/src/domain/body/stats';
+import { averageOf, countedWorkouts, formatSleep, latestResting, latestWeight, originName, seriesOf, workoutsThisWeek } from '@/src/domain/body/stats';
 import type { BodyRecordType } from '@/src/domain/body/types';
 import type { HabitIcon } from '@/src/domain/models';
-import { formatClock, formatDayShort, formatNumber } from '@/src/domain/time/format';
-import { lastNDays, minutesOfDay } from '@/src/domain/time/trackingDay';
+import { formatDayShort, formatNumber } from '@/src/domain/time/format';
+import { lastNDays } from '@/src/domain/time/trackingDay';
 import { useTracker } from '@/src/state/TrackerProvider';
 import { ruleFor } from '@/src/state/selectors';
 
@@ -59,19 +60,15 @@ export default function BodyScreen() {
   const days30 = useMemo(() => lastNDays(calendarToday, 30), [calendarToday]);
 
   const view = useMemo(() => {
-    const steps = metricDayValues(body, 'steps');
-    const sleep = metricDayValues(body, 'sleep');
     const heart = metricDayValues(body, 'heart');
     const weight = metricDayValues(body, 'weight');
     const workouts = metricDayValues(body, 'workouts');
+    const steps = stepsCardView(body, calendarToday);
+    const sleep = sleepCardView(body, calendarToday, zone);
     return {
-      stepsToday: steps.get(calendarToday) ?? 0,
-      steps7: seriesOf(steps, days7),
-      stepsAvg7: averageOf(seriesOf(steps, days7)),
-      night: lastNight(body, calendarToday),
-      sleep7: seriesOf(sleep, days7),
-      sleepAvg7: averageOf(seriesOf(sleep, days7)),
-      bedSpread: bedtimeSpreadMin(body, calendarToday, zone),
+      steps,
+      sleep,
+      sleepAvg7: averageOf(sleep.series7),
       resting: latestResting(body),
       heart14: seriesOf(heart, days14),
       heartAvg7: averageOf(seriesOf(heart, days7)),
@@ -81,8 +78,8 @@ export default function BodyScreen() {
       lastWorkout: [...countedWorkouts(body)].sort((a, b) => b.startAt - a.startAt)[0],
       workouts7: seriesOf(workouts, days7),
       present: {
-        steps: steps.size > 0,
-        sleep: sleep.size > 0,
+        steps: steps.present,
+        sleep: sleep.present,
         heart: heart.size > 0,
         weight: weight.size > 0,
         workouts: body.workouts.length > 0,
@@ -141,53 +138,16 @@ export default function BodyScreen() {
       ) : null}
 
       {visible.includes('steps') ? (
-        view.present.steps ? (
-          <SummaryCard
-            title={METRIC_META.steps.title}
-            icon="steps"
-            color={metricColor(c, 'steps')}
-            value={formatNumber(view.stepsToday)}
-            unit="steps"
-            timestamp="Today"
-            detail={
-              stepsGoal
-                ? `${view.stepsToday >= stepsGoal ? 'Goal reached' : `of ${formatNumber(stepsGoal)}`}${view.stepsAvg7 ? ` · 7-day avg ${formatNumber(view.stepsAvg7)}` : ''}`
-                : view.stepsAvg7
-                  ? `7-day avg ${formatNumber(view.stepsAvg7)}`
-                  : undefined
-            }
-            chart={{ values: view.steps7, goal: stepsGoal }}
-            onPress={() => open('steps')}
-            footer={
-              stepsHabit ? undefined : (
-                <PillButton label="Add the Steps habit for a daily goal" kind="ghost" compact Leading={UI.Plus} onPress={() => router.push('/habits')} />
-              )
-            }
-          />
+        view.steps.present ? (
+          <StepsSummaryCard view={view.steps} goal={stepsGoal} hasHabit={!!stepsHabit} onPress={() => open('steps')} onAddHabit={() => router.push('/habits')} />
         ) : (
           <EmptyMetric metric="steps" />
         )
       ) : null}
 
       {visible.includes('sleep') ? (
-        view.present.sleep && view.night ? (
-          <SummaryCard
-            title={METRIC_META.sleep.title}
-            icon="moon"
-            color={metricColor(c, 'sleep')}
-            value={formatSleep(view.night.night.minutes)}
-            unit="asleep"
-            timestamp={view.night.isToday ? 'Last night' : `Night to ${formatDayShort(view.night.day)}`}
-            detail={[
-              `${formatClock(minutesOfDay(view.night.night.startAt, zone))} → ${formatClock(minutesOfDay(view.night.night.endAt, zone))}`,
-              view.night.night.deepMin !== undefined ? `${formatSleep(view.night.night.deepMin)} deep` : undefined,
-              view.bedSpread !== undefined ? `bedtime ±${view.bedSpread} min` : undefined,
-            ]
-              .filter(Boolean)
-              .join(' · ')}
-            chart={{ values: view.sleep7 }}
-            onPress={() => open('sleep')}
-          />
+        view.sleep.present && view.sleep.night ? (
+          <SleepSummaryCard view={{ ...view.sleep, night: view.sleep.night }} zone={zone} onPress={() => open('sleep')} />
         ) : (
           <EmptyMetric metric="sleep" />
         )

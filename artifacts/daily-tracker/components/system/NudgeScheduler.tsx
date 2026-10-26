@@ -47,7 +47,8 @@ export function NudgeScheduler() {
   const handle = async (r: NudgeResponse, launch = false) => {
     const claimed = await beginHandling(r);
     // The press that launched the app is in the inbox now (or was handled before): the OS copy
-    // can go. Cleared only after the inbox write, so a death before it replays the press.
+    // can go. Cleared only after the inbox write — beginHandling answers only once the write is
+    // in (also for a second caller for the same key), so a death before it replays the press.
     if (launch) await clearLaunchResponse();
     if (!claimed) return;
     // Decided against the newest state (a press right after a tap on Today, or two presses in the

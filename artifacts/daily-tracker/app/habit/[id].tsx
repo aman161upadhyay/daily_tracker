@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, Switch, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useBackOrHome } from '@/hooks/useBackOrHome';
@@ -26,7 +26,7 @@ import { describeRule, formatDayShort, formatHabitValue, formatVolume, formatWee
 import { lastNDays } from '@/src/domain/time/trackingDay';
 import { presetById } from '@/src/library/presets';
 import { useHabitView } from '@/src/state/hooks';
-import { habitDayValue, habitSeries, heatmapValues, latestRule, nudgePlan, ruleFor } from '@/src/state/selectors';
+import { habitDayValue, habitSeries, heatmapValues, latestRule, nudgePlan, ratiosByDay, ruleFor } from '@/src/state/selectors';
 import { useTracker } from '@/src/state/TrackerProvider';
 
 export default function HabitDetailScreen() {
@@ -76,6 +76,8 @@ export default function HabitDetailScreen() {
   }, [habit, range, state, today, c]);
 
   const heat = useMemo(() => (habit ? heatmapValues(state, habit, today) : {}), [habit, state, today]);
+  // The picker asks a month at a time, back to the habit's first day — further than the 26-week strip.
+  const ratiosFor = useCallback((days: string[]) => (habit ? ratiosByDay(state, habit, days) : {}), [habit, state]);
 
   if (!habit || !view || !chart) {
     return (
@@ -385,7 +387,7 @@ export default function HabitDetailScreen() {
       <HabitEditorSheet visible={editing} onClose={() => setEditing(false)} habit={habit} rule={editRule} />
       <ReminderPolicySheet visible={policyOpen} onClose={() => setPolicyOpen(false)} habit={habit} policy={view.policy} context={policyContext} onSave={(p) => actions.setPolicy(p)} />
       {amount ? <AmountSheet visible onClose={() => setAmount(null)} habit={habit} mode={amount.mode} day={amount.day} current={amount.current} /> : null}
-      {pickingDay ? <DayPickerSheet visible onClose={() => setPickingDay(false)} habit={habit} today={today} values={heat} firstDay={habit.createdDay} onPick={onPickDay} /> : null}
+      {pickingDay ? <DayPickerSheet visible onClose={() => setPickingDay(false)} habit={habit} today={today} ratiosFor={ratiosFor} firstDay={habit.createdDay} onPick={onPickDay} /> : null}
     </Screen>
   );
 }
