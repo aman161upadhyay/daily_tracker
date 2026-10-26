@@ -3,7 +3,7 @@
  * RangeSegment, Divider, Row. Each is < 60 lines; they live together to keep
  * the import surface small.
  */
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View, type StyleProp, type ViewStyle } from 'react-native';
 import type { CategoryKey } from '@/constants/colors';
 import { TYPE } from '@/constants/typography';
@@ -244,7 +244,15 @@ export function Stepper({
   // that reads as a value is applied at once: a sheet's Save button does not blur the field
   // (taps are kept for the keyboard), so waiting for the blur would lose what was typed.
   const [typed, setTyped] = useState<string | null>(null);
+  // What the field opened with. Text equal to it means the value it was formatted from, not a
+  // re-reading of the text: 2,000 ml shown as "67.6" oz must not come back as 1,999 ml because
+  // the person tapped the field and pressed Done.
+  const opened = useRef({ text: '', value });
   const apply = (text: string) => {
+    if (text === opened.current.text) {
+      if (value !== opened.current.value) onChange(opened.current.value);
+      return;
+    }
     if (text.trim() === '') return;
     const n = parse ? parse(text) : parseDecimalInput(text);
     if (n === null || !Number.isFinite(n)) return;
@@ -259,6 +267,10 @@ export function Stepper({
     if (typed === null) return;
     setTyped(null);
     apply(typed);
+  };
+  const open = (text: string) => {
+    opened.current = { text, value };
+    setTyped(text);
   };
   const shown = format ? format(value) : String(value);
   const bounds = parse ? `, ${format ? format(min) : min} to ${format ? format(max) : max}` : Number.isFinite(max) ? `, ${min} to ${max}` : `, at least ${min}`;
@@ -284,7 +296,7 @@ export function Stepper({
           style={[TYPE.title2, styles.stepperValue, styles.stepperInput, { color: c.text, borderColor: c.tint }]}
         />
       ) : (
-        <Pressable onPress={() => setTyped(parse ? shown : String(value))} accessibilityRole="button" accessibilityLabel={`${label}: ${shown}. Tap to type ${inputKind === 'time' ? 'a time' : inputKind === 'amount' ? 'an amount' : 'a number'}${bounds}`} hitSlop={6}>
+        <Pressable onPress={() => open(parse ? shown : String(value))} accessibilityRole="button" accessibilityLabel={`${label}: ${shown}. Tap to type ${inputKind === 'time' ? 'a time' : inputKind === 'amount' ? 'an amount' : 'a number'}${bounds}`} hitSlop={6}>
           <Txt role="title2" style={styles.stepperValue} align="center" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
             {shown}
           </Txt>

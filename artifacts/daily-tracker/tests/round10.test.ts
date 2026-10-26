@@ -100,7 +100,7 @@ describe('the delivery journal outlives a lost fold', () => {
 
   it('an entry no longer pending has rung, even when its time looks like the future (clock set back)', () => {
     const ledger = [entry('rot:a', NOW - 60_000), entry('rot:b', NOW + 3 * 3_600_000), entry('rot:c', NOW + 60_000)];
-    const { fired, overdueKept } = deliveries(ledger, new Set(['rot:c']), NOW);
+    const { fired, overdueKept } = deliveries({ ledger, cancelling: [], scheduling: [] }, new Set(['rot:c']), NOW);
     assert.deepEqual(
       fired.map((f) => f.id),
       ['rot:a', 'rot:b'],
@@ -112,7 +112,7 @@ describe('the delivery journal outlives a lost fold', () => {
   it('an overdue alarm still pending is kept inside the grace period and dropped after it', () => {
     const recent = entry('rot:late', NOW - OVERDUE_GRACE_MS + 60_000);
     const stale = entry('rot:lost', NOW - OVERDUE_GRACE_MS - 60_000);
-    const { fired, overdueKept } = deliveries([recent, stale], new Set(['rot:late', 'rot:lost']), NOW);
+    const { fired, overdueKept } = deliveries({ ledger: [recent, stale], cancelling: [], scheduling: [] }, new Set(['rot:late', 'rot:lost']), NOW);
     assert.deepEqual(overdueKept.map((e) => e.id), ['rot:late']);
     assert.equal(fired.length, 0, 'a pending alarm has not rung');
   });
@@ -146,14 +146,18 @@ describe('responses are stamped with the slot’s tracking day', () => {
     assert.equal(next.nudgeEvents[0]!.at, NOW, 'the snooze still counts from the press');
   });
 
-  it('a tap on the body is one FIRED per day, not one per tap, and not after the sync recorded the ring', () => {
+  it('a tap on the body writes nothing: the sync records the ring, at the time it rang', () => {
     const payload = parsePayload({ nudgeId: `fix:med:${TODAY}:07:30`, habitIds: ['med'], kind: 'FIXED', day: TODAY })!;
     const state = buildEmptyState(TODAY, undefined, { withWater: false });
-    const tapped = applyAll(state, nudgeResponseActions(state, payload, 'TAP', ctx), reducer);
-    assert.deepEqual(tapped.nudgeEvents.map((e) => [e.kind, e.day]), [['FIRED', TODAY]]);
-    assert.equal(nudgeResponseActions(tapped, payload, 'TAP', ctx).length, 0, 'a second tap adds nothing');
+    assert.deepEqual(nudgeResponseActions(state, payload, 'TAP', ctx), []);
     const synced = applyAll(state, firedActions(state, [{ id: payload.nudgeId, habitIds: ['med'], day: TODAY, at: at(TODAY, '07:30') }], ctx), reducer);
-    assert.equal(nudgeResponseActions(synced, payload, 'TAP', ctx).length, 0, 'the sync already wrote the delivery down');
+    assert.deepEqual(synced.nudgeEvents.map((e) => [e.kind, e.day, e.at]), [['FIRED', TODAY, at(TODAY, '07:30')]]);
+    assert.deepEqual(nudgeResponseActions(synced, payload, 'TAP', ctx), [], 'a tap after the sync adds nothing either');
+    // Rang, snoozed, rang again, then tapped: both rings stay on the books.
+    const snoozed = applyAll(synced, nudgeResponseActions(synced, payload, 'SNOOZE', { ...ctx, nowMs: at(TODAY, '07:31') }), reducer);
+    const again = applyAll(snoozed, firedActions(snoozed, [{ id: payload.nudgeId, habitIds: ['med'], day: TODAY, at: at(TODAY, '07:46') }], ctx), reducer);
+    const tapped = applyAll(again, nudgeResponseActions(again, payload, 'TAP', { ...ctx, nowMs: at(TODAY, '07:50') }), reducer);
+    assert.deepEqual(tapped.nudgeEvents.filter((e) => e.kind === 'FIRED').map((e) => e.at), [at(TODAY, '07:30'), at(TODAY, '07:46')]);
   });
 });
 

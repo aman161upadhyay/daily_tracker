@@ -29,6 +29,12 @@ export interface TrackerContextValue {
   storageError: string | null;
   nowMs: number;
   zone: string;
+  /**
+   * Counts the times the whole state was replaced (erase, restore, sample data) in this runtime.
+   * Whatever keeps bookkeeping about the previous state — the notification service's delivery
+   * journal — forgets it when this moves.
+   */
+  replaceEpoch: number;
   /** Tracking day (3 am boundary by default). */
   today: string;
   /** Calendar day (midnight boundary) for cycle data. */
@@ -168,6 +174,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   const renderGen = genOf.current.get(state) ?? 0;
   const [ready, setReady] = useState(false);
   const [storageError, setStorageError] = useState<string | null>(null);
+  const [replaceEpoch, setReplaceEpoch] = useState(0);
   const [nowMs, setNowMs] = useState(() => now());
   // The phone's zone can change while the app is open (travel); refreshed with the clock.
   const [zone, setZone] = useState(() => currentZone());
@@ -685,15 +692,18 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
       },
       startFresh() {
         bumpBodyEpoch();
+        setReplaceEpoch((n) => n + 1);
         dispatch({ type: 'REPLACE', state: buildEmptyState(stamp().day, { ...stateRef().settings, onboardingDone: true }) });
       },
       loadSample() {
         bumpBodyEpoch();
+        setReplaceEpoch((n) => n + 1);
         const t = now();
         dispatch({ type: 'REPLACE', state: buildSampleState(trackingDayOf(t, zone, boundary), zone, t) });
       },
       importState(next) {
         bumpBodyEpoch();
+        setReplaceEpoch((n) => n + 1);
         dispatch({ type: 'REPLACE', state: { ...next, settings: { ...next.settings, onboardingDone: true } } });
       },
       periodStart(day) {
@@ -730,8 +740,8 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   }, [stamp, zone, boundary]);
 
   const value = useMemo<TrackerContextValue>(
-    () => ({ state, ready, storageError, nowMs, zone, today, calendarToday, nowMin, dispatch, apply, actions, commitPending }),
-    [state, ready, storageError, nowMs, zone, today, calendarToday, nowMin, dispatch, apply, actions, commitPending],
+    () => ({ state, ready, storageError, nowMs, zone, replaceEpoch, today, calendarToday, nowMin, dispatch, apply, actions, commitPending }),
+    [state, ready, storageError, nowMs, zone, replaceEpoch, today, calendarToday, nowMin, dispatch, apply, actions, commitPending],
   );
 
   return <TrackerContext.Provider value={value}>{children}</TrackerContext.Provider>;

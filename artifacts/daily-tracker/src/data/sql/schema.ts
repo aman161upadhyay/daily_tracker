@@ -175,6 +175,10 @@ export const MIGRATIONS: readonly string[] = [
   `
   ALTER TABLE nudge_event ADD COLUMN via TEXT;
   `,
+  // v6 — set-time reminders can ring on chosen weekdays only
+  `
+  ALTER TABLE nudge_policy ADD COLUMN weekdays_json TEXT;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

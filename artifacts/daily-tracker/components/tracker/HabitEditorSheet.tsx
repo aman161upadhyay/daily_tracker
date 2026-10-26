@@ -69,11 +69,18 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
   const { actions, state } = useTracker();
   const units = state.settings.units;
   const [d, setD] = useState<HabitDraft>(() => draftFrom(habit, rule));
+  // Set once the person touches the freezes: from then on the cadence stops moving them. (Not
+  // "equal to the default": a chosen 2 on a weekly habit is the daily default too, and would be
+  // moved to 0 by a switch to monthly.) An existing habit's freezes are its own from the start.
+  const [freezesTouched, setFreezesTouched] = useState(!!habit);
   const editing = !!habit;
   const preset = !!habit?.presetId;
 
   useEffect(() => {
-    if (visible) setD(draftFrom(habit, rule));
+    if (visible) {
+      setD(draftFrom(habit, rule));
+      setFreezesTouched(!!habit);
+    }
   }, [visible, habit, rule]);
 
   const set = (patch: Partial<HabitDraft>) => setD((prev) => ({ ...prev, ...patch }));
@@ -180,7 +187,7 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
                 cadence,
                 timesPerPeriod: cadence === 'WEEKLY' ? Math.min(d.timesPerPeriod, 7) : d.timesPerPeriod,
                 // The freezes follow the cadence's default until the person sets them by hand.
-                freezesPerMonth: d.freezesPerMonth === defaultFreezes(d.cadence) ? defaultFreezes(cadence) : d.freezesPerMonth,
+                freezesPerMonth: freezesTouched ? d.freezesPerMonth : defaultFreezes(cadence),
               })
             }
           />
@@ -206,7 +213,16 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
                 Missed {d.cadence === 'DAILY' ? 'days' : periodNoun + 's'} forgiven each month
               </Txt>
             </View>
-            <Stepper value={d.freezesPerMonth} onChange={(freezesPerMonth) => set({ freezesPerMonth })} min={0} max={5} label="freezes per month" />
+            <Stepper
+              value={d.freezesPerMonth}
+              onChange={(freezesPerMonth) => {
+                setFreezesTouched(true);
+                set({ freezesPerMonth });
+              }}
+              min={0}
+              max={5}
+              label="freezes per month"
+            />
           </Row>
         </Field>
 

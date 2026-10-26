@@ -51,7 +51,7 @@ export async function syncPlan(_plan: ScheduledNudge[], _nowMs: number): Promise
   return [];
 }
 
-export async function cancelAll(): Promise<void> {}
+export async function cancelAll(_options: { forget?: boolean } = {}): Promise<void> {}
 
 export async function acknowledgeDeliveries(_records: readonly FiredRecord[]): Promise<void> {}
 

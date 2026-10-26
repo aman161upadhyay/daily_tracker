@@ -170,36 +170,40 @@ const deliveryOf = (e: NudgeEvent) => e.via ?? e.nudgeId;
 /** Slot ids outside the daily cap: the weekly summary, cycle prompts and reminders, one-off follow-ups. */
 const EXEMPT_ID = /^(summary|cycle|event):/;
 
-/**
- * Notifications that rang on a tracking day and count against the cap: a merged one counts once,
- * and only when one of the slots in it was an automatic cadence. A weekly summary, a cycle prompt
- * or a Sugar Shield follow-up on its own is exempt when planned, so it is exempt once it rang too —
- * or two exempt rings would push a planned rotation slot out of a cap of three.
- */
-function firedCount(latest: Map<string, NudgeEvent>, day: string): number {
-  const rang = new Map<string, boolean>();
-  for (const e of latest.values()) {
-    if (e.day !== day || e.kind === 'SNOOZED') continue;
-    const via = deliveryOf(e);
-    rang.set(via, (rang.get(via) ?? false) || !EXEMPT_ID.test(e.nudgeId));
-  }
-  let n = 0;
-  for (const counted of rang.values()) if (counted) n += 1;
-  return n;
+/** What rang on one tracking day, for the cap and the per-habit budgets. */
+interface Deliveries {
+  /** Notifications that count against the cap. */
+  counted: number;
+  /** Notifications each habit was named in. */
+  perHabit: Map<string, number>;
 }
 
-/** How many notifications each habit already received on a tracking day (fired, done or dismissed). */
-function firedPerHabit(latest: Map<string, NudgeEvent>, day: string): Map<string, number> {
-  const seen = new Map<string, Set<string>>();
-  for (const e of latest.values()) {
-    if (e.day !== day || e.kind === 'SNOOZED') continue;
+/**
+ * The deliveries of a tracking day, from every FIRED event — not from the latest event per slot,
+ * which is the settlement view: a slot snoozed and rung again rang twice, and a snooze on top of a
+ * ring does not un-ring it. A delivery is one notification at one time; the constituents of a
+ * merged one share its id and time and count once. It counts against the cap only when one of
+ * the slots in it was an automatic cadence: a weekly summary, a cycle prompt or a Sugar Shield
+ * follow-up on its own is exempt when planned, so it is exempt once it rang too — or two exempt
+ * rings would push a planned rotation slot out of a cap of three. A button pressed on the Today
+ * card writes DONE without a ring, and that is not a delivery.
+ */
+function deliveriesOn(events: readonly NudgeEvent[], day: string): Deliveries {
+  const counted = new Map<string, boolean>();
+  const perHabit = new Map<string, Set<string>>();
+  for (const e of events) {
+    if (e.kind !== 'FIRED' || e.day !== day) continue;
+    const delivery = `${deliveryOf(e)}|${e.at}`;
+    counted.set(delivery, (counted.get(delivery) ?? false) || !EXEMPT_ID.test(e.nudgeId));
     for (const id of e.habitIds) {
-      let s = seen.get(id);
-      if (!s) seen.set(id, (s = new Set()));
-      s.add(deliveryOf(e));
+      let s = perHabit.get(id);
+      if (!s) perHabit.set(id, (s = new Set()));
+      s.add(delivery);
     }
   }
-  return new Map([...seen].map(([id, s]) => [id, s.size]));
+  let n = 0;
+  for (const c of counted.values()) if (c) n += 1;
+  return { counted: n, perHabit: new Map([...perHabit].map(([id, s]) => [id, s.size])) };
 }
 
 /** Notification titles get one line in the shade; a long habit name (up to 80 characters in the editor) is cut with an ellipsis. */
@@ -276,12 +280,13 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
 
   // Per-habit budgets by tracking day: what already rang that day plus what is planned now (past,
   // undelivered slots do not count). Built when a day's first slot asks for it.
-  const budgets = new Map<string, Map<string, number>>();
-  const budgetFor = (day: string) => {
-    let b = budgets.get(day);
-    if (!b) budgets.set(day, (b = firedPerHabit(latest, day)));
-    return b;
+  const delivered = new Map<string, Deliveries>();
+  const deliveredOn = (day: string) => {
+    let d = delivered.get(day);
+    if (!d) delivered.set(day, (d = deliveriesOn(input.nudgeEvents, day)));
+    return d;
   };
+  const budgetFor = (day: string) => deliveredOn(day).perHabit;
 
   for (const day of days) {
     const activeStart = instantOf(day, settings.activeStartMin, zone);
@@ -411,6 +416,8 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
     // ── Fixed clock times ────────────────────────────────────────────────
     for (const h of input.habits) {
       if (!h.policy.enabled || h.policy.kind !== 'FIXED' || !h.policy.times?.length) continue;
+      // The times are placed on the calendar day `day`; a weekday choice is about that date.
+      if (h.policy.weekdays?.length && !h.policy.weekdays.includes(weekdayOf(day))) continue;
       for (const hhmm of h.policy.times) {
         const [hh, mm] = hhmm.split(':').map(Number);
         // Stored times are validated on the way in; a bad one from an old file is skipped, never placed.
@@ -583,7 +590,7 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
   const out: ScheduledNudge[] = [];
   for (const c of merged) {
     if (c.counted) {
-      const n = used.get(c.day) ?? firedCount(latest, c.day);
+      const n = used.get(c.day) ?? deliveredOn(c.day).counted;
       if (n >= settings.dailyNudgeCap) continue;
       used.set(c.day, n + 1);
     }

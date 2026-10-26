@@ -254,6 +254,22 @@ cycle (phases, calendar, day sheet, insights) was verified in the web preview an
 | AA15 | Freezes follow the cadence | Create a weekly custom habit | The editor's freezes default to 1 (0 for monthly, 2 for daily) |
 | AA16 | Destructive taps confirm | Delete a cycle reminder; trash a drink | Each asks first |
 
+### AB — round 11 (deliveries per occurrence, bookkeeping intents, the editor's edges, weekdays)
+
+| # | Check | Steps | Expected |
+|---|---|---|---|
+| AB1 | A re-ring spends again | Cap 3; a custom habit with Set times 07:30, at most 2; let it ring, tap Snooze, let it ring again | No further set-time reminder for that habit today; the habit's two were spent by the two rings (`adb shell dumpsys notification --noredact`) |
+| AB2 | Erase and restore forget the old alarms | Let a nudge ring and leave it in the shade; Settings → Erase everything → "Explore with sample data" | The old ring is not counted against the sample state; no alarm from the old state fires later (dumpsys lists only the new plan) |
+| AB3 | Killed between the OS change and the record | Change a reminder time and kill the app at once (`adb shell am kill <package>` within a second); reopen | The old time never rings; the new one rings once; nothing rings twice |
+| AB4 | A paused schedule edited | Habit → Remind me switch off → Change → add a time → Save | The card reads "Paused · At …"; the switch stays off; turning it on schedules both times |
+| AB5 | The next-reminder line | Set times 16:00 on a habit not yet done | The card reads "Next: today at 4:00 PM" and it rings then; once the habit is done for the day it reads "Done for today: nothing more rings." |
+| AB6 | Weekdays | Strength session → Reminders → Change → On: M, W, F → Save (on a Tuesday) | The card reads "At 6:00 PM on Mon, Wed and Fri", the line "Next: Wed …"; nothing rings on Tuesday; Wednesday's rings |
+| AB7 | The last weekday stays | In the editor, tap the only selected day | It stays selected (Off is a mode, not an empty week) |
+| AB8 | Tap-and-Done keeps a formatted value | Units oz; Edit habit on Water; tap the target value; press Done without typing | The target is still 2,000 ml (67.6 oz) |
+| AB9 | Freezes you set survive a cadence change | New custom habit; set freezes to 2 while Daily; switch to Weekly | Freezes stay 2 (an untouched value follows the cadence: 1) |
+| AB10 | The Water summary opens the Library on Water | Archive Water; log a drink from the widget; tap the Water summary on Today | The Library sheet opens on Water with "Add to my habits" |
+| AB11 | Widget tap when the save fails | (If storage can be filled) fill the phone's storage; tap a widget tile | The widget shows the pre-tap numbers with "That tap could not be saved. Open Daily Tracker and log it there."; the app shows its storage error |
+
 ## Recording results
 
-Add a dated line under the milestone in `docs/IMPLEMENTATION_PLAN.md` ("Device run YYYY-MM-DD, Pixel 7 / Android 15: N1–N17, Y1–Y14, Z1–Z13, AA1–AA16 pass except …") and open follow-ups for anything that failed.
+Add a dated line under the milestone in `docs/IMPLEMENTATION_PLAN.md` ("Device run YYYY-MM-DD, Pixel 7 / Android 15: N1–N17, Y1–Y14, Z1–Z13, AA1–AA16, AB1–AB11 pass except …") and open follow-ups for anything that failed.

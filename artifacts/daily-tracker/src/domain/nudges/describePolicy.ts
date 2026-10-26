@@ -3,7 +3,8 @@
  * Pure: the same words describe a preset's default and whatever the person changed it to.
  */
 import type { NudgePolicy } from '../models';
-import { formatClock } from '../time/format';
+import { formatClock, formatDayShort, formatWeekdayShort } from '../time/format';
+import { addDays, instantOf, minutesOfDay, weekdayOf } from '../time/trackingDay';
 
 export interface PolicyContext {
   /** A movement snack: interval policies join the shared rotation instead of running alone. */
@@ -48,6 +49,28 @@ export function timesText(times: readonly string[]): string {
   return `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`;
 }
 
+/** Monday first, as the week view and `weekdayOf` count. */
+export const WEEKDAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'] as const;
+const WEEKDAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+const EVERY_DAY: readonly number[] = [0, 1, 2, 3, 4, 5, 6];
+
+/** A weekday choice, sorted and unique; every day (or nothing chosen) reads as no restriction. */
+export function normalizeWeekdays(days: readonly number[] | undefined): number[] | undefined {
+  if (!days) return undefined;
+  const out = [...new Set(days.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort((a, b) => a - b);
+  return out.length === 0 || out.length === 7 ? undefined : out;
+}
+
+/** "on weekdays", "at weekends", "on Mon, Wed and Fri"; empty for every day. */
+export function weekdaysText(days: readonly number[] | undefined): string {
+  const d = normalizeWeekdays(days);
+  if (!d) return '';
+  if (d.join() === '0,1,2,3,4') return 'on weekdays';
+  if (d.join() === '5,6') return 'at weekends';
+  const names = d.map((i) => WEEKDAY_NAMES[i]);
+  return names.length === 1 ? `on ${names[0]}` : `on ${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
 /** The schedule a policy asks for, whether or not it is switched on. */
 export function describePolicy(policy: NudgePolicy | undefined, ctx: PolicyContext): string {
   if (!policy || policy.kind === 'NONE') return 'No reminder set';
@@ -57,7 +80,8 @@ export function describePolicy(policy: NudgePolicy | undefined, ctx: PolicyConte
       const times = (policy.times ?? []).filter((t) => clockMinutes(t) !== null);
       if (times.length === 0) return 'No times set';
       const behind = policy.onlyWhenBehind ? ' when behind' : '';
-      return `At ${timesText(times)}${behind}${times.length > policy.maxPerDay && policy.maxPerDay >= 1 ? cap : ''}`;
+      const days = weekdaysText(policy.weekdays);
+      return `At ${timesText(times)}${days ? ` ${days}` : ''}${behind}${times.length > policy.maxPerDay && policy.maxPerDay >= 1 ? cap : ''}`;
     }
     case 'INTERVAL':
     case 'ROTATION': {
@@ -111,13 +135,18 @@ export const POLICY_INTERVAL_MIN = 15;
 export const POLICY_INTERVAL_MAX = 8 * 60;
 export const POLICY_MAX_PER_DAY = 12;
 
+/** A schedule that is kept but not running: the switch on the habit page is off. */
+export const isPaused = (policy: Partial<NudgePolicy> | undefined): boolean => !!policy && policy.kind !== undefined && policy.kind !== 'NONE' && policy.enabled === false;
+
 /**
  * A policy as the editor saved it, normalised: times sorted and unique, numbers inside the bounds
- * the validator accepts, and `enabled` following the mode (Off is a policy that never fires).
+ * the validator accepts. Off is a policy that never fires. A paused schedule that is edited stays
+ * paused — Save changes the schedule, the switch on the habit page resumes it — so an unchanged
+ * editor saved by habit does not quietly turn reminders back on.
  */
 export function policyFromDraft(
   base: Pick<NudgePolicy, 'habitId'> & Partial<NudgePolicy>,
-  draft: { mode: PolicyMode; times: string[]; intervalMin: number; onlyWhenBehind: boolean; maxPerDay: number },
+  draft: { mode: PolicyMode; times: string[]; weekdays?: readonly number[]; intervalMin: number; onlyWhenBehind: boolean; maxPerDay: number },
   ctx: Pick<PolicyContext, 'movement' | 'water'>,
 ): NudgePolicy {
   const times = [...new Set(draft.times.map(clockMinutes).filter((m): m is number => m !== null))].sort((a, b) => a - b).map(clockString);
@@ -129,11 +158,69 @@ export function policyFromDraft(
     kind,
     onlyWhenBehind: kind === 'FIXED' || kind === 'INTERVAL' ? draft.onlyWhenBehind : false,
     maxPerDay: kind === 'NONE' ? 0 : kind === 'FIXED' ? Math.max(1, Math.min(maxPerDay, Math.max(1, times.length))) : maxPerDay,
-    enabled: kind !== 'NONE',
+    enabled: kind !== 'NONE' && !isPaused(base),
   };
-  if (kind === 'FIXED') out.times = times;
+  if (kind === 'FIXED') {
+    out.times = times;
+    const weekdays = normalizeWeekdays(draft.weekdays);
+    if (weekdays) out.weekdays = weekdays;
+  }
   if (kind === 'INTERVAL' || kind === 'ROTATION') out.intervalMin = intervalMin;
   if (base.activeStartMin !== undefined) out.activeStartMin = base.activeStartMin;
   if (base.activeEndMin !== undefined) out.activeEndMin = base.activeEndMin;
   return out;
+}
+
+/** The planned notifications that concern a habit, as the habit page reads them. */
+export interface PlannedRing {
+  at: number;
+  day: string;
+  habitIds: readonly string[];
+}
+
+/**
+ * When this habit next rings, read off the actual plan — not the policy's promise. "Next: today at
+ * 4:00 PM" is what a person wants to know after setting a reminder; the policy line above it says
+ * only what was asked for. Null when there is nothing to say (no policy, an on-demand one).
+ */
+export function nextRingText(args: {
+  plan: readonly PlannedRing[];
+  habitId: string;
+  policy: NudgePolicy | undefined;
+  remindersEnabled: boolean;
+  today: string;
+  zone: string;
+  /** The instant the plan was made for; set times past the plan's horizon are read off the policy. */
+  nowMs?: number;
+  horizonMs?: number;
+  doneToday: boolean;
+  donePeriod: boolean;
+  periodNoun: 'day' | 'week' | 'month';
+}): string | null {
+  const { policy } = args;
+  if (!policy || policy.kind === 'NONE' || policy.kind === 'EVENT' || policy.kind === 'CYCLE') return null;
+  if (!args.remindersEnabled) return 'Reminders are off in Settings → Reminders.';
+  if (!policy.enabled) return 'Paused: nothing rings until the switch is on.';
+  const dayWord = (day: string) => (day === args.today ? 'today' : day === addDays(args.today, 1) ? 'tomorrow' : formatWeekdayShort(day));
+  const next = args.plan.filter((n) => n.habitIds.includes(args.habitId)).sort((a, b) => a.at - b.at)[0];
+  if (next) return `Next: ${dayWord(next.day)} at ${formatClock(minutesOfDay(next.at, args.zone))}`;
+  // Set times on a chosen weekday can lie past the plan's horizon (a Friday session seen on
+  // Tuesday); the policy says when, the plan will confirm it once the day is near enough.
+  if (policy.kind === 'FIXED' && policy.times?.length && args.nowMs !== undefined) {
+    const horizonEnd = args.nowMs + (args.horizonMs ?? 36 * 60 * 60_000);
+    const days = policy.weekdays?.length ? policy.weekdays : EVERY_DAY;
+    for (let i = 0; i < 8; i++) {
+      const day = addDays(args.today, i);
+      if (!days.includes(weekdayOf(day))) continue;
+      for (const hhmm of policy.times) {
+        const minute = clockMinutes(hhmm);
+        if (minute === null) continue;
+        const at = instantOf(day, minute, args.zone);
+        if (at > horizonEnd) return `Next: ${formatWeekdayShort(day)}, ${formatDayShort(day)} at ${formatClock(minute)}`;
+      }
+    }
+  }
+  if (args.donePeriod && args.periodNoun !== 'day') return `Done for the ${args.periodNoun}: nothing more rings.`;
+  if (args.doneToday) return 'Done for today: nothing more rings.';
+  return 'Nothing planned for the rest of today or tomorrow (the daily cap or this habit’s limit may be spent).';
 }

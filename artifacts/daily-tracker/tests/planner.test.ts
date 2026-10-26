@@ -113,9 +113,15 @@ describe('planNudges — rotation and active hours', () => {
     const plan = todayOnly(planNudges(input({ habits: [{ ...squats, policy: policy({ habitId: 'squats', maxPerDay: 1 }) }, walk] })));
     assert.equal(plan.filter((n) => n.habitIds[0] === 'squats').length, 1);
     assert.equal(plan.filter((n) => n.habitIds[0] === 'walk').length, 5);
-    const fired: NudgeEvent[] = [{ id: 'f', nudgeId: 'rot:x', habitIds: ['squats'], at: at(TODAY, '12:00'), zone: ZONE, day: TODAY, kind: 'DONE' }];
+    const fired: NudgeEvent[] = [
+      { id: 'f', nudgeId: 'rot:x', habitIds: ['squats'], at: at(TODAY, '12:00'), zone: ZONE, day: TODAY, kind: 'FIRED' },
+      { id: 'd', nudgeId: 'rot:x', habitIds: ['squats'], at: at(TODAY, '12:01'), zone: ZONE, day: TODAY, kind: 'DONE' },
+    ];
     const after = todayOnly(planNudges(input({ habits: [{ ...squats, policy: policy({ habitId: 'squats', maxPerDay: 1 }) }, walk], nudgeEvents: fired })));
     assert.equal(after.filter((n) => n.habitIds[0] === 'squats').length, 0, 'a nudge that already fired uses up the budget');
+    // Done pressed on the Today card settles a slot that never rang: no delivery, no budget spent.
+    const pressed = todayOnly(planNudges(input({ habits: [{ ...squats, policy: policy({ habitId: 'squats', maxPerDay: 1 }) }, walk], nudgeEvents: [fired[1]!] })));
+    assert.equal(pressed.filter((n) => n.habitIds[0] === 'squats').length, 1, 'a card press is not a ring');
   });
 
   it('is deterministic: the same input gives the same ids and times', () => {

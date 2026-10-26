@@ -208,6 +208,24 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   reminders scheduled by v0.12 (replaced on the first sync anyway); B3 activity history with Undo; B5 pinned-card
   picker. **Why:** round 10's pipeline/diff lenses showed round 9 keyed deliveries by slot id for life and acked
   before the save; the finish-line lens found the "configurable nudges" user constraint still unmet.
+- Round 11 (2026-10-26 night) rules, paradigms 44–48 in RUNNING_CONTEXT §4: budgets and the cap count *every*
+  FIRED event per occurrence (`deliveriesOn`, key `via ?? nudgeId` + time); the latest event per slot settles
+  only; TAP/OPEN write nothing (the sync owns FIRED; a monotonic FIRED dedupe was tried and reverted after the
+  simulator showed it loses occurrences when a tap races the sync — exact `id|at` dedupe is the rule). The
+  notification service keeps one record `{ledger, journal, cancelling, scheduling}` under one key, written
+  before and after each OS change; a dead sync's intents are resolved on the next read (cancelled+gone = not
+  rung; scheduling+pending = ours; gone+overdue = rung — deliberate, a double ring is worse than a phantom;
+  gone+ahead = forgotten). A storage read failure throws (never "empty"). Replacing the state (erase / restore /
+  sample) bumps `replaceEpoch`; the scheduler runs `cancelAll({forget:true})`; cancel-all and acks are queued
+  jobs that a newer sync never skips. Editor: a paused schedule stays paused on Save (the switch resumes it);
+  time rows have stable keys; a stepper opened and closed without typing returns the value it opened with;
+  freezes use a touched flag. The Reminders card has a "Next: …" line from the plan (policy fallback only for a
+  chosen weekday past the 36-h horizon). Weekday selection for set times: `NudgePolicy.weekdays` (0 = Mon … 6 =
+  Sun, calendar day of the time; absent = every day; all seven normalises to absent; last chip not removable),
+  schema v6 `weekdays_json`. Widget tap under a failed live save draws the on-disk numbers + notice, no snapshot.
+  Deferred: reminder set-up inside habit creation. **Why:** round 11's simulator and native-paths lenses showed
+  round 10 journaled per occurrence but still budgeted per slot id, and that the service's record had crash
+  windows and a read-failure-as-empty path. Dispositions in RUNNING_CONTEXT §6 Round 11.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app

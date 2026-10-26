@@ -19,12 +19,12 @@ import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import { adherenceColor, FLOW_THRESHOLD, STAGE_LABELS } from '@/src/domain/adherence/adherenceScale';
 import { withAlpha } from '@/src/domain/color/oklch';
-import { describePolicy, type PolicyContext } from '@/src/domain/nudges/describePolicy';
+import { describePolicy, isPaused, nextRingText, type PolicyContext } from '@/src/domain/nudges/describePolicy';
 import { describeRule, formatClock, formatDayShort, formatHabitValue, formatVolume, formatWeekdayShort, habitAmountText, habitUnit, mlToOz } from '@/src/domain/time/format';
 import { lastNDays, minutesOfDay } from '@/src/domain/time/trackingDay';
 import { PRESET_BY_ID } from '@/src/library/presets';
 import { useHabitView } from '@/src/state/hooks';
-import { habitDayValue, habitSeries, heatmapValues, latestRule, ruleFor } from '@/src/state/selectors';
+import { habitDayValue, habitSeries, heatmapValues, latestRule, nudgePlan, ruleFor } from '@/src/state/selectors';
 import { useTracker } from '@/src/state/TrackerProvider';
 
 export default function HabitDetailScreen() {
@@ -32,7 +32,7 @@ export default function HabitDetailScreen() {
   const router = useRouter();
   const goBack = useBackOrHome();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { state, today, zone, actions } = useTracker();
+  const { state, today, zone, nowMs, actions } = useTracker();
   const habit = state.habits.find((h) => h.id === id);
   const view = useHabitView(habit);
   const [range, setRange] = useState<Range>('W');
@@ -108,6 +108,21 @@ export default function HabitDetailScreen() {
   const policyContext: PolicyContext = { movement: !!habit.snackType, water: isWater, rotationIntervalMin: state.settings.nudgeIntervalMin };
   // The Sugar Shield's follow-up is scheduled by its card, not by a cadence; nothing to tune here.
   const policyEditable = view.policy?.kind !== 'EVENT' && view.policy?.kind !== 'CYCLE';
+  const paused = isPaused(view.policy);
+  // The same plan the scheduler pushes to the OS (memoised on the clock tick): what this habit's
+  // reminder will actually do, which is not always what the policy asks for.
+  const nextRing = nextRingText({
+    plan: nudgePlan(state, today, nowMs, zone),
+    habitId: habit.id,
+    policy: view.policy,
+    remindersEnabled: state.settings.remindersEnabled,
+    today,
+    zone,
+    nowMs,
+    doneToday: view.doneToday,
+    donePeriod: view.periodDone !== undefined && view.periodQuota !== undefined ? view.periodDone >= view.periodQuota : false,
+    periodNoun,
+  });
   const todayWater = isWater ? state.water.filter((w) => w.day === today).sort((a, b) => b.at - a.at) : [];
   const editRule = latestRule(state, habit.id) ?? view.rule;
   // A rhythm saved for the next period is not in force yet; say so, or the save looks lost.
@@ -315,8 +330,13 @@ export default function HabitDetailScreen() {
           <View style={{ flex: 1 }}>
             <Txt role="title2">Remind me</Txt>
             <Txt role="footnote" tone="secondary">
-              {describePolicy(view.policy, policyContext)}
+              {paused ? `Paused · ${describePolicy(view.policy, policyContext)}` : describePolicy(view.policy, policyContext)}
             </Txt>
+            {nextRing ? (
+              <Txt role="caption" tone="tertiary" style={{ marginTop: 2 }}>
+                {nextRing}
+              </Txt>
+            ) : null}
           </View>
           <Switch
             value={!!view.policy?.enabled && view.policy.kind !== 'NONE'}
@@ -332,10 +352,14 @@ export default function HabitDetailScreen() {
           <Txt role="footnote" tone="tertiary" style={{ flex: 1 }}>
             {policyEditable
               ? view.policy && view.policy.kind !== 'NONE' && view.policy.enabled
-                ? view.policy.kind === 'FIXED'
-                  ? 'Set times ring at their time; interval reminders stay inside your active hours. All count toward the daily cap (Settings → Reminders).'
-                  : 'Arrives as a notification with Done and Snooze buttons, inside your active hours and the daily cap (Settings → Reminders).'
-                : 'No reminder for this habit; a Today nudge still points to it when it is next in line.'
+                ? isWater
+                  ? 'Pace checks arrive as a notification with a drink button and Snooze, inside your active hours and the daily cap (Settings → Reminders).'
+                  : view.policy.kind === 'FIXED'
+                    ? 'Set times ring at their time; interval reminders stay inside your active hours. All count toward the daily cap (Settings → Reminders).'
+                    : 'Arrives as a notification with Done and Snooze buttons, inside your active hours and the daily cap (Settings → Reminders).'
+                : habit.snackType
+                  ? 'No notification for this habit; the Today card still offers it when it is next in the movement rotation.'
+                  : 'No notification for this habit.'
               : 'On demand: the card schedules its own follow-up.'}
           </Txt>
           {policyEditable ? <PillButton label={view.policy && view.policy.kind !== 'NONE' ? 'Change' : 'Set up'} kind="ghost" compact onPress={() => setPolicyOpen(true)} /> : null}
@@ -405,13 +429,16 @@ function Stat({ label, value, unit, gold }: { label: string; value: string; unit
 const styles = StyleSheet.create({
   stage: {
     paddingHorizontal: 10,
-    height: 26,
+    paddingVertical: 4,
+    minHeight: 26,
     borderRadius: 999,
     justifyContent: 'center',
+    flexShrink: 1,
   },
   valueRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
+    flexWrap: 'wrap',
     gap: 8,
   },
   stats: {

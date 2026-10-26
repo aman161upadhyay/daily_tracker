@@ -25,7 +25,7 @@ import type { NudgeChannel, ScheduledNudge } from '@/src/domain/nudges/planner';
 import { MIND_END_ID, mindEndPayload, type NudgePayload } from '@/src/state/commands';
 import { canScheduleExactAlarms } from '@/modules/exact-alarms';
 import { parseResponse } from './notificationPayload';
-import { deliveries, journalWith, journalWithout, parseRecords, type FiredRecord, type LedgerEntry } from './deliveryJournal';
+import { EMPTY_BOOKKEEPING, deliveries, journalWith, journalWithout, parseBookkeeping, parseRecords, type Bookkeeping, type FiredRecord, type LedgerEntry } from './deliveryJournal';
 
 export type { FiredRecord } from './deliveryJournal';
 
@@ -41,6 +41,8 @@ export const NOTIFICATIONS_SUPPORTED = true;
 export const BACKGROUND_REPLAN_TASK = 'dailytracker-replan';
 export const NUDGE_RESPONSE_TASK = 'dailytracker-nudge-response';
 
+const BOOKKEEPING_KEY = 'dailytracker.nudges.bookkeeping.v1';
+/** Earlier layouts (two keys); read once and folded into the bookkeeping record. */
 const LEDGER_KEY = 'dailytracker.nudges.ledger.v1';
 const JOURNAL_KEY = 'dailytracker.nudges.delivered.v1';
 const HANDLED_KEY = 'dailytracker.nudges.handled.v1';
@@ -186,38 +188,41 @@ function categoryFor(n: ScheduledNudge): string | undefined {
   return 'nudge';
 }
 
-async function readLedger(): Promise<LedgerEntry[]> {
-  return parseRecords<LedgerEntry>(await AsyncStorage.getItem(LEDGER_KEY).catch(() => null));
-}
-
-async function readJournal(): Promise<FiredRecord[]> {
-  return parseRecords<FiredRecord>(await AsyncStorage.getItem(JOURNAL_KEY).catch(() => null));
-}
-
 /**
- * Write the deliveries down before anything else forgets them (see deliveryJournal). Returns
- * everything still owed to the state: earlier reports whose fold was never confirmed, plus these.
+ * The bookkeeping record (see deliveryJournal). A storage read that fails is an error, not an
+ * empty record: treating it as empty would let the write that follows forget the ledger (every
+ * pending alarm would then be cancelled as not ours, every delivery lost) and the journal (the
+ * deliveries it still owes the state). The sync that cannot read gives up and is retried later.
  */
-async function journalDeliveries(fired: FiredRecord[], nowMs: number): Promise<FiredRecord[]> {
-  const journal = journalWith(await readJournal(), fired, nowMs);
-  if (journal.length > 0 || fired.length > 0) await AsyncStorage.setItem(JOURNAL_KEY, JSON.stringify(journal));
-  return journal;
+async function readBookkeeping(): Promise<Bookkeeping> {
+  const raw = await AsyncStorage.getItem(BOOKKEEPING_KEY);
+  if (raw !== null) return parseBookkeeping(raw);
+  // First read after an upgrade from the two-key layout: fold it in and drop the old keys.
+  const [ledger, journal] = await AsyncStorage.multiGet([LEDGER_KEY, JOURNAL_KEY]);
+  const legacy: Bookkeeping = { ...EMPTY_BOOKKEEPING, ledger: parseRecords<LedgerEntry>(ledger?.[1] ?? null), journal: parseRecords<FiredRecord>(journal?.[1] ?? null) };
+  if (legacy.ledger.length > 0 || legacy.journal.length > 0) {
+    await writeBookkeeping(legacy);
+    await AsyncStorage.multiRemove([LEDGER_KEY, JOURNAL_KEY]).catch(() => {});
+  }
+  return legacy;
+}
+
+function writeBookkeeping(bk: Bookkeeping): Promise<void> {
+  return AsyncStorage.setItem(BOOKKEEPING_KEY, JSON.stringify(bk));
 }
 
 /**
  * The state holding these deliveries is saved: they need not be replayed. Serialized with the
- * syncs, which are the only other writers of the journal.
+ * syncs, which are the only other writers of the record.
  */
 export function acknowledgeDeliveries(records: readonly FiredRecord[]): Promise<void> {
   if (records.length === 0) return Promise.resolve();
-  const job = async () => {
-    const journal = await readJournal();
-    if (journal.length === 0) return;
-    await AsyncStorage.setItem(JOURNAL_KEY, JSON.stringify(journalWithout(journal, records)));
-  };
-  const run = syncQueue.then(job, job);
-  syncQueue = run.catch(() => undefined);
-  return run;
+  return queued(async () => {
+    const bk = await readBookkeeping();
+    if (bk.journal.length === 0) return;
+    const journal = journalWithout(bk.journal, records);
+    if (journal.length !== bk.journal.length) await writeBookkeeping({ ...bk, journal });
+  });
 }
 
 /**
@@ -238,6 +243,13 @@ function serialized<T>(job: () => Promise<T>, skipped: T): Promise<T> {
   return out;
 }
 
+/** Same queue, never skipped: for work that must happen even when a newer sync is waiting behind it. */
+function queued<T>(job: () => Promise<T>): Promise<T> {
+  const out = syncQueue.then(job, job);
+  syncQueue = out.catch(() => undefined);
+  return out;
+}
+
 /**
  * What the OS delivered and the state has not been confirmed to hold yet: ledger entries that are
  * no longer pending, plus earlier reports still in the journal. Does not touch the schedule.
@@ -246,9 +258,16 @@ function serialized<T>(job: () => Promise<T>, skipped: T): Promise<T> {
  */
 export function firedSinceLastSync(nowMs: number): Promise<FiredRecord[]> {
   return serialized(async () => {
-    const ledger = await readLedger();
+    const bk = await readBookkeeping();
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-    return journalDeliveries(deliveries(ledger, new Set(scheduled.map((r) => r.identifier)), nowMs).fired, nowMs);
+    const { fired, live } = deliveries(bk, new Set(scheduled.map((r) => r.identifier)), nowMs);
+    const journal = journalWith(bk.journal, fired, nowMs);
+    // The deliveries are written down before anything can forget them; a dead sync's intents are
+    // resolved into the ledger at the same time.
+    if (fired.length > 0 || bk.cancelling.length > 0 || bk.scheduling.length > 0 || live.length !== bk.ledger.length || journal.length !== bk.journal.length) {
+      await writeBookkeeping({ ledger: live, journal, cancelling: [], scheduling: [] });
+    }
+    return journal;
   }, []);
 }
 
@@ -261,20 +280,25 @@ export function syncPlan(plan: ScheduledNudge[], nowMs: number): Promise<FiredRe
   return serialized(() => syncPlanNow(plan, nowMs), []);
 }
 
+/** A plan entry as the ledger records it. */
+function ledgerEntry(n: ScheduledNudge, exact: boolean | null): LedgerEntry {
+  return { id: n.id, habitIds: n.habitIds, day: n.day, at: n.at, ...(n.mergedIds ? { mergedIds: n.mergedIds } : {}), sig: signature(n, exact) };
+}
+
 async function syncPlanNow(plan: ScheduledNudge[], nowMs: number): Promise<FiredRecord[]> {
-  const ledger = await readLedger();
+  const bk = await readBookkeeping();
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   const pending = new Set(scheduled.map((r) => r.identifier));
-  const { fired, overdueKept } = deliveries(ledger, pending, nowMs);
-  // Before the schedule or the ledger changes: a crash past this point must not lose a delivery.
-  const owed = await journalDeliveries(fired, nowMs);
+  const { fired, overdueKept, live } = deliveries(bk, pending, nowMs);
+  const owed = journalWith(bk.journal, fired, nowMs);
   const keep = new Set(overdueKept.map((e) => e.id));
 
   const wanted = new Map(plan.map((n) => [n.id, n]));
   const ours = new Set<string>();
-  const ledgerSig = new Map(ledger.map((e) => [e.id, e.sig]));
+  const ledgerSig = new Map(live.map((e) => [e.id, e.sig]));
   const exact = exactAlarmsAllowed();
 
+  const cancelling: string[] = [];
   for (const req of scheduled) {
     const id = req.identifier;
     if (id === MIND_END_ID) continue;
@@ -283,18 +307,23 @@ async function syncPlanNow(plan: ScheduledNudge[], nowMs: number): Promise<Fired
       continue;
     }
     const want = wanted.get(id);
-    if (!want || ledgerSig.get(id) !== signature(want, exact)) {
-      await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
-      continue;
-    }
-    ours.add(id);
+    if (!want || ledgerSig.get(id) !== signature(want, exact)) cancelling.push(id);
+    else ours.add(id);
   }
+  const scheduling = plan.filter((n) => !ours.has(n.id) && n.at > nowMs);
+
+  // Before the OS changes: what rang must not be forgotten, and what is about to be cancelled or
+  // scheduled must be readable by the next sync if this one dies half-way (see deliveryJournal).
+  if (fired.length > 0 || cancelling.length > 0 || scheduling.length > 0 || bk.cancelling.length > 0 || bk.scheduling.length > 0) {
+    await writeBookkeeping({ ledger: live, journal: owed, cancelling, scheduling: scheduling.map((n) => ledgerEntry(n, exact)) });
+  }
+
+  for (const id of cancelling) await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
 
   // The ledger lists what is really pending: kept alarms plus what scheduling accepted. A request
   // the OS refused is not written down, so it is neither counted as fired nor marked delivered.
   const accepted = new Set<string>(ours);
-  for (const n of plan) {
-    if (ours.has(n.id) || n.at <= nowMs) continue;
+  for (const n of scheduling) {
     const payload: NudgePayload = {
       nudgeId: n.id,
       kind: n.kind,
@@ -323,24 +352,39 @@ async function syncPlanNow(plan: ScheduledNudge[], nowMs: number): Promise<Fired
     }
   }
 
-  const nextLedger: LedgerEntry[] = [
-    ...overdueKept,
-    ...plan.filter((n) => n.at > nowMs && !keep.has(n.id) && accepted.has(n.id)).map((n) => ({ id: n.id, habitIds: n.habitIds, day: n.day, at: n.at, ...(n.mergedIds ? { mergedIds: n.mergedIds } : {}), sig: signature(n, exact) })),
-  ];
-  await AsyncStorage.setItem(LEDGER_KEY, JSON.stringify(nextLedger));
+  const ledger: LedgerEntry[] = [...overdueKept, ...plan.filter((n) => n.at > nowMs && !keep.has(n.id) && accepted.has(n.id)).map((n) => ledgerEntry(n, exact))];
+  await writeBookkeeping({ ledger, journal: owed, cancelling: [], scheduling: [] });
   return owed;
 }
 
-export function cancelAll(): Promise<void> {
-  return serialized(async () => {
-    // What already rang is still owed to the state; only the pending alarms go.
-    const ledger = await readLedger();
+/**
+ * Take every alarm down. By default what already rang stays owed to the state (reminders switched
+ * off, the app locked); `forget` also drops that — for a state that is being replaced (erase, a
+ * restored backup, the sample data), whose deliveries would otherwise be folded into the new one.
+ */
+export function cancelAll(options: { forget?: boolean } = {}): Promise<void> {
+  // Never skipped for a newer sync: that sync would otherwise plan from a state whose record this
+  // call was meant to clear, and a "reminders off" that is skipped leaves the alarms standing.
+  return queued(async () => {
+    if (options.forget) {
+      // The record goes first: alarms still pending after a death in between are not in any
+      // ledger, so the next sync cancels them as not ours.
+      await writeBookkeeping({ ...EMPTY_BOOKKEEPING });
+      await Notifications.cancelAllScheduledNotificationsAsync();
+      return;
+    }
+    const bk = await readBookkeeping();
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
     const nowMs = Date.now();
-    await journalDeliveries(deliveries(ledger, new Set(scheduled.map((r) => r.identifier)), nowMs).fired, nowMs);
+    const pending = new Set(scheduled.map((r) => r.identifier));
+    const { fired, live } = deliveries(bk, pending, nowMs);
+    const journal = journalWith(bk.journal, fired, nowMs);
+    // Everything pending is about to be cancelled: written down first, so a death between the
+    // cancel and the final write does not read the gone alarms as rung.
+    await writeBookkeeping({ ledger: live, journal, cancelling: live.map((e) => e.id), scheduling: [] });
     await Notifications.cancelAllScheduledNotificationsAsync();
-    await AsyncStorage.setItem(LEDGER_KEY, '[]');
-  }, undefined);
+    await writeBookkeeping({ ledger: [], journal, cancelling: [], scheduling: [] });
+  });
 }
 
 /** Foreground responses arrive mapped (`content.data`); the parser also accepts the raw bundle shape. */
@@ -404,7 +448,15 @@ const inFlight = new Set<string>();
 export async function beginHandling(key: string): Promise<boolean> {
   if (inFlight.has(key)) return false;
   inFlight.add(key);
-  const seen = await withHandledLedger((keys) => keys.includes(key));
+  let seen: boolean;
+  try {
+    seen = await withHandledLedger((keys) => keys.includes(key));
+  } catch (err) {
+    // A claim that could not be checked is released, or the press would stay blocked in this
+    // runtime for good; the caller fails and the press is replayed.
+    inFlight.delete(key);
+    throw err;
+  }
   if (seen) inFlight.delete(key);
   return !seen;
 }

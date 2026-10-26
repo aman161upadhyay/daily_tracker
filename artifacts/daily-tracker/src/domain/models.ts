@@ -179,6 +179,8 @@ export interface NudgePolicy {
   intervalMin?: number;
   /** Clock times as "HH:MM" for FIXED policies. */
   times?: string[];
+  /** Days a FIXED policy rings on: 0 = Monday … 6 = Sunday (the calendar day of the time). Absent = every day. */
+  weekdays?: number[];
   /** Minutes after midnight; falls back to the global active hours when omitted. */
   activeStartMin?: number;
   activeEndMin?: number;

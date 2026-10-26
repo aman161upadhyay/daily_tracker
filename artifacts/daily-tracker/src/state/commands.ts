@@ -287,15 +287,12 @@ export function nudgeResponseActions(state: TrackerState, payload: NudgePayload,
       out.push(...nudgeEventActions(payload, 'SWAPPED', ctx));
       break;
     case 'OPEN':
-    case 'TAP': {
-      // A tap acknowledges a delivery the sync may already have written down (the OS fired it,
-      // the next reconcile recorded it); a second FIRED for the same day would be noise at best
-      // and, stamped with the tap's day, a charge against the wrong day's cap.
-      const day = payload.day || ctx.today;
-      if (state.nudgeEvents.some((e) => e.nudgeId === payload.nudgeId && e.kind === 'FIRED' && e.day === day)) break;
-      out.push(...nudgeEventActions(payload, 'FIRED', ctx));
+    case 'TAP':
+      // A tap on the body only opens the app. The ring itself is written down by the delivery
+      // sync, from the ledger, at the time the notification was scheduled for: a FIRED written
+      // here would carry the tap's time instead, and the two would count as two rings of one
+      // slot — or, deduped by time order, hide an earlier ring of a snoozed slot.
       break;
-    }
   }
   return out;
 }
@@ -314,6 +311,7 @@ export function firedActions(state: TrackerState, fired: { id: string; habitIds:
   // the same id at a later time, and that second ring must be written down too, or the slot stays
   // re-offerable for ever (a swap) and never spends the cap (a snooze). The same report folded
   // twice — the delivery journal is replayed until the state that holds it is saved — is a no-op.
+  // Only the sync writes FIRED (a tap on the body does not), so the occurrence key is exact.
   const known = new Set(state.nudgeEvents.filter((e) => e.kind === 'FIRED').map((e) => `${e.nudgeId}|${e.at}`));
   const out: Action[] = [];
   for (const f of fired) {

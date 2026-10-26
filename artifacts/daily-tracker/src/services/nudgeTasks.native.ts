@@ -130,7 +130,7 @@ TaskManager.defineTask(BACKGROUND_REPLAN_TASK, async () => {
     // apply through its store, so this never persists over a tap the screen just made.
     const live = liveStore();
     if (live) {
-      const ctx = contextFor(live.current());
+      let ctx = contextFor(live.current());
       const base = await replanLive(live, ctx);
       if (HEALTH_CONNECT_SUPPORTED && base.settings.healthConnectEnabled && base.body.sync.background) {
         // The read takes a while; if the user disconnected or removed the import meanwhile
@@ -141,7 +141,12 @@ TaskManager.defineTask(BACKGROUND_REPLAN_TASK, async () => {
           const { applied } = await live.apply((s) => (bodyEpoch() === epoch && s.settings.healthConnectEnabled ? build(s) : []));
           // Imported steps change what the plan says (a 19:00 check-in that is no longer wanted, a
           // "behind pace" that is not): the schedule pushed a moment ago described the old figures.
-          if (applied) await replanLive(live, ctx);
+          // A fresh context: the read took a while, and a plan stamped with the earlier instant
+          // would offer a slot that instant allowed but this one does not (or cross the boundary).
+          if (applied) {
+            ctx = contextFor(live.current());
+            await replanLive(live, ctx);
+          }
         } catch (err) {
           // The Body tab shows the last failure inline (no toast): a background read that threw
           // (Health Connect disabled, uninstalled, access withdrawn) must leave the same mark the
@@ -160,7 +165,7 @@ TaskManager.defineTask(BACKGROUND_REPLAN_TASK, async () => {
       const store = await createStore();
       const state = await store.load();
       if (!state) return null;
-      const ctx = contextFor(state);
+      let ctx = contextFor(state);
       const first = await replanHeadless(state, ctx);
       let next = first.next;
       let delivered = first.delivered;
@@ -170,8 +175,10 @@ TaskManager.defineTask(BACKGROUND_REPLAN_TASK, async () => {
           const { build } = await performBodySync(next, ctx);
           const imported = applyAll(next, build(next), reducer);
           if (imported !== next) {
-            // The schedule was built from the old figures; plan again from the imported ones.
+            // The schedule was built from the old figures; plan again from the imported ones, at
+            // the time it is now (the read took a while).
             next = imported;
+            ctx = contextFor(next);
             const again = await replanHeadless(next, ctx);
             next = again.next;
             delivered = [...delivered, ...again.delivered];

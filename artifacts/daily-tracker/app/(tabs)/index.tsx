@@ -141,7 +141,7 @@ export default function TodayScreen() {
             // widget): the card is still a door — to the Library, where the habit can be added back.
             const h = state.habits.find((x) => x.presetId === 'water' && !x.archived);
             if (h) router.push({ pathname: '/habit/[id]', params: { id: h.id } });
-            else router.push('/habits');
+            else router.push({ pathname: '/habits', params: { preset: 'water' } });
           }}
           footer={
             <Row gap={8}>

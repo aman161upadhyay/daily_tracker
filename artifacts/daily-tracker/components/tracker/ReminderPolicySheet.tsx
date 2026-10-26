@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Switch, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, View } from 'react-native';
 import { useColors } from '@/hooks/useColors';
 import type { Habit, NudgePolicy } from '@/src/domain/models';
 import {
@@ -7,10 +7,13 @@ import {
   POLICY_INTERVAL_MIN,
   POLICY_MAX_PER_DAY,
   POLICY_TIMES_MAX,
+  WEEKDAY_LETTERS,
   clockMinutes,
   clockString,
   describePolicy,
   durationText,
+  isPaused,
+  normalizeWeekdays,
   policyFromDraft,
   policyModeOf,
   policyModesFor,
@@ -32,9 +35,22 @@ export interface ReminderPolicySheetProps {
   onSave: (policy: NudgePolicy) => void;
 }
 
+/** A time row keeps its key while its time is typed: a key made of the time would remount the field on every keystroke. */
+interface TimeRow {
+  key: number;
+  hhmm: string;
+}
+let rowSeq = 0;
+const row = (hhmm: string): TimeRow => ({ key: ++rowSeq, hhmm });
+
+const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6];
+const WEEKDAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
 interface Draft {
   mode: PolicyMode;
-  times: string[];
+  times: TimeRow[];
+  /** 0 = Monday … 6 = Sunday; all seven for every day. */
+  weekdays: number[];
   intervalMin: number;
   onlyWhenBehind: boolean;
   maxPerDay: number;
@@ -43,7 +59,8 @@ interface Draft {
 function draftFrom(policy: NudgePolicy | undefined, ctx: PolicyContext): Draft {
   return {
     mode: policyModeOf(policy, ctx),
-    times: policy?.times?.length ? [...policy.times] : ['09:00'],
+    times: policy?.times?.length ? policy.times.map(row) : [row('09:00')],
+    weekdays: normalizeWeekdays(policy?.weekdays) ?? EVERY_DAY,
     intervalMin: policy?.intervalMin ?? (ctx.water ? 90 : 120),
     onlyWhenBehind: policy?.onlyWhenBehind ?? ctx.water,
     maxPerDay: policy && policy.maxPerDay >= 1 ? policy.maxPerDay : ctx.movement ? 6 : 3,
@@ -73,8 +90,12 @@ export function ReminderPolicySheet({ visible, onClose, habit, policy, context, 
   }, [visible, policy]);
   const set = (patch: Partial<Draft>) => setD((prev) => ({ ...prev, ...patch }));
   const modes = policyModesFor(context);
-  const preview = policyFromDraft({ habitId: habit.id, ...policy }, d, context);
-  const setTime = (i: number, minute: number) => set({ times: d.times.map((t, k) => (k === i ? clockString(minute) : t)) });
+  const times = d.times.map((t) => t.hhmm);
+  const preview = policyFromDraft({ habitId: habit.id, ...policy }, { ...d, times }, context);
+  const paused = isPaused(policy) && d.mode !== 'NONE';
+  const setTime = (key: number, minute: number) => set({ times: d.times.map((t) => (t.key === key ? { ...t, hhmm: clockString(minute) } : t)) });
+  // The last chosen day cannot be taken off: a schedule with no day is Off, which has its own mode.
+  const toggleDay = (day: number) => set({ weekdays: d.weekdays.includes(day) ? (d.weekdays.length > 1 ? d.weekdays.filter((x) => x !== day) : d.weekdays) : [...d.weekdays, day].sort((a, b) => a - b) });
 
   return (
     <Sheet visible={visible} title="Reminders" onClose={onClose}>
@@ -86,15 +107,38 @@ export function ReminderPolicySheet({ visible, onClose, habit, policy, context, 
       {d.mode === 'FIXED' ? (
         <View style={{ marginTop: 14 }}>
           {d.times.map((t, i) => (
-            <Row key={`${i}-${t}`} style={styles.row}>
+            <Row key={t.key} style={styles.row}>
               <Txt role="body" style={{ flex: 1 }}>
                 {i === 0 ? 'At' : 'and at'}
               </Txt>
-              <Stepper value={clockMinutes(t) ?? 9 * 60} onChange={(m) => setTime(i, m)} step={15} min={0} max={23 * 60 + 45} format={formatClock} parse={parseClockInput} label={`time ${i + 1}`} />
-              {d.times.length > 1 ? <IconButton Glyph={UI.Trash} label={`Remove ${formatClock(clockMinutes(t) ?? 0)}`} onPress={() => set({ times: d.times.filter((_, k) => k !== i) })} size={36} color={c.textSecondary} /> : null}
+              <Stepper value={clockMinutes(t.hhmm) ?? 9 * 60} onChange={(m) => setTime(t.key, m)} step={15} min={0} max={23 * 60 + 45} format={formatClock} parse={parseClockInput} label={`time ${i + 1}`} />
+              {d.times.length > 1 ? <IconButton Glyph={UI.Trash} label={`Remove ${formatClock(clockMinutes(t.hhmm) ?? 0)}`} onPress={() => set({ times: d.times.filter((x) => x.key !== t.key) })} size={36} color={c.textSecondary} /> : null}
             </Row>
           ))}
-          {d.times.length < POLICY_TIMES_MAX ? <PillButton label="Add a time" kind="ghost" compact Leading={UI.Plus} onPress={() => set({ times: [...d.times, nextTime(d.times)] })} /> : null}
+          {d.times.length < POLICY_TIMES_MAX ? <PillButton label="Add a time" kind="ghost" compact Leading={UI.Plus} onPress={() => set({ times: [...d.times, row(nextTime(times))] })} /> : null}
+          <Txt role="body" style={{ marginTop: 14 }}>
+            On
+          </Txt>
+          <View style={styles.days} accessibilityRole="radiogroup" accessibilityLabel="Days of the week">
+            {WEEKDAY_LETTERS.map((letter, day) => {
+              const on = d.weekdays.includes(day);
+              return (
+                <Pressable
+                  key={day}
+                  onPress={() => toggleDay(day)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: on }}
+                  accessibilityLabel={WEEKDAY_NAMES[day]}
+                  hitSlop={4}
+                  style={[styles.day, { backgroundColor: on ? c.green : 'transparent', borderColor: on ? c.green : c.hairline }]}
+                >
+                  <Txt role="callout" color={on ? c.onGreen : c.textSecondary} style={{ fontWeight: '600' }}>
+                    {letter}
+                  </Txt>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
       ) : null}
 
@@ -121,7 +165,7 @@ export function ReminderPolicySheet({ visible, onClose, habit, policy, context, 
           <View style={{ flex: 1 }}>
             <Txt role="body">Only when behind</Txt>
             <Txt role="footnote" tone="secondary">
-              {d.mode === 'FIXED' ? 'Skipped once the day is 60% done.' : 'Skipped while the day is on pace for its target.'}
+              {d.mode === 'FIXED' ? 'Skipped once 60% of today’s target is logged.' : 'Skipped while the day is on pace for its target.'}
             </Txt>
           </View>
           <Switch value={d.onlyWhenBehind} onValueChange={(onlyWhenBehind) => set({ onlyWhenBehind })} trackColor={{ false: c.hairline, true: c.green }} thumbColor={c.text} accessibilityLabel="Only when behind" />
@@ -144,6 +188,7 @@ export function ReminderPolicySheet({ visible, onClose, habit, policy, context, 
       <Txt role="footnote" tone="tertiary" style={{ marginTop: 10 }}>
         {describePolicy(preview, context)}
         {d.mode === 'FIXED' ? ' · Set times ring at their time, even outside your active hours; a day already done stays quiet.' : ''}
+        {paused ? ' · Paused: Save keeps the schedule, the switch on the habit page turns it back on.' : ''}
       </Txt>
 
       <Row gap={8} style={{ marginTop: 16 }}>
@@ -167,5 +212,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 12,
     gap: 10,
+  },
+  days: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  day: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

@@ -173,6 +173,7 @@ const POLICY: Shape = {
   kind: oneOf(NUDGE_KINDS),
   intervalMin: optional(numRange(1, 24 * 60, true)),
   times: optional(listOf(clockTime, 100)),
+  weekdays: optional(listOf(numRange(0, 6, true), 7)),
   activeStartMin: optional(minuteOfDay),
   activeEndMin: optional(minuteOfDay),
   onlyWhenBehind: bool,

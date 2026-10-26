@@ -5,7 +5,7 @@ first thing to read after `replit.md`. It answers: what exists, why it is the wa
 verified, what happened step by step, and what is still open. Append to the journal; never rewrite
 history.
 
-Last updated: 2026-10-26, autonomous session (council rounds 1–10 fixed; see journal and §6).
+Last updated: 2026-10-26, autonomous session (council rounds 1–11 fixed; see journal and §6).
 
 ---
 
@@ -15,10 +15,10 @@ Last updated: 2026-10-26, autonomous session (council rounds 1–10 fixed; see j
 |---|---|
 | App | Daily Tracker — private Android tracker: habits · water · movement snacks · meditation · opt-in cycle · home-screen widget · configurable nudges · Health Connect import · app lock · encrypted backups |
 | Code | `artifacts/daily-tracker/` — Expo SDK 57, React Native 0.86, TypeScript, Expo Router, expo-sqlite |
-| Version | `app.json` `version 0.14.0`, `versionCode 14`, tag `v0.14` (M6 complete + council rounds 1–10) |
+| Version | `app.json` `version 0.15.0`, `versionCode 15`, tag `v0.15` (M6 complete + council rounds 1–11) |
 | Repo | https://github.com/aman161upadhyay/daily_tracker.git, branch `main`, commits authored as Aman |
 | Milestones | M0 skeleton ✅ · M1 storage/streaks/onboarding ✅ · M2 nudges/notifications ✅ · M3 widget ✅ · M4 Health Connect/Body ✅ · M5 cycle ✅ · M6 theme/lock/backup/signing ✅ (`docs/IMPLEMENTATION_PLAN.md`) |
-| Verified here | type-check (three packages), 345 unit tests, Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks (incl. the Health Connect rationale activity), web walkthroughs by a browser-driving tester |
+| Verified here | type-check (three packages), 362 unit tests, Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks (incl. the Health Connect rationale activity), web walkthroughs by a browser-driving tester |
 | Never run yet | a real Android device. Everything native (widget taps, notification buttons with the app closed, Health Connect, app lock, Auto Backup, signed APK) is coded and reviewed but untested on hardware — `docs/DEVICE_CHECKLIST.md` lists the exact rows |
 | User's next step | `docs/GET_IT_ON_YOUR_PHONE.md` (plain-language build guide) |
 
@@ -291,6 +291,36 @@ contradicts one, write down why.
     rows, the detail header, the chart, the backfill strip, the rule text and the editor (which
     parses what it shows); an untouched value round-trips without drift. **Why:** the Today card
     said 8.5 oz while the row under it said 250 ml and Edit demanded millilitres.
+44. **Every ring spends; the latest event only settles.** Per-habit budgets and the daily cap count
+    every FIRED event of a slot as its own occurrence (`deliveriesOn`, keyed by `via ?? nudgeId`
+    and time); the newest event per slot decides only whether the slot is settled or re-offerable.
+    Taps and opens write nothing about delivery — the sync owns FIRED. **Why:** a slot that rang,
+    was snoozed and rang again spent one of the budget; a tap's own FIRED raced the sync's and the
+    monotonic dedupe that tried to reconcile them lost occurrences in simulation.
+45. **One bookkeeping record, written before and after every change to the OS schedule, with
+    intents.** `{ledger, journal, cancelling, scheduling}` under one key: the deliveries that are
+    owed go down before anything can forget them, and what is about to be cancelled or scheduled
+    is readable by the next sync if this one dies half-way. A dead sync's intents are resolved on
+    the next read (cancelled and gone = not rung; scheduling and pending = ours; gone and overdue =
+    rung; gone and still ahead = forgotten; the same id pending again = re-schedule). **Why:** a
+    death between `cancelScheduledNotificationAsync` and the ledger write made the next sync read
+    the cancelled alarm as delivered, or a scheduled one as not ours. "Gone and overdue = rung" is
+    deliberate: a missed write-down causes a double ring, which is worse than a phantom count.
+46. **Replacing the state replaces the bookkeeping.** Erase, restore and sample data bump a
+    `replaceEpoch` the scheduler watches; it runs `cancelAll({forget: true})` (the record is
+    emptied first, then the alarms are taken down) ahead of the debounced re-plan, and cancel-all is
+    queued, never skipped for a newer sync. **Why:** the previous state's rings were folded into the
+    new one as deliveries, and a skipped "reminders off" left alarms standing.
+47. **A failed read of a record that gates a write is an error, not an empty record.** The
+    notification service throws on a storage read failure; the sync gives up and is retried later.
+    **Why:** `.catch(() => null)` on the ledger read made the write that followed forget every
+    pending alarm (cancelled as not ours) and every delivery still owed.
+48. **The card says what will happen, the editor says what was asked.** The Reminders card carries
+    a "Next: today at 4:00 PM" line read off the actual plan (or the reason there is none: paused,
+    off in Settings, done, nothing inside the horizon; a chosen weekday past the horizon is read off
+    the policy). A paused schedule stays paused when edited; Save never resumes it. **Why:** the
+    policy line promised 07:30 while the plan had skipped it, and saving an unchanged editor
+    switched a paused reminder back on.
 
 ### How council findings are judged
 - Accept when: evidence is concrete (file:line, reproducible), it violates a paradigm or a user constraint,
@@ -354,6 +384,9 @@ Dates are America/New_York. Commits are on `main`.
 | 2026-10-26 night | **Council round 10** — six lenses over the round-9 result: a diff review with probes, a selector-cache audit (3 seeds × 2,200 reducer steps, 132,912 differential assertions, a GC-stable memory probe), a notification-pipeline state-machine review against the expo-notifications and background-task Kotlin sources, an upgrade / downgrade lens (schema 1→5 migrations, v0.12 exports, envelopes), a "finish line" product review (defects, five 1.0 improvements, doc claims that do not match code) and a browser e2e. Theme: round 9 made deliveries count once, but still keyed them by slot id for life, acknowledged them before the save, and counted the wrong things against budgets; and the one user constraint the app had never honoured — tunable reminders per habit — was still missing. 25 findings; triage in §6 | — |
 | 2026-10-26 night | **Round-10 fixes:** deliveries written per occurrence (slot id + time) with a journal acknowledged only after the store confirmed the save (`src/services/deliveryJournal.ts`, `reconcileAndSync` serialised and returning `{delivered, persisted}`); delivery judged by absence from the pending set, not the clock; TAP writes one FIRED per day and responses carry the slot's day; exempt ids (summary / cycle / event) outside the cap; INTERVAL and FIXED budgets per tracking day counting deliveries only; rotation and interval loops continue past settled slots; the background task re-plans after an import changed the state; plan cache keyed by exact `nowMs`; session sweep takes the group with the best overlap; "Rest of today" pauses to the day boundary; Body extrema from the selected range; water shown in the units setting everywhere (shared helpers); the **reminder policy editor** (`ReminderPolicySheet`, `describePolicy`) on every habit page; freezes default by cadence; destructive taps confirm (`confirmDestructive`); the Water summary routes to the Library when no water habit exists; doc claims corrected (library defaults, weekday rows, luteal check-in, pinned cards, source links, downgrade caveat) | this commit |
 | 2026-10-26 night | Verification: tsc clean, 345 tests (19 new in `tests/round10.test.ts`), `expo export --platform android` → Hermes bytecode OK | this commit, tag `v0.14` |
+| 2026-10-26 night | **Council round 11** — five lenses over the round-10 result: a diff review, a plan / delivery simulator (random days of rings, taps, snoozes and deaths between the OS change and the record), a UX walkthrough of the new editor at large font sizes, a native-paths review (widget handler, headless tasks, the notification service's storage) and a browser e2e of the editor. Theme: round 10 keyed deliveries per occurrence in the journal but still counted budgets per lifetime slot id, the service's storage had no crash windows written down and read failures as empty, and the editor had edges (remounting rows, a Save that resumed a paused schedule, a Done that re-parsed a formatted value). 21 findings; triage in §6 | — |
+| 2026-10-26 night | **Round-11 fixes:** budgets and the cap count every FIRED event per occurrence (`deliveriesOn`), the latest event settles only; TAP / OPEN write nothing (exact `id\|at` dedupe restored after the simulator broke the monotonic one); one bookkeeping record `{ledger, journal, cancelling, scheduling}` under `dailytracker.nudges.bookkeeping.v1` (one-time fold of the two old keys), written before and after each OS change, dead intents resolved by `deliveries()`; a storage read failure throws; `cancelAll({forget})` for a replaced state, driven by `replaceEpoch` from the provider; cancel-all and acknowledgements queued, never skipped; `beginHandling` releases its claim on a failed read; a widget tap whose live save gave up draws the on-disk numbers with the "could not be saved" notice; the background task re-plans after an import with a fresh instant; the editor: stable time-row keys, a paused schedule stays paused on Save ("Paused ·" on the card, a footnote in the editor), stage badge and value row survive large fonts, "once 60% of today's target is logged", a touched flag for freezes, a stepper opened and closed without typing keeps its value, per-kind card copy; **new:** "Next: …" line on the Reminders card from the plan; **weekday selection for set times** (schema v6 `weekdays_json`, planner, description, seven chips, validator); the Water summary opens the Library on the Water preset (`/habits?preset=…`); checklist AB1–AB11; version 0.15.0 / versionCode 15 | this commit |
+| 2026-10-26 night | Verification: tsc clean, 362 tests (17 new in `tests/round11.test.ts`), `expo export --platform android` → Hermes bytecode OK | this commit, tag `v0.15` |
 
 (Entries for each council round follow below as they happen.)
 
@@ -361,6 +394,39 @@ Dates are America/New_York. Commits are on `main`.
 
 Format per round: lens → findings (severity · title · disposition · commit). Dispositions: **fixed**,
 **rejected** (reason), **deferred** (needs user/phone).
+
+### Round 11 (2026-10-26 night)
+
+Five lenses over the round-10 result: diff review, plan / delivery simulator, UX walkthrough, native paths, browser e2e. Ids are theirs.
+
+**Diff review**
+- DR11-01 high · per-day budgets and the cap counted the latest event per lifetime slot id, so a slot that rang, was snoozed and rang again spent one · **fixed** — every FIRED event per occurrence counts (`deliveriesOn`); `latest` settles only; paradigm 44; tests; checklist AB1.
+- DR11-02 high · a storage read failure in the notification service read as an empty record; the write that followed forgot the ledger and the journal · **fixed** — the read throws, the sync gives up and is retried; paradigm 47.
+
+**Simulator** (random 14-day schedules; rings, taps, snoozes, deaths between the OS change and the record)
+- SIM11-01 high · the monotonic FIRED dedupe (a re-ring ignored when an equal-or-later FIRED existed) lost occurrences when a TAP's own FIRED raced the sync's · **accepted, reverted** — exact `id|at` dedupe; TAP / OPEN write nothing, the sync owns FIRED; the round-10 TAP test rewritten.
+- SIM11-02 / -03 (its I1, I5) · budgets counted lifetime slot ids · the DR11-01 fix; the simulator reruns clean.
+
+**Native paths**
+- NP11-01 = DR11-02.
+- NP11-02 high · erase / restore / sample data kept the previous state's ledger and journal; its rings were folded into the new state as deliveries · **fixed** — `replaceEpoch` in the provider, `cancelAll({forget: true})` in the scheduler ahead of the re-plan; cancel-all queued, never skipped; paradigm 46; checklist AB2.
+- NP11-03 high · a death between the OS mutation and the ledger write left alarms the next sync misread (cancelled = delivered, scheduled = not ours) · **fixed** — one bookkeeping record with `cancelling` / `scheduling` intents written before the OS changes and cleared after; `deliveries()` resolves a dead sync's intents; a one-time fold of the two old keys; paradigm 45; tests; checklist AB3.
+- NP11-04 med · `beginHandling` kept its in-flight claim when the handled-set read failed · **fixed** — released on failure.
+- NP11-05 med · a widget tap through a live store that gave up saving drew the unsaved numbers and snapshotted them · **fixed** — `persisted: false` draws what is on disk with the "could not be saved" notice and skips the snapshot; checklist AB11.
+- NP11-06 low · the background task's second re-plan after an import reused the pre-read instant · **fixed** — a fresh context after the import, in both branches.
+
+**UX walkthrough**
+- UX11-01 med · time rows keyed by their text remounted on every keystroke · **fixed** — stable row keys.
+- UX11-02 med · saving the editor resumed a paused schedule · **fixed** — paused stays paused on Save; "Paused ·" on the card; the editor's footnote names the switch; paradigm 48; tests; checklist AB4.
+- UX11-03 low · the stage badge clipped and the value row overflowed at large font sizes · **fixed** — minimum height and wrapping.
+- UX11-04 low · "Skipped once the day is 60% done" read as the clock · **fixed** — "once 60% of today's target is logged".
+- UX11-05 med · freezes a person set to the cadence's default were moved by a cadence change · **fixed** — a touched flag instead of an equality test; checklist AB9.
+- UX11-06 med · tapping a formatted stepper value and pressing Done re-parsed it (67.6 oz → 1,999 ml) · **fixed** — text equal to what the field opened with returns the value it opened with; checklist AB8.
+- UX11-07 low · the Reminders card's copy over-generalised (Done / Snooze for water, a Today nudge for non-movement habits) · **fixed** — copy per kind.
+- Improvements taken: the "Next: …" line on the Reminders card (paradigm 48; checklist AB5); the Water summary opens the Library on the Water preset (checklist AB10); **weekday selection for set times** — schema v6 `weekdays_json`, the planner skips other calendar days, "At 6:00 PM on Mon, Wed and Fri" (weekdays / weekends / lists), seven chips in the editor with the last day not removable, the validator bounds it, and the next-ring line reads the policy when the chosen day lies past the plan's horizon (checklist AB6–AB7).
+- Deferred: reminder set-up inside habit creation (the editor is one tap away on the habit page).
+
+**Browser e2e (round-10 build)** — the editor on custom, preset and movement habits: modes, times, interval, only-when-behind, the cap, Save and Cancel, the card text after saving — passed. Screenshots taken right after dismissing a sheet sometimes caught the web Modal's slide-out as a dim band; not a stuck overlay.
 
 ### Round 10 (2026-10-26 night)
 
@@ -826,7 +892,7 @@ Five lenses over the round-6 result, each a fresh read-only session with its own
 ### Deferred features (from the plan)
 - Steps and cycle tiles in the widget; sleep-stages chart; write-back of water/mind sessions to Health Connect (v2).
 - Week-start setting (Monday is fixed) and per-habit notification sounds (deferred in the plan at M2, M3 and M6; still not built).
-- Weekday selection for fixed-time reminders (the library's stairs / strength rows describe it; a weekly rule paces them meanwhile).
+- Reminder set-up inside habit creation (the editor is one tap away on the habit page; the strength / stairs presets still start on every day until their weekly quota is in — the days are chosen under Reminders → Change → On).
 - An automatic luteal symptom check-in (a cycle reminder anchored "into the luteal phase" stands in).
 - B3 — a correctable activity history (water, snacks, sessions) with exact-record Undo and dated backfill beyond seven days.
 - B5 — a picker for Today's pinned summary cards (Steps / Sleep, order); `Settings.pinned` exists and is unused.
@@ -838,6 +904,7 @@ Five lenses over the round-6 result, each a fresh read-only session with its own
 - Rows added in round 7: X1–X5 (exact alarms and the offline re-plan — the two library defaults the platform lens read in the sources), X6 (sheets in a short window), X7–X9 (Today without the trio, cycle off / hidden), X10–X11 (long titles, the drink ceiling).
 - Rows added in round 8: Y1–Y3 (snapshot replacement, kept copies, journaled deletes), Y4–Y6 (speculative and birth-control reminders, estimated wording), Y7–Y10 (widget sizes, font scale, notice), Y11–Y14 (drink reconcile, one night across sources, late records and backfill, permission names).
 - Rows added in round 9: Z1–Z6 (deliveries before planning, merged notifications, evening snoozes, the hours before the boundary, a met weekly quota, the live countdown), Z7–Z9 (one-to-one drink twins, a re-granted type, "when the period begins"), Z10–Z13 (compact ring values, stepper hints, row labels, the water button's tap size).
+- Rows added in round 11: AB1–AB3 (re-rings spend, erase forgets, a kill between the OS change and the record), AB4–AB7 (paused edits, the next-reminder line, weekdays), AB8–AB11 (tap-and-Done, freezes, the Water door, a widget tap under a failed save).
 - Rows added in round 10: AA1–AA8 (occurrences, the journal under a lost save, a clock set back, yesterday's tap, exempt rings, missed mornings, night-owl hours, the background re-plan), AA9–AA16 (rest of today, the reminder editor on custom / preset / movement habits, ounces everywhere, Body extrema, freezes by cadence, confirmations).
 - Deferred from round 8: Health Connect change tokens (`getChanges`) as an optimisation over the rolling window; "sharpens after three" copy.
 - Not compile-verified here: `modules/exact-alarms/` (Kotlin) — the first laptop build either compiles it or deletes the folder (the app degrades to "exact timing unknown").

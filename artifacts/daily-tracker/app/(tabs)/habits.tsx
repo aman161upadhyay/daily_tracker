@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { AmountSheet } from '@/components/tracker/AmountSheet';
 import { EvidenceBlock, EvidencePill } from '@/components/tracker/EvidenceBlock';
 import { HabitEditorSheet } from '@/components/tracker/HabitEditorSheet';
@@ -15,7 +15,7 @@ import { Txt } from '@/components/ui/Txt';
 import { SampleDataChip } from '@/components/tracker/SampleDataChip';
 import { useColors } from '@/hooks/useColors';
 import type { Category, Habit } from '@/src/domain/models';
-import { CATEGORY_LABELS, CATEGORY_ORDER, PRESETS, type Preset } from '@/src/library/presets';
+import { CATEGORY_LABELS, CATEGORY_ORDER, PRESET_BY_ID, PRESETS, type Preset } from '@/src/library/presets';
 import { useHabitViews } from '@/src/state/hooks';
 import { useTracker } from '@/src/state/TrackerProvider';
 
@@ -24,7 +24,15 @@ export default function HabitsScreen() {
   const router = useRouter();
   const { state, actions } = useTracker();
   const views = useHabitViews();
-  const [preset, setPreset] = useState<Preset | null>(null);
+  // "/habits?preset=water" opens that preset's Library sheet straight away: the door from a Today
+  // card whose habit is gone lands on the thing to add back, not on the top of a long list.
+  const { preset: presetParam } = useLocalSearchParams<{ preset?: string }>();
+  const [preset, setPreset] = useState<Preset | null>(() => PRESET_BY_ID[presetParam ?? ''] ?? null);
+  const [openedFor, setOpenedFor] = useState(presetParam);
+  if (presetParam !== openedFor) {
+    setOpenedFor(presetParam);
+    setPreset(PRESET_BY_ID[presetParam ?? ''] ?? null);
+  }
   const [amountHabit, setAmountHabit] = useState<Habit | null>(null);
   const needsAmount = (h: Habit) => h.type === 'AMOUNT' || (h.type === 'TIMER' && !h.mindKind);
   const [customOpen, setCustomOpen] = useState(false);

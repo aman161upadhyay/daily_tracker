@@ -49,9 +49,12 @@ export async function drawAllWidgets(model: WidgetModel): Promise<void> {
  * through it instead of racing its saves. The re-plan and the snapshot are awaited here rather
  * than left to the app's debounced timers: Android may freeze the app as soon as the task ends.
  */
-async function tapThroughApp(live: LiveStore, habitId: string, kind: TileKind, tap: boolean): Promise<TrackerState> {
-  const { applied } = await live.apply((current) => (tap ? widgetTapActions(current, habitId, contextFor(current), kind) : []));
-  if (!applied) return live.current();
+async function tapThroughApp(live: LiveStore, habitId: string, kind: TileKind, tap: boolean): Promise<{ state: TrackerState; persisted: boolean }> {
+  const { applied, persisted } = await live.apply((current) => (tap ? widgetTapActions(current, habitId, contextFor(current), kind) : []));
+  if (!applied) return { state: live.current(), persisted: true };
+  // The store gave up saving: the app holds the tap in memory and shows its storage error, but the
+  // widget must not show numbers that are not on disk, nor snapshot them.
+  if (!persisted) return { state: live.current(), persisted: false };
   const ctx = contextFor(live.current());
   try {
     await replanLive(live, ctx);
@@ -59,7 +62,7 @@ async function tapThroughApp(live: LiveStore, habitId: string, kind: TileKind, t
     console.warn('Widget re-plan failed; the log is still saved', err);
   }
   await maybeSnapshot(() => live.current(), ctx.nowMs).catch((err) => console.warn('Snapshot after widget tap failed', err));
-  return live.current();
+  return { state: live.current(), persisted: true };
 }
 
 export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<void> {
@@ -77,7 +80,9 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
     const live = liveStore();
     if (live) {
       loaded = live.current();
-      state = await tapThroughApp(live, habitId, kind, tap);
+      const result = await tapThroughApp(live, habitId, kind, tap);
+      state = result.persisted ? result.state : loaded;
+      if (!result.persisted) notice = TAP_FAILED;
     } else {
       // One load → apply → persist at a time: a notification button pressed at the same moment runs
       // on this runtime too, and must see this tap before computing its own.
@@ -111,7 +116,9 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
         return { state: next, snapshot: true, nowMs: ctx.nowMs };
       });
       if ('live' in written) {
-        state = await tapThroughApp(written.live, habitId, kind, tap);
+        const result = await tapThroughApp(written.live, habitId, kind, tap);
+        state = result.persisted ? result.state : loaded;
+        if (!result.persisted) notice = TAP_FAILED;
       } else {
         state = written.state;
         // Outside the lock (the snapshot queue must never hold up the next headless write) but awaited:

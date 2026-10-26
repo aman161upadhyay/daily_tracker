@@ -86,16 +86,17 @@ const RULE: Table<HabitRule> = {
 
 const POLICY: Table<NudgePolicy> = {
   name: 'nudge_policy',
-  columns: ['habit_id', 'kind', 'interval_min', 'times_json', 'active_start_min', 'active_end_min', 'only_when_behind', 'max_per_day', 'enabled'],
+  columns: ['habit_id', 'kind', 'interval_min', 'times_json', 'weekdays_json', 'active_start_min', 'active_end_min', 'only_when_behind', 'max_per_day', 'enabled'],
   keyColumns: ['habit_id'],
   key: (p) => p.habitId,
-  toRow: (p) => [p.habitId, p.kind, opt(p.intervalMin), p.times ? JSON.stringify(p.times) : null, opt(p.activeStartMin), opt(p.activeEndMin), bool(p.onlyWhenBehind), p.maxPerDay, bool(p.enabled)],
+  toRow: (p) => [p.habitId, p.kind, opt(p.intervalMin), p.times ? JSON.stringify(p.times) : null, p.weekdays ? JSON.stringify(p.weekdays) : null, opt(p.activeStartMin), opt(p.activeEndMin), bool(p.onlyWhenBehind), p.maxPerDay, bool(p.enabled)],
   fromRow: (r) =>
     compact<NudgePolicy>({
       habitId: str(r, 'habit_id'),
       kind: str(r, 'kind') as NudgePolicy['kind'],
       intervalMin: optNum(r, 'interval_min'),
       times: r.times_json == null ? undefined : (JSON.parse(String(r.times_json)) as string[]),
+      weekdays: r.weekdays_json == null ? undefined : (JSON.parse(String(r.weekdays_json)) as number[]),
       activeStartMin: optNum(r, 'active_start_min'),
       activeEndMin: optNum(r, 'active_end_min'),
       onlyWhenBehind: num(r, 'only_when_behind') === 1,

@@ -25,7 +25,7 @@ import { useTracker } from '@/src/state/TrackerProvider';
  * notification button presses into state changes. Renders nothing.
  */
 export function NudgeScheduler() {
-  const { state, ready, nowMs, zone, today, apply } = useTracker();
+  const { state, ready, nowMs, zone, today, apply, replaceEpoch } = useTracker();
   const router = useRouter();
   const latest = useRef({ state, today, nowMs, zone });
   // Written after commit, not during render (a render-phase ref write makes the compiler skip
@@ -68,6 +68,14 @@ export function NudgeScheduler() {
     return remove;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
+
+  // The state was replaced (erase, restore, sample data): the service's record of what the old
+  // state's alarms delivered must not be folded into the new one. Queued ahead of the debounced
+  // re-plan below, which then schedules the new state's plan from a clean slate.
+  useEffect(() => {
+    if (!NOTIFICATIONS_SUPPORTED || replaceEpoch === 0) return;
+    cancelAll({ forget: true }).catch((err) => console.warn('Could not reset notifications', err));
+  }, [replaceEpoch]);
 
   // Re-plan whenever the plan changes (state or the minute), debounced.
   const plan = ready ? nudgePlan(state, today, nowMs, zone) : null;

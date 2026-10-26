@@ -110,7 +110,7 @@ docs/                     this plan, design system, habit library, device checkl
 | `habit_rule` | habitId, effectiveFrom, cadence `DAILY\|WEEKLY\|MONTHLY`, timesPerPeriod, target, freezesPerMonth (versioned; edits create a new row) |
 | `habit_entry` | habitId, day, at, zone, value, source `MANUAL\|AUTO_HC\|AUTO_WATER\|AUTO_TIMER\|AUTO_WIDGET`, manualOverride, externalId? |
 | `water_entry` | at, zone, day, ml, source, externalId? (Health Connect hydration imports) |
-| `nudge_policy` | habitId, kind `INTERVAL\|FIXED\|ROTATION\|EVENT\|CYCLE`, intervalMin, times (JSON), activeStart, activeEnd, days (bitmask), onlyWhenBehind, maxPerDay, enabled |
+| `nudge_policy` | habitId, kind `INTERVAL\|FIXED\|ROTATION\|EVENT\|CYCLE`, intervalMin, times (JSON), weekdays (JSON, 0 = Mon … 6 = Sun, absent = every day; schema v6), activeStart, activeEnd, onlyWhenBehind, maxPerDay, enabled |
 | `nudge_event` | at, habitId, kind, outcome `FIRED\|DONE\|SNOOZED\|SKIPPED\|SWAPPED\|EXPIRED` (feeds highlights and the "is this nagging?" tuning) |
 | `movement_snack` | at, day, type, reps/seconds, trigger `NUDGE\|WIDGET\|SUGAR_SHIELD\|MANUAL` |
 | `mind_session` | startAt, endAt, kind `MEDITATION\|BREATHING`, minutes, day |
