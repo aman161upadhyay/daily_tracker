@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Platform, StyleSheet, Switch, View } from 'react-native';
+import { StyleSheet, Switch, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useBackOrHome } from '@/hooks/useBackOrHome';
 import { AdherenceBar } from '@/components/tracker/AdherenceBar';
@@ -7,9 +7,11 @@ import { AmountSheet } from '@/components/tracker/AmountSheet';
 import { BackfillStrip } from '@/components/tracker/BackfillStrip';
 import { EvidenceBlock } from '@/components/tracker/EvidenceBlock';
 import { HabitEditorSheet } from '@/components/tracker/HabitEditorSheet';
+import { ReminderPolicySheet } from '@/components/tracker/ReminderPolicySheet';
 import { Heatmap26w } from '@/components/tracker/Heatmap26w';
 import { MetricChart, RANGE_OPTIONS, type Range } from '@/components/tracker/MetricChart';
 import { Card } from '@/components/ui/Card';
+import { confirmDestructive } from '@/components/ui/confirm';
 import { UI } from '@/components/ui/icons';
 import { Divider, IconButton, IconTile, PillButton, Row, SectionHeader, Segmented } from '@/components/ui/primitives';
 import { Screen } from '@/components/ui/Screen';
@@ -17,7 +19,8 @@ import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import { adherenceColor, FLOW_THRESHOLD, STAGE_LABELS } from '@/src/domain/adherence/adherenceScale';
 import { withAlpha } from '@/src/domain/color/oklch';
-import { describeRule, formatClock, formatDayShort, formatNumber, formatVolume, formatWeekdayShort } from '@/src/domain/time/format';
+import { describePolicy, type PolicyContext } from '@/src/domain/nudges/describePolicy';
+import { describeRule, formatClock, formatDayShort, formatHabitValue, formatVolume, formatWeekdayShort, habitAmountText, habitUnit, mlToOz } from '@/src/domain/time/format';
 import { lastNDays, minutesOfDay } from '@/src/domain/time/trackingDay';
 import { PRESET_BY_ID } from '@/src/library/presets';
 import { useHabitView } from '@/src/state/hooks';
@@ -34,6 +37,7 @@ export default function HabitDetailScreen() {
   const view = useHabitView(habit);
   const [range, setRange] = useState<Range>('W');
   const [editing, setEditing] = useState(false);
+  const [policyOpen, setPolicyOpen] = useState(false);
   const [amount, setAmount] = useState<{ mode: 'add' | 'set'; day?: string; current?: number } | null>(null);
 
   const preset = habit?.presetId ? PRESET_BY_ID[habit.presetId] : undefined;
@@ -93,19 +97,22 @@ export default function HabitDetailScreen() {
       ? view.doneToday
         ? 'Done'
         : 'Not yet'
-      : formatNumber(view.todayValue);
-  const todayUnit = weekly ? (view.periodLabel ?? 'this period') : habit.type === 'YES_NO' ? 'today' : `of ${formatNumber(view.target)} ${habit.unit} today`;
+      : formatHabitValue(habit, view.todayValue, state.settings.units).value;
+  const todayUnit = weekly ? (view.periodLabel ?? 'this period') : habit.type === 'YES_NO' ? 'today' : `of ${habitAmountText(habit, view.target, state.settings.units)} today`;
   const completed14 = view.ratios14.filter((r) => r.ratio >= 1).length;
   const last14 = lastNDays(today, 14);
   const periodNoun = view.rule.cadence === 'DAILY' ? 'day' : view.rule.cadence === 'WEEKLY' ? 'week' : 'month';
   const plural = (n: number) => (n === 1 ? periodNoun : `${periodNoun}s`);
   const isWater = habit.presetId === 'water';
   const units = state.settings.units;
+  const policyContext: PolicyContext = { movement: !!habit.snackType, water: isWater, rotationIntervalMin: state.settings.nudgeIntervalMin };
+  // The Sugar Shield's follow-up is scheduled by its card, not by a cadence; nothing to tune here.
+  const policyEditable = view.policy?.kind !== 'EVENT' && view.policy?.kind !== 'CYCLE';
   const todayWater = isWater ? state.water.filter((w) => w.day === today).sort((a, b) => b.at - a.at) : [];
   const editRule = latestRule(state, habit.id) ?? view.rule;
   // A rhythm saved for the next period is not in force yet; say so, or the save looks lost.
   const pendingRule = editRule.effectiveFrom > today && editRule !== view.rule ? editRule : null;
-  const pendingNote = pendingRule ? `From ${formatDayShort(pendingRule.effectiveFrom)}: ${describeRule(habit, pendingRule)}` : null;
+  const pendingNote = pendingRule ? `From ${formatDayShort(pendingRule.effectiveFrom)}: ${describeRule(habit, pendingRule, units)}` : null;
   const quickLabel = isWater
     ? (() => {
         const f = formatVolume(state.settings.tapSizeMl, units);
@@ -125,28 +132,16 @@ export default function HabitDetailScreen() {
     setAmount({ mode: 'set', day, current: value });
   };
 
-  const archive = () => {
-    const go = () => {
+  const archive = () =>
+    confirmDestructive('Archive this habit?', 'Its history is kept; you can add it again from the Library.', 'Archive', () => {
       actions.updateHabit(habit.id, { archived: true });
       goBack();
-    };
-    if (Platform.OS === 'web') return go();
-    Alert.alert('Archive this habit?', 'Its history is kept; you can add it again from the Library.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Archive', style: 'destructive', onPress: go },
-    ]);
-  };
-  const remove = () => {
-    const go = () => {
+    });
+  const remove = () =>
+    confirmDestructive('Delete this habit?', 'Its logs are deleted too. This cannot be undone.', 'Delete', () => {
       actions.deleteHabit(habit.id);
       goBack();
-    };
-    if (Platform.OS === 'web') return go();
-    Alert.alert('Delete this habit?', 'Its logs are deleted too. This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: go },
-    ]);
-  };
+    });
 
   return (
     <Screen topInset={false}>
@@ -158,7 +153,7 @@ export default function HabitDetailScreen() {
           <View style={{ flex: 1 }}>
             <Txt role="title2">{habit.name}</Txt>
             <Txt role="footnote" tone="secondary">
-              {describeRule(habit, view.rule)}
+              {describeRule(habit, view.rule, units)}
             </Txt>
             {pendingNote ? (
               <Txt role="caption" tone="tertiary">
@@ -217,7 +212,7 @@ export default function HabitDetailScreen() {
 
       <SectionHeader title="Last 7 days" />
       <Card>
-        <BackfillStrip habit={habit} today={today} targetOf={(d) => ruleFor(state, habit.id, d)?.target ?? view.target} valueOf={(d) => habitDayValue(state, habit, d)} periods={view.periods} onPressDay={onBackfill} />
+        <BackfillStrip habit={habit} today={today} units={units} targetOf={(d) => ruleFor(state, habit.id, d)?.target ?? view.target} valueOf={(d) => habitDayValue(state, habit, d)} periods={view.periods} onPressDay={onBackfill} />
         <Txt role="caption" tone="tertiary" align="center" style={{ marginTop: 12 }}>
           {habit.createdDay >= today
             ? 'Added today — from tomorrow, tap a day here to fix a missed log.'
@@ -251,7 +246,13 @@ export default function HabitDetailScreen() {
                           {w.source === 'AUTO_WIDGET' ? ' · widget' : ''}
                         </Txt>
                       </Row>
-                      <IconButton Glyph={UI.Trash} label={`Delete ${f.value} ${f.unit} entry`} onPress={() => actions.removeLog('water', w.id)} size={36} color={c.textSecondary} />
+                      <IconButton
+                        Glyph={UI.Trash}
+                        label={`Delete ${f.value} ${f.unit} entry`}
+                        onPress={() => confirmDestructive('Remove this drink?', `${f.value} ${f.unit} at ${formatClock(minutesOfDay(w.at, zone))} comes off today's total.`, 'Remove', () => actions.removeLog('water', w.id))}
+                        size={36}
+                        color={c.textSecondary}
+                      />
                     </Row>
                     {i < todayWater.length - 1 ? <Divider /> : null}
                   </View>
@@ -265,7 +266,14 @@ export default function HabitDetailScreen() {
       <Card>
         <Segmented options={RANGE_OPTIONS} value={range} onChange={setRange} />
         <View style={{ marginTop: 14 }}>
-          <MetricChart values={chart.values} labels={chart.labels} color={chart.color} goal={habit.type === 'YES_NO' ? undefined : view.target} kind={chart.kind} unit={habit.unit} />
+          <MetricChart
+            values={isWater && units === 'oz' ? chart.values.map((v) => Math.round(mlToOz(v) * 10) / 10) : chart.values}
+            labels={chart.labels}
+            color={chart.color}
+            goal={habit.type === 'YES_NO' ? undefined : isWater && units === 'oz' ? Math.round(mlToOz(view.target) * 10) / 10 : view.target}
+            kind={chart.kind}
+            unit={habitUnit(habit, units)}
+          />
         </View>
       </Card>
 
@@ -300,18 +308,18 @@ export default function HabitDetailScreen() {
         </>
       ) : null}
 
-      <SectionHeader title="Nudges" />
+      <SectionHeader title="Reminders" />
       <Card>
         <Row gap={12}>
           <IconTile Glyph={UI.Bell} color={color} size={40} />
           <View style={{ flex: 1 }}>
             <Txt role="title2">Remind me</Txt>
             <Txt role="footnote" tone="secondary">
-              {preset?.nudgeText ?? 'No automatic reminders for custom habits yet'}
+              {describePolicy(view.policy, policyContext)}
             </Txt>
           </View>
           <Switch
-            value={view.policy?.enabled ?? false}
+            value={!!view.policy?.enabled && view.policy.kind !== 'NONE'}
             disabled={!view.policy || view.policy.kind === 'NONE'}
             onValueChange={(v) => view.policy && actions.setPolicy({ ...view.policy, enabled: v })}
             trackColor={{ false: c.hairline, true: c.green }}
@@ -320,11 +328,18 @@ export default function HabitDetailScreen() {
           />
         </Row>
         <Divider />
-        <Txt role="footnote" tone="tertiary" style={{ marginTop: 10 }}>
-          {view.policy && view.policy.kind !== 'NONE'
-            ? 'Reminders arrive as notifications with Done, Snooze and Swap buttons, inside your active hours and daily cap (Settings → Reminders).'
-            : 'This habit has no automatic reminder; a Today nudge still points to it when it is next in line.'}
-        </Txt>
+        <Row gap={10} style={{ marginTop: 10, alignItems: 'center' }}>
+          <Txt role="footnote" tone="tertiary" style={{ flex: 1 }}>
+            {policyEditable
+              ? view.policy && view.policy.kind !== 'NONE' && view.policy.enabled
+                ? view.policy.kind === 'FIXED'
+                  ? 'Set times ring at their time; interval reminders stay inside your active hours. All count toward the daily cap (Settings → Reminders).'
+                  : 'Arrives as a notification with Done and Snooze buttons, inside your active hours and the daily cap (Settings → Reminders).'
+                : 'No reminder for this habit; a Today nudge still points to it when it is next in line.'
+              : 'On demand: the card schedules its own follow-up.'}
+          </Txt>
+          {policyEditable ? <PillButton label={view.policy && view.policy.kind !== 'NONE' ? 'Change' : 'Set up'} kind="ghost" compact onPress={() => setPolicyOpen(true)} /> : null}
+        </Row>
       </Card>
 
       <SectionHeader title="Options" />
@@ -333,7 +348,7 @@ export default function HabitDetailScreen() {
           <View style={{ flex: 1 }}>
             <Txt role="title2">Rule</Txt>
             <Txt role="footnote" tone="secondary">
-              {describeRule(habit, view.rule)} · {view.rule.freezesPerMonth} freezes a month
+              {describeRule(habit, view.rule, units)} · {view.rule.freezesPerMonth} freezes a month
             </Txt>
             {pendingNote ? (
               <Txt role="caption" tone="tertiary">
@@ -361,6 +376,7 @@ export default function HabitDetailScreen() {
       </Card>
 
       <HabitEditorSheet visible={editing} onClose={() => setEditing(false)} habit={habit} rule={editRule} />
+      <ReminderPolicySheet visible={policyOpen} onClose={() => setPolicyOpen(false)} habit={habit} policy={view.policy} context={policyContext} onSave={(p) => actions.setPolicy(p)} />
       {amount ? <AmountSheet visible onClose={() => setAmount(null)} habit={habit} mode={amount.mode} day={amount.day} current={amount.current} /> : null}
     </Screen>
   );

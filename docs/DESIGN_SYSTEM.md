@@ -18,7 +18,7 @@ generic SaaS-card chrome) — with this brief's explicit color direction taking 
 | Apple Health pattern | Daily Tracker equivalent |
 |---|---|
 | **Summary** tab: large bold title, date line, profile avatar top-right | **Today** tab: "Today", "Sunday, Oct 25", avatar → Settings |
-| **Favorites**: metric cards — colored icon + name + chevron, big value + unit, timestamp, mini chart | **Pinned** cards: Water, Movement snacks, Meditation, Steps, Sleep, Cycle (user chooses which are pinned) |
+| **Favorites**: metric cards — colored icon + name + chevron, big value + unit, timestamp, mini chart | **Pinned** cards: Water, Movement snacks, Meditation (always), Cycle (when tracked and "Show on Today" is on); a picker for Steps / Sleep and the order is backlog item B5 — `Settings.pinned` exists for it but is not read yet |
 | **Activity rings** (Move / Exercise / Stand) | **Today rings**: Hydration / Movement / Mind — the hero card at the top of Today |
 | **Highlights**: insight cards with comparison sparklines ("You walked more this week") | **Highlights**: generated from data (e.g. "You logged water 6 of 7 days", "Best streak: squats, 12 days") |
 | **Browse** tab: search + category list with colored icons | **Habits** tab: your habits grouped by category + the **Library** of evidence-based presets |

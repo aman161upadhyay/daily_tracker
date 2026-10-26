@@ -69,11 +69,9 @@ export default function BodyMetricScreen() {
   }, [body, metric]);
 
   const bestLabel = metric === 'heart' ? 'Lowest' : metric === 'weight' ? 'Latest' : 'Best';
-  const dailyValues = useMemo(() => {
-    const m = metricSeries(body, metric, calendarToday, range === 'D' ? 'D' : range === 'W' ? 'W' : 'M', units, goal);
-    return m.values;
-  }, [body, metric, calendarToday, range, units, goal]);
-  const present = dailyValues.filter((v) => v > 0);
+  // The figures describe the range on screen: on 6M and 1Y the best (or lowest) day of those months,
+  // from the daily readings behind the weekly averages, not the last 30 days under a different label.
+  const present = series.daily.filter((v) => v > 0);
   const best = present.length === 0 ? undefined : metric === 'heart' ? Math.min(...present) : metric === 'weight' ? present[present.length - 1] : Math.max(...present);
 
   return (

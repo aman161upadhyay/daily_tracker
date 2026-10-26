@@ -8,7 +8,8 @@ import React from 'react';
 import { requestWidgetUpdate, type WidgetTaskHandlerProps } from 'react-native-android-widget';
 import { createStore } from '@/src/data/createStore';
 import { withHeadlessLock } from '@/src/services/headlessLock';
-import { contextFor, markHeadlessWrite, replanHeadless, replanLive } from '@/src/services/replan';
+import type { FiredRecord } from '@/src/services/notifications';
+import { acknowledgeDeliveries, contextFor, markHeadlessWrite, replanHeadless, replanLive } from '@/src/services/replan';
 import { maybeSnapshot } from '@/src/services/snapshotSync';
 import { applyAll, widgetTapActions } from '@/src/state/commands';
 import { liveStore, type LiveStore } from '@/src/state/liveStore';
@@ -94,8 +95,9 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
         if (actions.length === 0) return { state: current, snapshot: false };
         const applied = applyAll(current, actions, reducer);
         let next = applied;
+        let delivered: FiredRecord[] = [];
         try {
-          next = await replanHeadless(applied, ctx);
+          ({ next, delivered } = await replanHeadless(applied, ctx));
         } catch (err) {
           console.warn('Widget re-plan failed; the log is still saved', err);
         }
@@ -103,6 +105,8 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
         const aliveNow = liveStore();
         if (aliveNow) return { live: aliveNow };
         await store.persist(current, next);
+        // The deliveries folded above are on disk now; nothing needs to replay them.
+        await acknowledgeDeliveries(delivered).catch((err) => console.warn('Delivery journal update failed', err));
         await markHeadlessWrite();
         return { state: next, snapshot: true, nowMs: ctx.nowMs };
       });

@@ -200,8 +200,11 @@ export function widgetTapActions(state: TrackerState, habitId: string, ctx: Comm
  * it must settle each of its slots, or the others come back on their own two minutes later. The
  * constituents point back at the notification (`via`) so the daily cap still counts one ring.
  */
-export function nudgeEventActions(payload: Pick<NudgePayload, 'nudgeId' | 'habitIds' | 'mergedIds'>, kind: NudgeEventKind, ctx: CommandContext, untilMs?: number): Action[] {
+export function nudgeEventActions(payload: Pick<NudgePayload, 'nudgeId' | 'habitIds' | 'mergedIds'> & { day?: string }, kind: NudgeEventKind, ctx: CommandContext, untilMs?: number): Action[] {
   const ids = payload.mergedIds && payload.mergedIds.includes(payload.nudgeId) ? payload.mergedIds : [payload.nudgeId, ...(payload.mergedIds ?? [])];
+  // The event belongs to the tracking day the notification was planned for, not the day the
+  // button was pressed: a 23:50 nudge answered at 3:10 am must not spend the new day's cap.
+  const day = payload.day || ctx.today;
   return [...new Set(ids)].map((nudgeId) => {
     const event: NudgeEvent = {
       id: ctx.newId(),
@@ -209,7 +212,7 @@ export function nudgeEventActions(payload: Pick<NudgePayload, 'nudgeId' | 'habit
       habitIds: payload.habitIds,
       at: ctx.nowMs,
       zone: ctx.zone,
-      day: ctx.today,
+      day,
       kind,
       ...(untilMs !== undefined ? { untilMs } : {}),
       ...(nudgeId !== payload.nudgeId ? { via: payload.nudgeId } : {}),
@@ -219,7 +222,7 @@ export function nudgeEventActions(payload: Pick<NudgePayload, 'nudgeId' | 'habit
 }
 
 /** The first of `nudgeEventActions`: the event against the notification's own id. */
-export function nudgeEventAction(payload: Pick<NudgePayload, 'nudgeId' | 'habitIds'>, kind: NudgeEventKind, ctx: CommandContext, untilMs?: number): Action {
+export function nudgeEventAction(payload: Pick<NudgePayload, 'nudgeId' | 'habitIds'> & { day?: string }, kind: NudgeEventKind, ctx: CommandContext, untilMs?: number): Action {
   return nudgeEventActions({ ...payload, mergedIds: undefined }, kind, ctx, untilMs)[0]!;
 }
 
@@ -284,9 +287,15 @@ export function nudgeResponseActions(state: TrackerState, payload: NudgePayload,
       out.push(...nudgeEventActions(payload, 'SWAPPED', ctx));
       break;
     case 'OPEN':
-    case 'TAP':
+    case 'TAP': {
+      // A tap acknowledges a delivery the sync may already have written down (the OS fired it,
+      // the next reconcile recorded it); a second FIRED for the same day would be noise at best
+      // and, stamped with the tap's day, a charge against the wrong day's cap.
+      const day = payload.day || ctx.today;
+      if (state.nudgeEvents.some((e) => e.nudgeId === payload.nudgeId && e.kind === 'FIRED' && e.day === day)) break;
       out.push(...nudgeEventActions(payload, 'FIRED', ctx));
       break;
+    }
   }
   return out;
 }
@@ -301,15 +310,20 @@ function waterStillCurrent(state: TrackerState, nudgeId: string, nowMs: number):
 
 /** Record delivered nudges the OS fired while we were not watching (see nudgeScheduler). */
 export function firedActions(state: TrackerState, fired: { id: string; habitIds: string[]; day: string; at: number; mergedIds?: string[] }[], ctx: CommandContext): Action[] {
-  const known = new Set(state.nudgeEvents.map((e) => e.nudgeId));
+  // One delivery is one occurrence of a slot at a time: a slot snoozed or swapped comes back under
+  // the same id at a later time, and that second ring must be written down too, or the slot stays
+  // re-offerable for ever (a swap) and never spends the cap (a snooze). The same report folded
+  // twice — the delivery journal is replayed until the state that holds it is saved — is a no-op.
+  const known = new Set(state.nudgeEvents.filter((e) => e.kind === 'FIRED').map((e) => `${e.nudgeId}|${e.at}`));
   const out: Action[] = [];
   for (const f of fired) {
-    if (known.has(f.id)) continue;
     // A merged notification rang for every slot in it; each is written down (the constituents
-    // pointing at the notification), so none is re-offered as if it had never rung.
+    // pointing at the notification), so none is re-offered as if it had never rung. A slot already
+    // settled by a button (done, dismissed) keeps its terminal event on top; the extra FIRED is inert.
     for (const nudgeId of new Set([f.id, ...(f.mergedIds ?? [])])) {
-      if (known.has(nudgeId)) continue;
-      known.add(nudgeId);
+      const occurrence = `${nudgeId}|${f.at}`;
+      if (known.has(occurrence)) continue;
+      known.add(occurrence);
       out.push({
         type: 'NUDGE_EVENT',
         event: { id: ctx.newId(), nudgeId, habitIds: f.habitIds, at: f.at, zone: ctx.zone, day: f.day, kind: 'FIRED', ...(nudgeId !== f.id ? { via: f.id } : {}) },

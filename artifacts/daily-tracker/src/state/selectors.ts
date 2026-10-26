@@ -829,9 +829,14 @@ function calendarTodayOf(nowMs: number, zone: string): string {
 
 const planCache = new WeakMap<TrackerState, { key: string; plan: ScheduledNudge[] }>();
 
-/** Everything that should be scheduled right now; memoized per state, minute, tracking day and zone. */
+/**
+ * Everything that should be scheduled right now; memoized per state, instant, tracking day and zone.
+ * The instant, not the minute: the screens all read one clock tick, so they share a plan anyway, and
+ * the sync passes its own exact time — a plan cached for an earlier second would place the first
+ * slot inside the minimum lead and the OS would be asked for a time already past.
+ */
 export function nudgePlan(state: TrackerState, today: string, nowMs: number, zone: string): ScheduledNudge[] {
-  const key = `${Math.floor(nowMs / 60_000)}|${today}|${zone}`;
+  const key = `${nowMs}|${today}|${zone}`;
   const cached = planCache.get(state);
   if (cached && cached.key === key) return cached.plan;
   const plan = planNudges(planInputFor(state, today, nowMs, zone));

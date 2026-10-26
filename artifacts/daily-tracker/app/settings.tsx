@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Platform, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { StyleSheet, Switch, TextInput, View } from 'react-native';
 import Constants from 'expo-constants';
 import { AppLockCard } from '@/components/settings/AppLockCard';
 import { BackupCard } from '@/components/settings/BackupCard';
@@ -11,6 +11,7 @@ import { UI } from '@/components/ui/icons';
 import { Chip, Divider, PillButton, Row, SectionHeader, Segmented, Stepper } from '@/components/ui/primitives';
 import { Screen } from '@/components/ui/Screen';
 import { Txt } from '@/components/ui/Txt';
+import { confirmDestructive } from '@/components/ui/confirm';
 import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
 import type { ThemePreference, Units } from '@/src/domain/models';
@@ -27,17 +28,7 @@ export default function SettingsScreen() {
   const { state, actions } = useTracker();
   const s = state.settings;
 
-  const confirm = (title: string, message: string, label: string, run: () => void) => {
-    if (Platform.OS === 'web') {
-      // eslint-disable-next-line no-alert
-      if (typeof window !== 'undefined' && !window.confirm(`${title}\n\n${message}`)) return;
-      return run();
-    }
-    Alert.alert(title, message, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: label, style: 'destructive', onPress: run },
-    ]);
-  };
+  const confirm = confirmDestructive;
 
   return (
     <Screen topInset={false}>

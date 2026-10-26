@@ -7,17 +7,11 @@
 import type { MindKind } from '@/src/domain/models';
 import type { ScheduledNudge } from '@/src/domain/nudges/planner';
 import type { NudgePayload } from '@/src/state/commands';
+import type { FiredRecord } from './deliveryJournal';
+
+export type { FiredRecord } from './deliveryJournal';
 
 export type PermissionState = 'granted' | 'denied' | 'undetermined' | 'unsupported';
-
-export interface FiredRecord {
-  id: string;
-  habitIds: string[];
-  day: string;
-  at: number;
-  /** A merged notification: every slot id it stood for. */
-  mergedIds?: string[];
-}
 
 export interface NudgeResponse {
   payload: NudgePayload;
@@ -58,6 +52,8 @@ export async function syncPlan(_plan: ScheduledNudge[], _nowMs: number): Promise
 }
 
 export async function cancelAll(): Promise<void> {}
+
+export async function acknowledgeDeliveries(_records: readonly FiredRecord[]): Promise<void> {}
 
 export function addResponseListener(_onResponse: (r: NudgeResponse) => void): () => void {
   return () => {};

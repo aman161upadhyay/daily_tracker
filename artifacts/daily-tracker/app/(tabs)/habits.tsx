@@ -72,6 +72,7 @@ export default function HabitsScreen() {
                 key={v.habit.id}
                 view={v}
                 last={i === g.items.length - 1}
+                units={state.settings.units}
                 onPress={() => openHabit(v.habit.id)}
                 onIncrement={() => (needsAmount(v.habit) ? setAmountHabit(v.habit) : actions.increment(v.habit))}
                 onToggle={() => actions.toggleYesNo(v.habit)}

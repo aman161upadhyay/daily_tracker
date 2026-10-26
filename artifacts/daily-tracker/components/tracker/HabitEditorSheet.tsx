@@ -3,8 +3,9 @@ import { StyleSheet, Switch, TextInput, View } from 'react-native';
 import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
 import { WATER_GOAL_MAX_ML, WATER_GOAL_MIN_ML } from '@/src/data/validate';
+import { defaultFreezes } from '@/src/domain/habits/streaks';
 import type { Cadence, Category, Habit, HabitIcon, HabitRule, HabitType } from '@/src/domain/models';
-import { formatNumber } from '@/src/domain/time/format';
+import { formatNumber, formatVolume, parseVolumeInput } from '@/src/domain/time/format';
 import { CATEGORY_LABELS } from '@/src/library/presets';
 import { type HabitDraft, useTracker } from '@/src/state/TrackerProvider';
 import { UI } from '../ui/icons';
@@ -46,7 +47,7 @@ function draftFrom(habit: Habit | undefined, rule: HabitRule | undefined): Habit
       pinned: habit.pinned,
     };
   }
-  return { name: '', category: 'mind', type: 'YES_NO', unit: '', icon: 'check', cadence: 'DAILY', timesPerPeriod: 3, target: 1, freezesPerMonth: 2, pinned: false };
+  return { name: '', category: 'mind', type: 'YES_NO', unit: '', icon: 'check', cadence: 'DAILY', timesPerPeriod: 3, target: 1, freezesPerMonth: defaultFreezes('DAILY'), pinned: false };
 }
 
 export interface HabitEditorSheetProps {
@@ -65,7 +66,8 @@ export interface HabitEditorSheetProps {
  */
 export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: HabitEditorSheetProps) {
   const c = useColors();
-  const { actions } = useTracker();
+  const { actions, state } = useTracker();
+  const units = state.settings.units;
   const [d, setD] = useState<HabitDraft>(() => draftFrom(habit, rule));
   const editing = !!habit;
   const preset = !!habit?.presetId;
@@ -134,7 +136,7 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
             <Row style={{ justifyContent: 'space-between', flexWrap: 'wrap', rowGap: 10 }}>
               {preset || d.type === 'TIMER' ? (
                 <Txt role="body" tone="secondary">
-                  {d.unit}
+                  {isWater ? units : d.unit}
                 </Txt>
               ) : (
                 <TextInput
@@ -148,13 +150,40 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
                 />
               )}
               {/* The unit is shown once, on the left; the stepper keeps to the number so "1,750 ml" fits beside it. */}
-              <Stepper value={d.target} onChange={(target) => set({ target })} step={targetStep} min={targetMin} max={targetMax} label={`target in ${d.unit || 'times'}`} format={formatNumber} />
+              {isWater ? (
+                // The water goal is kept in ml and shown in the units setting; typed ounces are read as ounces.
+                <Stepper
+                  value={d.target}
+                  onChange={(target) => set({ target })}
+                  step={targetStep}
+                  min={targetMin}
+                  max={targetMax}
+                  label={`target in ${units}`}
+                  format={(v) => formatVolume(v, units).value}
+                  parse={(text) => parseVolumeInput(text, units)}
+                  keyboardType="decimal-pad"
+                  inputKind="amount"
+                />
+              ) : (
+                <Stepper value={d.target} onChange={(target) => set({ target })} step={targetStep} min={targetMin} max={targetMax} label={`target in ${d.unit || 'times'}`} format={formatNumber} />
+              )}
             </Row>
           </Field>
         ) : null}
 
         <Field label="How often">
-          <Segmented<Cadence> options={CADENCE_OPTIONS} value={d.cadence} onChange={(cadence) => set({ cadence, timesPerPeriod: cadence === 'WEEKLY' ? Math.min(d.timesPerPeriod, 7) : d.timesPerPeriod })} />
+          <Segmented<Cadence>
+            options={CADENCE_OPTIONS}
+            value={d.cadence}
+            onChange={(cadence) =>
+              set({
+                cadence,
+                timesPerPeriod: cadence === 'WEEKLY' ? Math.min(d.timesPerPeriod, 7) : d.timesPerPeriod,
+                // The freezes follow the cadence's default until the person sets them by hand.
+                freezesPerMonth: d.freezesPerMonth === defaultFreezes(d.cadence) ? defaultFreezes(cadence) : d.freezesPerMonth,
+              })
+            }
+          />
           {d.cadence !== 'DAILY' ? (
             <Row style={{ justifyContent: 'space-between', marginTop: 12 }}>
               <Txt role="body" tone="secondary">

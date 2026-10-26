@@ -112,6 +112,27 @@ export function formatVolume(ml: number, units: 'ml' | 'oz'): { value: string; u
 }
 
 /**
+ * A habit's value in the unit the person reads: the Water preset is stored in ml and shown in the
+ * units setting (ounces with one decimal); every other habit keeps its own unit. One helper for the
+ * rows, the detail screen, the editor and the charts, so "oz" never shows next to a figure in ml.
+ */
+export function formatHabitValue(habit: { presetId?: string; unit: string }, value: number, units: 'ml' | 'oz'): { value: string; unit: string } {
+  if (habit.presetId === 'water') return formatVolume(value, units);
+  return { value: formatNumber(value), unit: habit.unit };
+}
+
+/** `formatHabitValue` as one string: "8.5 oz", "10 squats", "3" (no unit). */
+export function habitAmountText(habit: { presetId?: string; unit: string }, value: number, units: 'ml' | 'oz'): string {
+  const f = formatHabitValue(habit, value, units);
+  return `${f.value} ${f.unit}`.trim();
+}
+
+/** The unit word a habit's figures carry: the units setting for the Water preset, its own otherwise. */
+export function habitUnit(habit: { presetId?: string; unit: string }, units: 'ml' | 'oz'): string {
+  return habit.presetId === 'water' ? units : habit.unit;
+}
+
+/**
  * A typed number, however the keyboard wrote it: "64", "8.5", "1,850", "1,5" (a decimal-comma
  * keyboard), "1,850.5". A comma is a thousands separator when it groups exactly three digits with
  * no point in sight — "1,850" is a volume in ml far more often than 1.85 of anything — and a decimal
@@ -138,14 +159,15 @@ export function parseVolumeInput(text: string, units: 'ml' | 'oz'): number | nul
   return units === 'oz' ? Math.round(ozToMl(n)) : Math.round(n);
 }
 
-/** "2,000 ml a day", "10 squats · 6 sets a day", "3 days a week", "Every day". */
+/** "2,000 ml a day" (or "67.6 oz a day" in ounces), "10 squats · 6 sets a day", "3 days a week", "Every day". */
 export function describeRule(
-  habit: { type: 'YES_NO' | 'COUNT' | 'AMOUNT' | 'TIMER'; unit: string },
+  habit: { type: 'YES_NO' | 'COUNT' | 'AMOUNT' | 'TIMER'; unit: string; presetId?: string },
   rule: { cadence: 'DAILY' | 'WEEKLY' | 'MONTHLY'; timesPerPeriod: number; target: number },
+  units: 'ml' | 'oz' = 'ml',
 ): string {
   const period = rule.cadence === 'WEEKLY' ? 'week' : 'month';
   const cadence = rule.cadence === 'DAILY' ? 'a day' : `${rule.timesPerPeriod} day${rule.timesPerPeriod === 1 ? '' : 's'} a ${period}`;
   if (habit.type === 'YES_NO') return rule.cadence === 'DAILY' ? 'Every day' : cadence;
-  const amount = `${formatNumber(rule.target)} ${habit.unit}`.trim();
+  const amount = habitAmountText(habit, rule.target, units);
   return rule.cadence === 'DAILY' ? `${amount} ${cadence}` : `${amount} on ${cadence}`;
 }

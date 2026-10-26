@@ -299,7 +299,7 @@ replaced computer. Do this once, before the first APK you hand out.
 | `JAVA_HOME is not set` or `Unsupported class file major version` | Wrong or missing Java | Set `JAVA_HOME` to Android Studio's `jbr` folder as in Part 1 step 5. |
 | `adb devices` shows nothing | Phone not visible | Different cable/port, USB debugging on, choose *File transfer* on the phone, tap Allow. |
 | `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | The app on the phone was signed with a different key | Export a backup in the app, uninstall it, install again, import. |
-| `INSTALL_FAILED_VERSION_DOWNGRADE` | The phone has a newer version number | `git pull` to get the latest code. If you really want the older build: in the app, Settings → Your data → Export backup, then uninstall, install, import. |
+| `INSTALL_FAILED_VERSION_DOWNGRADE` | The phone has a newer version number | `git pull` to get the latest code. If you really want the older build: in the app, Settings → Your data → Export backup, then uninstall, install, import. An older build reads a newer backup but may not keep everything the newer one recorded (for example v0.12 drops the link between the parts of a merged reminder) — logs, habits and settings are kept. |
 | `Could not resolve …` / `Connection timed out` during the build | A download failed | Check the internet (turn off VPN), run the same command again — it continues where it stopped. |
 | `Filename too long` (Windows) | Project folder path too deep | Move the project to `C:\dev\daily_tracker`. |
 | `EPERM` / `EBUSY` / file in use (Windows) | Another program holds a file | Close Android Studio and any Explorer window inside the project; try again. |

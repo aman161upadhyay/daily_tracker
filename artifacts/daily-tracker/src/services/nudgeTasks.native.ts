@@ -18,8 +18,8 @@ import { describeSyncError, performBodySync } from './bodySync';
 import { HEALTH_CONNECT_SUPPORTED } from './healthConnect';
 import { withHeadlessLock } from './headlessLock';
 import { parseResponse } from './notificationPayload';
-import { BACKGROUND_REPLAN_TASK, NUDGE_RESPONSE_TASK, beginHandling, endHandling } from './notifications';
-import { contextFor, markHeadlessWrite, replanHeadless, replanLive } from './replan';
+import { BACKGROUND_REPLAN_TASK, NUDGE_RESPONSE_TASK, beginHandling, endHandling, type FiredRecord } from './notifications';
+import { acknowledgeDeliveries, contextFor, markHeadlessWrite, replanHeadless, replanLive } from './replan';
 import { maybeSnapshot } from './snapshotSync';
 import { refreshWidgets } from './widget';
 
@@ -86,8 +86,9 @@ async function handleHeadlessResponse(raw: unknown): Promise<void> {
       const ctx = contextFor(state);
       const applied = applyAll(state, build(state), reducer);
       let next = applied;
+      let delivered: FiredRecord[] = [];
       try {
-        next = await replanHeadless(applied, ctx);
+        ({ next, delivered } = await replanHeadless(applied, ctx));
       } catch (err) {
         console.warn('Re-plan after a notification button failed; the log is still saved', err);
       }
@@ -96,6 +97,8 @@ async function handleHeadlessResponse(raw: unknown): Promise<void> {
       const aliveNow = liveStore();
       if (aliveNow) return { live: aliveNow };
       await store.persist(state, next);
+      // The deliveries folded above are on disk now; nothing needs to replay them.
+      await acknowledgeDeliveries(delivered).catch((err) => console.warn('Delivery journal update failed', err));
       return { next, ctx };
     });
     if (written && 'live' in written) {
@@ -135,7 +138,10 @@ TaskManager.defineTask(BACKGROUND_REPLAN_TASK, async () => {
         const epoch = bodyEpoch();
         try {
           const { build } = await performBodySync(() => live.current(), ctx);
-          await live.apply((s) => (bodyEpoch() === epoch && s.settings.healthConnectEnabled ? build(s) : []));
+          const { applied } = await live.apply((s) => (bodyEpoch() === epoch && s.settings.healthConnectEnabled ? build(s) : []));
+          // Imported steps change what the plan says (a 19:00 check-in that is no longer wanted, a
+          // "behind pace" that is not): the schedule pushed a moment ago described the old figures.
+          if (applied) await replanLive(live, ctx);
         } catch (err) {
           // The Body tab shows the last failure inline (no toast): a background read that threw
           // (Health Connect disabled, uninstalled, access withdrawn) must leave the same mark the
@@ -155,12 +161,21 @@ TaskManager.defineTask(BACKGROUND_REPLAN_TASK, async () => {
       const state = await store.load();
       if (!state) return null;
       const ctx = contextFor(state);
-      let next = await replanHeadless(state, ctx);
+      const first = await replanHeadless(state, ctx);
+      let next = first.next;
+      let delivered = first.delivered;
       // Pull Health Connect while we are awake anyway, when background reads were granted.
       if (HEALTH_CONNECT_SUPPORTED && next.settings.healthConnectEnabled && next.body.sync.background) {
         try {
           const { build } = await performBodySync(next, ctx);
-          next = applyAll(next, build(next), reducer);
+          const imported = applyAll(next, build(next), reducer);
+          if (imported !== next) {
+            // The schedule was built from the old figures; plan again from the imported ones.
+            next = imported;
+            const again = await replanHeadless(next, ctx);
+            next = again.next;
+            delivered = [...delivered, ...again.delivered];
+          }
         } catch (err) {
           console.warn('Background Health Connect sync failed', err);
           next = applyAll(next, [{ type: 'BODY_SYNC', patch: { lastError: describeSyncError(err) } }], reducer);
@@ -168,10 +183,12 @@ TaskManager.defineTask(BACKGROUND_REPLAN_TASK, async () => {
       }
       // The app came alive meanwhile: it is the writer now; its own scheduler and sync take over.
       if (liveStore()) return null;
-      if (next === state) return { next, ctx, changed: false };
+      if (next === state) return { next, ctx, changed: false, delivered };
       await store.persist(state, next);
-      return { next, ctx, changed: true };
+      return { next, ctx, changed: true, delivered };
     });
+    // Saved (or nothing to save, which means nothing was folded either): the journal can forget them.
+    if (written) await acknowledgeDeliveries(written.delivered).catch((err) => console.warn('Delivery journal update failed', err));
     if (written?.changed) await afterHeadlessWrite(written.next, written.ctx);
     else if (written) {
       // Even without a change the widget is redrawn — the tracking day may have turned over with

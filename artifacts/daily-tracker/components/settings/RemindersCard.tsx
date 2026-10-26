@@ -8,7 +8,7 @@ import { useColors } from '@/hooks/useColors';
 import type { ScheduledNudge } from '@/src/domain/nudges/planner';
 import { now } from '@/src/domain/time/clock';
 import { formatClock, parseClockInput } from '@/src/domain/time/format';
-import { calendarDayOf, instantOf, minutesOfDay } from '@/src/domain/time/trackingDay';
+import { addDays, calendarDayOf, instantOf, minutesOfDay } from '@/src/domain/time/trackingDay';
 import { NOTIFICATIONS_SUPPORTED, exactAlarmsAllowed, getPermission, openExactAlarmSettings, openNotificationSettings, requestPermission, type PermissionState } from '@/src/services/notifications';
 import { nudgePlan } from '@/src/state/selectors';
 import { useTracker } from '@/src/state/TrackerProvider';
@@ -50,7 +50,10 @@ export function RemindersCard() {
   const paused = s.offUntil !== undefined && s.offUntil > nowMs;
 
   const pauseFor = (hours: number | 'day') => {
-    const until = hours === 'day' ? instantOf(calendarDayOf(nowMs, zone), s.activeEndMin, zone) : nowMs + hours * 3_600_000;
+    // "Rest of today" is the rest of the tracking day: it ends at the day boundary (3 am by default),
+    // not at the active end — a night owl's 1 am slots are still today's, and a pause set at 11 pm
+    // would otherwise end a minute later or, with the active end already past, not at all.
+    const until = hours === 'day' ? instantOf(addDays(today, 1), s.dayBoundaryHour * 60, zone) : nowMs + hours * 3_600_000;
     actions.updateSettings({ offUntil: Math.max(until, nowMs + 60_000) });
   };
 

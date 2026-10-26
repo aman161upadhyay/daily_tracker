@@ -12,7 +12,7 @@ import type { TrackerState } from '@/src/state/types';
 import { currentZone, newId, now } from '@/src/domain/time/clock';
 import { trackingDayOf } from '@/src/domain/time/trackingDay';
 import type { Action } from '@/src/state/reducer';
-import { firedSinceLastSync, prepare, syncPlan, type FiredRecord } from './notifications';
+import { acknowledgeDeliveries, firedSinceLastSync, prepare, syncPlan, type FiredRecord } from './notifications';
 
 const DIRTY_KEY = 'dailytracker.headless.dirty.v1';
 
@@ -27,30 +27,65 @@ export async function syncStateToOs(state: TrackerState, ctx: CommandContext): P
   return syncPlan(plan, ctx.nowMs);
 }
 
+/** What a re-plan found: the deliveries folded into the state, and whether that state is saved. */
+export interface Reconciled {
+  delivered: FiredRecord[];
+  /** True when every fold went through a store that confirmed the save (the live store does). */
+  persisted: boolean;
+}
+
+// One reconcile at a time per runtime. Two of them interleaving (the in-app scheduler's debounced
+// sync and a foreground re-sync, or a headless re-plan while the app is alive) would both read
+// the deliveries, and the second would plan from a state the first had not folded them into yet.
+let reconcileQueue: Promise<unknown> = Promise.resolve();
+
 /**
  * The one re-plan sequence, over whatever holds the state: first write down what the OS delivered
  * since the last sync, then plan from that state, then record anything that rang in between.
  * Planning before the deliveries are known treats the delivered slots as still free and spends
  * the daily cap twice (the plan would re-offer a slot the person just saw as a new one).
+ *
+ * The deliveries stay in the service's journal until `acknowledgeDeliveries` is called for them;
+ * this does so itself when the folds confirmed the save, and otherwise leaves it to the caller,
+ * which knows when the state it holds is on disk (see replanHeadless).
  */
-export async function reconcileAndSync(current: () => TrackerState, apply: (build: (s: TrackerState) => Action[]) => Promise<unknown>, ctx: CommandContext): Promise<void> {
-  const delivered = await firedSinceLastSync(ctx.nowMs);
-  if (delivered.length > 0) await apply((s) => firedActions(s, delivered, ctx));
-  const fired = await syncStateToOs(current(), ctx);
-  await apply((s) => [...firedActions(s, fired, ctx), { type: 'PRUNE_EVENTS', beforeMs: ctx.nowMs - 60 * 60_000 }]);
+export function reconcileAndSync(current: () => TrackerState, apply: (build: (s: TrackerState) => Action[]) => Promise<unknown>, ctx: CommandContext): Promise<Reconciled> {
+  const job = async (): Promise<Reconciled> => {
+    let persisted = true;
+    // The live store's apply resolves to { persisted }; the headless in-memory fold resolves to nothing.
+    const fold = async (build: (s: TrackerState) => Action[]) => {
+      const result = (await apply(build)) as { persisted?: unknown } | null | undefined;
+      if (!result || result.persisted !== true) persisted = false;
+    };
+    const delivered = await firedSinceLastSync(ctx.nowMs);
+    if (delivered.length > 0) await fold((s) => firedActions(s, delivered, ctx));
+    const fired = await syncStateToOs(current(), ctx);
+    await fold((s) => [...firedActions(s, fired, ctx), { type: 'PRUNE_EVENTS', beforeMs: ctx.nowMs - 60 * 60_000 }]);
+    const all = [...delivered, ...fired];
+    if (persisted && all.length > 0) await acknowledgeDeliveries(all);
+    return { delivered: all, persisted };
+  };
+  const run = reconcileQueue.then(job, job);
+  reconcileQueue = run.catch(() => undefined);
+  return run;
 }
 
-/** Headless variant: sync, fold fired events into the state and return it (caller persists). */
-export async function replanHeadless(state: TrackerState, ctx: CommandContext): Promise<TrackerState> {
+/**
+ * Headless variant: sync and fold fired events into the state in memory. The caller persists the
+ * returned state and then acknowledges `delivered` (`acknowledgeDeliveries`); a caller that
+ * drops the state instead (the app came alive and is the writer now) acknowledges nothing, and
+ * the deliveries are folded again by whoever writes next.
+ */
+export async function replanHeadless(state: TrackerState, ctx: CommandContext): Promise<{ next: TrackerState; delivered: FiredRecord[] }> {
   let next = state;
-  await reconcileAndSync(
+  const { delivered } = await reconcileAndSync(
     () => next,
     async (build) => {
       next = applyAll(next, build(next), reducer);
     },
     ctx,
   );
-  return next;
+  return { next, delivered };
 }
 
 /**
@@ -58,12 +93,15 @@ export async function replanHeadless(state: TrackerState, ctx: CommandContext): 
  * found the app alive on its runtime. Awaited by the task, so the OS schedule
  * is current before the task resolves — Android may freeze the app right after,
  * before the in-app scheduler's own debounced sync gets its turn. Returns the
- * newest state.
+ * newest state. The store confirms its saves, so the deliveries are acknowledged
+ * here (or kept for a replay when a save failed).
  */
 export async function replanLive(live: LiveStore, ctx: CommandContext): Promise<TrackerState> {
   await reconcileAndSync(() => live.current(), (build) => live.apply(build), ctx);
   return live.current();
 }
+
+export { acknowledgeDeliveries };
 
 /**
  * Headless writes (notification buttons, widget taps, the background re-plan)

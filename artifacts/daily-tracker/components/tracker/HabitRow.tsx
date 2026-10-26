@@ -3,8 +3,8 @@ import { StyleSheet, View } from 'react-native';
 import { useColors } from '@/hooks/useColors';
 import { adherenceColor, FLOW_THRESHOLD, STAGE_LABELS } from '@/src/domain/adherence/adherenceScale';
 import { withAlpha } from '@/src/domain/color/oklch';
-import { formatNumber } from '@/src/domain/time/format';
-import type { Habit } from '@/src/domain/models';
+import { formatHabitValue } from '@/src/domain/time/format';
+import type { Habit, Units } from '@/src/domain/models';
 import type { HabitView } from '@/src/state/selectors';
 import { IconTile, Row } from '../ui/primitives';
 import { PressableScale } from '../ui/PressableScale';
@@ -22,6 +22,8 @@ export interface HabitRowProps {
   nudgeText?: string;
   /** Hide the bottom hairline (last row in a card). */
   last?: boolean;
+  /** The volume unit the Water preset is shown in (Settings → Units). */
+  units?: Units;
 }
 
 /** What the quick-log button really does for this habit: the sheet for an amount, a drink, a set, or one more. */
@@ -32,7 +34,7 @@ function quickLogLabel(habit: Habit): string {
   return `Add one to ${habit.name}`;
 }
 
-export function HabitRow({ view, onPress, onIncrement, onToggle, onTimer, nudgeText, last }: HabitRowProps) {
+export function HabitRow({ view, onPress, onIncrement, onToggle, onTimer, nudgeText, last, units = 'ml' }: HabitRowProps) {
   const c = useColors();
   const { habit, rule, todayValue, target, adherence, streak, periodDone, periodQuota, periodLabel } = view;
   // The checkbox is about today: a weekly habit done today is checked even while its week still needs days.
@@ -48,7 +50,7 @@ export function HabitRow({ view, onPress, onIncrement, onToggle, onTimer, nudgeT
       ? done
         ? 'Done today'
         : 'Not yet today'
-      : `${formatNumber(todayValue)} of ${formatNumber(target)} ${habit.unit}`.trim();
+      : `${formatHabitValue(habit, todayValue, units).value} of ${formatHabitValue(habit, target, units).value} ${formatHabitValue(habit, target, units).unit}`.trim();
   const subline = nudgeText ? `${progressText} · ${nudgeText}` : progressText;
 
   return (

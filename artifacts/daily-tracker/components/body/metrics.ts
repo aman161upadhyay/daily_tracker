@@ -62,6 +62,8 @@ const RANGE_DAYS: Record<Range, number> = { D: 7, W: 14, M: 30, '6M': 182, Y: 36
 
 export interface MetricSeries {
   values: number[];
+  /** One value per day of the range, oldest first, before any weekly bucketing (0 = no reading). */
+  daily: number[];
   labels: string[];
   kind: 'bars' | 'line';
   goal?: number;
@@ -137,6 +139,7 @@ export function metricSeries(body: BodyState, metric: BodyMetric, today: string,
 
   return {
     values,
+    daily,
     labels,
     kind: level || weekly ? 'line' : 'bars',
     ...(goal !== undefined && metric === 'steps' ? { goal } : {}),

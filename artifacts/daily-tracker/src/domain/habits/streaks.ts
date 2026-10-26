@@ -18,6 +18,14 @@
  * - Recomputing is idempotent, so backfilling a missed day refunds its freeze.
  */
 import type { Cadence, HabitRule } from '../models';
+
+/**
+ * Freezes a new habit starts with, by cadence: a daily habit gets two slips a month, a weekly one,
+ * a monthly none (its period is the month). The editor lets each habit move 0–5 from there.
+ */
+export function defaultFreezes(cadence: Cadence): number {
+  return cadence === 'DAILY' ? 2 : cadence === 'WEEKLY' ? 1 : 0;
+}
 import { addDays, dayDiff, parseDay, toDayString, weekStartOf } from '../time/trackingDay';
 
 export type PeriodStatus = 'MET' | 'OPEN' | 'FROZEN' | 'MISSED' | 'SKIPPED';

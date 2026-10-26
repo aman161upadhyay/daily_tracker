@@ -167,11 +167,25 @@ export function latestEvents(events: readonly NudgeEvent[]): Map<string, NudgeEv
 /** The notification a slot's event arrived through: several slots merged into one ring once. */
 const deliveryOf = (e: NudgeEvent) => e.via ?? e.nudgeId;
 
-/** Notifications that rang on a tracking day (a merged one counts once, whatever it stood for). */
+/** Slot ids outside the daily cap: the weekly summary, cycle prompts and reminders, one-off follow-ups. */
+const EXEMPT_ID = /^(summary|cycle|event):/;
+
+/**
+ * Notifications that rang on a tracking day and count against the cap: a merged one counts once,
+ * and only when one of the slots in it was an automatic cadence. A weekly summary, a cycle prompt
+ * or a Sugar Shield follow-up on its own is exempt when planned, so it is exempt once it rang too —
+ * or two exempt rings would push a planned rotation slot out of a cap of three.
+ */
 function firedCount(latest: Map<string, NudgeEvent>, day: string): number {
-  const rang = new Set<string>();
-  for (const e of latest.values()) if (e.day === day && e.kind !== 'SNOOZED') rang.add(deliveryOf(e));
-  return rang.size;
+  const rang = new Map<string, boolean>();
+  for (const e of latest.values()) {
+    if (e.day !== day || e.kind === 'SNOOZED') continue;
+    const via = deliveryOf(e);
+    rang.set(via, (rang.get(via) ?? false) || !EXEMPT_ID.test(e.nudgeId));
+  }
+  let n = 0;
+  for (const counted of rang.values()) if (counted) n += 1;
+  return n;
 }
 
 /** How many notifications each habit already received on a tracking day (fired, done or dismissed). */
@@ -295,8 +309,11 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
         // habit's daily budget nor advances the rotation: the first real slot matches the card. A
         // snooze (or snooze-all) that lands past the end of the active hours is over for the day.
         if (!placeable(when) || when >= activeEnd) continue;
+        // Nothing wanted for the tracking day this slot falls in — but the window may cross the day
+        // boundary (an active end after 3 am), and the slots past it belong to a fresh day with fresh
+        // quotas: they are judged on their own, not dropped with the settled ones before them.
         const eligible = rotation.filter((h) => !settled(h, at));
-        if (eligible.length === 0) break;
+        if (eligible.length === 0) continue;
         const slotDay = dayOf(at);
         const perHabit = budgetFor(slotDay);
         const hasRoom = (h: PlanHabit) => (perHabit.get(h.id) ?? 0) < h.policy.maxPerDay;
@@ -329,7 +346,7 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
             }
           }
         }
-        if (!item) break;
+        if (!item) continue; // every budget spent for this slot's day; a later day's slots start afresh
         ordinal += 1;
         perHabit.set(item.id, (perHabit.get(item.id) ?? 0) + 1);
         push({
@@ -356,10 +373,9 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
       const end = h.policy.activeEndMin !== undefined ? instantOf(day, h.policy.activeEndMin, zone) : activeEnd;
       if (end <= start) continue;
       const anchor = Math.max(h.lastLogMs ?? 0, start);
-      let n = 0;
       let slots = 0;
       const step = slotStep(h.policy.intervalMin!);
-      for (let at = anchor + step; at < end && n < h.policy.maxPerDay && slots++ < MAX_SLOTS_PER_DAY; at += step) {
+      for (let at = anchor + step; at < end && slots++ < MAX_SLOTS_PER_DAY; at += step) {
         if (settled(h, at)) continue;
         if (h.policy.onlyWhenBehind && inToday(at)) {
           const elapsed = (at - start) / (end - start);
@@ -367,12 +383,15 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
         }
         const id = `int:${h.id}:${day}:${minutesOfDay(at, zone)}`;
         const when = effectiveAt(id, at);
-        if (when === null) {
-          n += 1; // already fired, done or dismissed today: it counts against the cap
-          continue;
-        }
+        // Fired, done or dismissed: already in the day's budget below. Elapsed and never delivered
+        // (the phone was off, the slot was paused): not a reminder the person got, so not counted.
+        if (when === null) continue;
         if (!placeable(when) || when >= end) continue; // paused, beyond the horizon or snoozed past the window: not offered, not counted
-        n += 1;
+        // The per-day budget, like the rotation's: what rang that tracking day plus what is planned
+        // for it. A window that crosses the day boundary spends two days' budgets, not one twice over.
+        const perHabit = budgetFor(dayOf(at));
+        if ((perHabit.get(h.id) ?? 0) >= h.policy.maxPerDay) continue;
+        perHabit.set(h.id, (perHabit.get(h.id) ?? 0) + 1);
         push({
           id,
           at: when,
@@ -392,23 +411,20 @@ export function planNudges(input: PlanInput): ScheduledNudge[] {
     // ── Fixed clock times ────────────────────────────────────────────────
     for (const h of input.habits) {
       if (!h.policy.enabled || h.policy.kind !== 'FIXED' || !h.policy.times?.length) continue;
-      let n = 0;
       for (const hhmm of h.policy.times) {
         const [hh, mm] = hhmm.split(':').map(Number);
         // Stored times are validated on the way in; a bad one from an old file is skipped, never placed.
         if (!Number.isInteger(hh) || !Number.isInteger(mm) || hh! < 0 || hh! > 23 || mm! < 0 || mm! > 59) continue;
-        if (n >= h.policy.maxPerDay) break;
         const at = instantOf(day, hh! * 60 + mm!, zone);
         if (settled(h, at)) continue;
         if (inToday(at) && h.policy.onlyWhenBehind && h.todayRatio >= 0.6) continue;
         const id = `fix:${h.id}:${day}:${hhmm}`;
         const when = effectiveAt(id, at);
-        if (when === null) {
-          n += 1;
-          continue;
-        }
+        if (when === null) continue; // delivered or settled: in the budget already; missed: not a reminder received
         if (!placeable(when)) continue;
-        n += 1;
+        const perHabit = budgetFor(dayOf(at));
+        if ((perHabit.get(h.id) ?? 0) >= h.policy.maxPerDay) continue;
+        perHabit.set(h.id, (perHabit.get(h.id) ?? 0) + 1);
         push({
           id,
           at: when,

@@ -191,6 +191,23 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   say what the tap does; Today's water button follows `tapSizeMl`; widget `ringValue` drops the unit then compacts
   thousands before shrinking under 11 dp. **Why:** round 9's harnesses (fuzzer, planner simulator, perf profile)
   found the round-8 fixes right per object and wrong in aggregate. Dispositions in RUNNING_CONTEXT §6 Round 9.
+- Round 10 (2026-10-26 night) rules, paradigms 40–43 in RUNNING_CONTEXT §4: a delivery is an *occurrence*
+  (slot id + time) — `firedActions` dedupes by occurrence among FIRED events, so a snoozed/swapped slot that rings
+  again is counted again and a replay is a no-op; deliveries go to a journal (`deliveryJournal.ts`) before the
+  ledger is replaced and are acknowledged only after the store confirmed the save (`reconcileAndSync` →
+  `{delivered, persisted}`; headless callers ack after `store.persist`); "it rang" = absent from the pending set,
+  never a clock comparison. Budgets count deliveries per tracking day (missed slots are free), exempt ids
+  `summary:`/`cycle:`/`event:` are outside the cap (anything else counts, legacy ids included), responses carry the
+  payload's `day`, TAP writes one FIRED per slot+day and none when the sync already recorded it, loops `continue`
+  past settled slots. Reminder policies are editable per habit (`ReminderPolicySheet`; modes Off / Set times /
+  Every so often, movement habits get Rotation instead of an own interval, water gets pace checks only; card text
+  comes from `describePolicy`, never preset copy; EVENT/CYCLE policies are not editable). Water display goes
+  through `formatHabitValue`/`habitAmountText`/`habitUnit` everywhere. Freezes default by cadence
+  (`defaultFreezes`: 2/1/0). Session sweep: best overlap share wins (oldest on a tie). Rejected: a new data
+  version to make v0.12 refuse v0.13 exports (documented the caveat instead). Deferred: reconstruction of merged
+  reminders scheduled by v0.12 (replaced on the first sync anyway); B3 activity history with Undo; B5 pinned-card
+  picker. **Why:** round 10's pipeline/diff lenses showed round 9 keyed deliveries by slot id for life and acked
+  before the save; the finish-line lens found the "configurable nudges" user constraint still unmet.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app

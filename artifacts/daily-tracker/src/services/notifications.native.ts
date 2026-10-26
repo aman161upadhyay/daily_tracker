@@ -25,17 +25,11 @@ import type { NudgeChannel, ScheduledNudge } from '@/src/domain/nudges/planner';
 import { MIND_END_ID, mindEndPayload, type NudgePayload } from '@/src/state/commands';
 import { canScheduleExactAlarms } from '@/modules/exact-alarms';
 import { parseResponse } from './notificationPayload';
+import { deliveries, journalWith, journalWithout, parseRecords, type FiredRecord, type LedgerEntry } from './deliveryJournal';
+
+export type { FiredRecord } from './deliveryJournal';
 
 export type PermissionState = 'granted' | 'denied' | 'undetermined' | 'unsupported';
-
-export interface FiredRecord {
-  id: string;
-  habitIds: string[];
-  day: string;
-  at: number;
-  /** A merged notification: every slot id it stood for. */
-  mergedIds?: string[];
-}
 
 export interface NudgeResponse {
   payload: NudgePayload;
@@ -48,11 +42,9 @@ export const BACKGROUND_REPLAN_TASK = 'dailytracker-replan';
 export const NUDGE_RESPONSE_TASK = 'dailytracker-nudge-response';
 
 const LEDGER_KEY = 'dailytracker.nudges.ledger.v1';
+const JOURNAL_KEY = 'dailytracker.nudges.delivered.v1';
 const HANDLED_KEY = 'dailytracker.nudges.handled.v1';
 const ANDROID = Platform.OS === 'android';
-
-/** What we last handed to the OS; `sig` changes when the time, the text or the alarm precision changes. */
-type LedgerEntry = FiredRecord & { sig: string };
 
 /**
  * expo-notifications decides exact vs inexact when a request is submitted and never revisits it,
@@ -194,16 +186,38 @@ function categoryFor(n: ScheduledNudge): string | undefined {
   return 'nudge';
 }
 
-/** How long an overdue, still-pending alarm is left alone before it is treated as lost. */
-const OVERDUE_GRACE_MS = 30 * 60_000;
-
 async function readLedger(): Promise<LedgerEntry[]> {
-  try {
-    const raw = await AsyncStorage.getItem(LEDGER_KEY);
-    return raw ? (JSON.parse(raw) as LedgerEntry[]) : [];
-  } catch {
-    return [];
-  }
+  return parseRecords<LedgerEntry>(await AsyncStorage.getItem(LEDGER_KEY).catch(() => null));
+}
+
+async function readJournal(): Promise<FiredRecord[]> {
+  return parseRecords<FiredRecord>(await AsyncStorage.getItem(JOURNAL_KEY).catch(() => null));
+}
+
+/**
+ * Write the deliveries down before anything else forgets them (see deliveryJournal). Returns
+ * everything still owed to the state: earlier reports whose fold was never confirmed, plus these.
+ */
+async function journalDeliveries(fired: FiredRecord[], nowMs: number): Promise<FiredRecord[]> {
+  const journal = journalWith(await readJournal(), fired, nowMs);
+  if (journal.length > 0 || fired.length > 0) await AsyncStorage.setItem(JOURNAL_KEY, JSON.stringify(journal));
+  return journal;
+}
+
+/**
+ * The state holding these deliveries is saved: they need not be replayed. Serialized with the
+ * syncs, which are the only other writers of the journal.
+ */
+export function acknowledgeDeliveries(records: readonly FiredRecord[]): Promise<void> {
+  if (records.length === 0) return Promise.resolve();
+  const job = async () => {
+    const journal = await readJournal();
+    if (journal.length === 0) return;
+    await AsyncStorage.setItem(JOURNAL_KEY, JSON.stringify(journalWithout(journal, records)));
+  };
+  const run = syncQueue.then(job, job);
+  syncQueue = run.catch(() => undefined);
+  return run;
 }
 
 /**
@@ -225,35 +239,23 @@ function serialized<T>(job: () => Promise<T>, skipped: T): Promise<T> {
 }
 
 /**
- * What the OS delivered since the previous sync (ledger entries whose time has passed and that
- * are no longer pending), without touching the schedule. Callers fold these into the state
- * before they derive the next plan: a plan built before the deliveries are known still counts
- * the delivered slots as free and overspends the daily cap.
+ * What the OS delivered and the state has not been confirmed to hold yet: ledger entries that are
+ * no longer pending, plus earlier reports still in the journal. Does not touch the schedule.
+ * Callers fold these into the state before they derive the next plan: a plan built before the
+ * deliveries are known still counts the delivered slots as free and overspends the daily cap.
  */
 export function firedSinceLastSync(nowMs: number): Promise<FiredRecord[]> {
   return serialized(async () => {
     const ledger = await readLedger();
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-    return deliveries(ledger, new Set(scheduled.map((r) => r.identifier)), nowMs).fired;
+    return journalDeliveries(deliveries(ledger, new Set(scheduled.map((r) => r.identifier)), nowMs).fired, nowMs);
   }, []);
 }
 
 /**
- * Split the ledger into what rang and what is overdue yet still pending. Without exact-alarm
- * access (the Android 14+ default) an alarm may still be pending minutes after its time. Such an
- * entry has not fired: it is left scheduled for a while rather than cancelled and counted against
- * the daily cap as if the user had seen it.
- */
-function deliveries(ledger: LedgerEntry[], pending: Set<string>, nowMs: number): { fired: FiredRecord[]; overdueKept: LedgerEntry[] } {
-  const overdueKept = ledger.filter((e) => e.at <= nowMs && pending.has(e.id) && e.at > nowMs - OVERDUE_GRACE_MS);
-  const fired = ledger.filter((e) => e.at <= nowMs && !pending.has(e.id)).map(({ sig: _sig, ...f }) => f);
-  return { fired, overdueKept };
-}
-
-/**
- * Make the OS schedule match the plan. Returns what the OS delivered since the
- * previous sync (ledger entries whose time has passed), so the caller can record
- * FIRED events. A superseded call returns nothing: the newer sync reports it.
+ * Make the OS schedule match the plan. Returns what the OS delivered and is still owed to the
+ * state (journaled before the ledger forgets it), so the caller can record FIRED events. A
+ * superseded call returns nothing: the newer sync reports it.
  */
 export function syncPlan(plan: ScheduledNudge[], nowMs: number): Promise<FiredRecord[]> {
   return serialized(() => syncPlanNow(plan, nowMs), []);
@@ -264,6 +266,8 @@ async function syncPlanNow(plan: ScheduledNudge[], nowMs: number): Promise<Fired
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   const pending = new Set(scheduled.map((r) => r.identifier));
   const { fired, overdueKept } = deliveries(ledger, pending, nowMs);
+  // Before the schedule or the ledger changes: a crash past this point must not lose a delivery.
+  const owed = await journalDeliveries(fired, nowMs);
   const keep = new Set(overdueKept.map((e) => e.id));
 
   const wanted = new Map(plan.map((n) => [n.id, n]));
@@ -324,11 +328,16 @@ async function syncPlanNow(plan: ScheduledNudge[], nowMs: number): Promise<Fired
     ...plan.filter((n) => n.at > nowMs && !keep.has(n.id) && accepted.has(n.id)).map((n) => ({ id: n.id, habitIds: n.habitIds, day: n.day, at: n.at, ...(n.mergedIds ? { mergedIds: n.mergedIds } : {}), sig: signature(n, exact) })),
   ];
   await AsyncStorage.setItem(LEDGER_KEY, JSON.stringify(nextLedger));
-  return fired;
+  return owed;
 }
 
 export function cancelAll(): Promise<void> {
   return serialized(async () => {
+    // What already rang is still owed to the state; only the pending alarms go.
+    const ledger = await readLedger();
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    const nowMs = Date.now();
+    await journalDeliveries(deliveries(ledger, new Set(scheduled.map((r) => r.identifier)), nowMs).fired, nowMs);
     await Notifications.cancelAllScheduledNotificationsAsync();
     await AsyncStorage.setItem(LEDGER_KEY, '[]');
   }, undefined);

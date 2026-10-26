@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Platform, StyleSheet, Switch, View } from 'react-native';
+import { StyleSheet, Switch, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { CycleCalendar } from '@/components/cycle/CycleCalendar';
 import { DaySheet } from '@/components/cycle/DaySheet';
@@ -13,6 +13,7 @@ import { Divider, Dot, IconTile, PillButton, Row, SectionHeader } from '@/compon
 import { Screen, ScreenHeader } from '@/components/ui/Screen';
 import { Sheet } from '@/components/ui/Sheet';
 import { Txt } from '@/components/ui/Txt';
+import { confirmDestructive } from '@/components/ui/confirm';
 import { SampleDataChip } from '@/components/tracker/SampleDataChip';
 import { useColors } from '@/hooks/useColors';
 import { withAlpha } from '@/src/domain/color/oklch';
@@ -58,17 +59,7 @@ export default function CycleScreen() {
     return [...timeline.history].reverse().map((p) => ({ ...p, cycle: lengths.get(p.start) }));
   }, [cycle.history, timeline.history]);
 
-  const confirm = (title: string, message: string, label: string, run: () => void) => {
-    if (Platform.OS === 'web') {
-      // eslint-disable-next-line no-alert
-      if (typeof window !== 'undefined' && !window.confirm(`${title}\n\n${message}`)) return;
-      return run();
-    }
-    Alert.alert(title, message, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: label, style: 'destructive', onPress: run },
-    ]);
-  };
+  const confirm = confirmDestructive;
 
   const saveReminder = (rule: CycleReminder) => {
     if (rule.id === '') actions.setCycleReminders([...cycle.reminders, { ...rule, id: `cr_${newId()}` }]);

@@ -137,8 +137,11 @@ export default function TodayScreen() {
           timestamp={lastWater ? formatClock(minutesOfDay(lastWater.at, zone)) : undefined}
           chart={{ values: waterSeries(state, today, 7), goal: s.waterGoalMl }}
           onPress={() => {
-            const h = state.habits.find((x) => x.presetId === 'water');
+            // Water logged today without the Water habit (it was archived, or a drink came from the
+            // widget): the card is still a door — to the Library, where the habit can be added back.
+            const h = state.habits.find((x) => x.presetId === 'water' && !x.archived);
             if (h) router.push({ pathname: '/habit/[id]', params: { id: h.id } });
+            else router.push('/habits');
           }}
           footer={
             <Row gap={8}>
@@ -196,6 +199,7 @@ export default function TodayScreen() {
             key={v.habit.id}
             view={v}
             last={i === views.length - 1}
+            units={units}
             nudgeText={v.habit.presetId ? PRESET_BY_ID[v.habit.presetId]?.nudgeText.split(',')[0] : undefined}
             onPress={() => router.push({ pathname: '/habit/[id]', params: { id: v.habit.id } })}
             onIncrement={() => (needsAmount(v.habit) ? setAmountHabit(v.habit) : actions.increment(v.habit))}

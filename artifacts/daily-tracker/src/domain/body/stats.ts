@@ -35,22 +35,26 @@ export function distinctSessions<T extends { startAt: number; endAt: number }>(s
   // later session), never the whole history — the scan stays linear over two years of nights.
   const open: { index: number; lastEnd: number }[] = [];
   for (const s of sorted) {
-    let merged = false;
-    for (let j = open.length - 1; j >= 0; j--) {
-      const o = open[j]!;
-      if (o.lastEnd <= s.startAt) {
-        open.splice(j, 1);
-        continue;
-      }
+    // Closed groups leave the open set; among the rest, the group the session shares most of
+    // itself with takes it (the oldest on a tie). Two open groups can both overlap a session by
+    // more than half; taking whichever was looked at first would make the grouping depend on how
+    // many groups happen to be open, not on the records.
+    for (let j = open.length - 1; j >= 0; j--) if (open[j]!.lastEnd <= s.startAt) open.splice(j, 1);
+    let best: { index: number; lastEnd: number } | null = null;
+    let bestShare = SAME_SESSION_SHARE;
+    for (const o of open) {
       const kept = out[o.index]!;
-      if (sameKind(kept, s) && overlapShare(kept, s) > SAME_SESSION_SHARE) {
-        out[o.index] = prefer(kept, s);
-        o.lastEnd = Math.max(o.lastEnd, s.endAt);
-        merged = true;
-        break;
+      if (!sameKind(kept, s)) continue;
+      const share = overlapShare(kept, s);
+      if (share > bestShare) {
+        best = o;
+        bestShare = share;
       }
     }
-    if (!merged) {
+    if (best) {
+      out[best.index] = prefer(out[best.index]!, s);
+      best.lastEnd = Math.max(best.lastEnd, s.endAt);
+    } else {
       out.push(s);
       open.push({ index: out.length - 1, lastEnd: s.endAt });
     }

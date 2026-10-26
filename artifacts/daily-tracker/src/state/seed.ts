@@ -15,6 +15,7 @@ import {
   type Severity,
   type WaterEntry,
 } from '@/src/domain/models';
+import { defaultFreezes } from '@/src/domain/habits/streaks';
 import { addDays, minutesOfDay, wallClock, weekdayOf } from '@/src/domain/time/trackingDay';
 import { PRESET_BY_ID, type Preset } from '@/src/library/presets';
 import { EMPTY_BODY } from '@/src/domain/body/types';
@@ -83,7 +84,7 @@ export function habitFromPreset(preset: Preset, id: string, createdDay: string):
     cadence: preset.rule.cadence,
     timesPerPeriod: preset.rule.timesPerPeriod,
     target: preset.rule.target,
-    freezesPerMonth: 2,
+    freezesPerMonth: defaultFreezes(preset.rule.cadence),
   };
   const policy: NudgePolicy = {
     habitId: id,

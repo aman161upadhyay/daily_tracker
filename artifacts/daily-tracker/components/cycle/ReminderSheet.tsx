@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Switch, TextInput, View } from 'react-native';
+import { confirmDestructive } from '@/components/ui/confirm';
 import { Sheet } from '@/components/ui/Sheet';
 import { Chip, PillButton, Row, Segmented, Stepper } from '@/components/ui/primitives';
 import { Txt } from '@/components/ui/Txt';
@@ -93,10 +94,12 @@ export function ReminderSheet({ reminder, birthControl, onClose, onSave, onDelet
           <PillButton
             label="Delete"
             kind="danger"
-            onPress={() => {
-              onDelete(reminder.id);
-              onClose();
-            }}
+            onPress={() =>
+              confirmDestructive('Delete this reminder?', `"${reminder.label}" will no longer be scheduled.`, 'Delete', () => {
+                onDelete(reminder.id);
+                onClose();
+              })
+            }
           />
         ) : null}
         <PillButton

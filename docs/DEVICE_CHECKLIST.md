@@ -231,8 +231,29 @@ cycle (phases, calendar, day sheet, insights) was verified in the web preview an
 | Z10 | Smallest widget, long value | Water goal in ounces with a four-digit total (or 20,000 ml) at the smallest widget size | The ring shows "1.9k" / "20k" rather than "1,8…"; TalkBack still reads the full amount |
 | Z11 | Stepper hints | TalkBack on; focus the water goal stepper in Settings and onboarding, then an active-hours stepper | "Tap to type an amount" with ml or oz bounds for the water goal; "Tap to type a time" for the hours; the onboarding bounds read in the unit shown |
 | Z12 | Row actions | TalkBack on the Habits list on Today: a count habit, an amount habit, a plain timer habit, a meditation habit | Labels read "Add one to …", "Log an amount for …", "Log time for …", "Start … timer" and the tap does what the label says |
-| Z13 | Water button follows "One tap adds" | Settings → Water → One tap adds 330 ml | Today's water button reads +330 ml and logs 330 ml |
+| Z13 | Water button follows "One tap adds" | Settings → Water → One tap adds 350 ml | Today's water button reads +350 ml and logs 350 ml (330 is not a preset; type it) |
+
+## AA — Council round 10 follow-ups (2026-10-26)
+
+| # | Check | Steps | Expected |
+|---|---|---|---|
+| AA1 | A snoozed nudge rings once more and is counted once more | Cap 3; let a movement nudge ring; tap Snooze; let it ring again; open the app | Only one more automatic nudge is scheduled for the day (`adb shell dumpsys notification --noredact` lists one); the snoozed slot is not offered a third time |
+| AA2 | Lost save does not lose a delivery | Let a nudge ring while the app is closed; force-stop the app the moment it is opened (before the sync finishes); open again | The ring is counted exactly once (not zero, not twice) |
+| AA3 | Clock set back | Let a nudge ring; set the phone's clock back two hours (automatic time off); open the app | The delivered nudge is not rescheduled; it stays counted |
+| AA4 | Yesterday's notification tapped today | Cap 2; leave an evening nudge in the shade past 3 am; tap its body in the morning | Two automatic nudges are still scheduled for today (the tap counted on yesterday) |
+| AA5 | Weekly summary and cycle prompt are outside the cap | Cap 2; let the weekly summary and a cycle prompt ring in one day | Two movement/habit nudges are still scheduled for the day |
+| AA6 | Interval habit with missed morning | A custom habit "Every so often, 60 min, at most 2 a day"; phone off from 9 to 13; open the app at 14:00 | Two reminders are still scheduled for the afternoon (missed slots did not spend the allowance) |
+| AA7 | Night-owl active hours | Active hours 00:00–08:00; every movement habit done for the day | Reminders are scheduled from 3 am on (tomorrow's tracking day), none before |
+| AA8 | Background import re-plans | Water reminders on; drink to the goal in another app while Daily Tracker is closed; wait for the background import (or trigger it with `adb shell cmd jobscheduler run`) | The pending water reminders are cancelled without opening the app |
+| AA9 | Rest of today | Pause "Rest of today" at 21:30 (after active hours) | Reminders stay paused until 3 am, including a 23:00 set time |
+| AA10 | Reminder editor | A custom habit → Reminders → Set up → Set times 08:00 and 19:00, only when behind, at most 2 → Save | The card reads "At 8:00 AM and 7:00 PM when behind"; both ring on a day the habit is not done (the 19:00 one is skipped once the day is 60% done) |
+| AA11 | Preset reminder changed | Meditate → Reminders → Change → move 07:30 to 06:45 | The 06:45 reminder rings the next morning; the old 07:30 does not |
+| AA12 | Movement habit editor | Squat snack → Reminders → Change | The modes are Rotation / Set times / Off; Rotation describes the shared interval |
+| AA13 | Water in ounces everywhere | Units oz; log 250 ml via the quick action | Today's card, the habit row, the detail header, the chart's goal line and the backfill strip all read 8.5 oz; Edit shows the target in oz and saving an untouched 67.6 oz leaves 2,000 ml |
+| AA14 | Body extrema over long ranges | A high value months ago; open Steps → 6M and Y | Best / Lowest reflect the whole range, not the last 30 days |
+| AA15 | Freezes follow the cadence | Create a weekly custom habit | The editor's freezes default to 1 (0 for monthly, 2 for daily) |
+| AA16 | Destructive taps confirm | Delete a cycle reminder; trash a drink | Each asks first |
 
 ## Recording results
 
-Add a dated line under the milestone in `docs/IMPLEMENTATION_PLAN.md` ("Device run YYYY-MM-DD, Pixel 7 / Android 15: N1–N17, Y1–Y14, Z1–Z13 pass except …") and open follow-ups for anything that failed.
+Add a dated line under the milestone in `docs/IMPLEMENTATION_PLAN.md` ("Device run YYYY-MM-DD, Pixel 7 / Android 15: N1–N17, Y1–Y14, Z1–Z13, AA1–AA16 pass except …") and open follow-ups for anything that failed.
