@@ -296,6 +296,17 @@ description: Non-obvious product/UX decisions and user-stated constraints that t
   handler, `backup.native.ts`) are tested by transpiling the source with the TypeScript API into a
   vm with scripted requires, or via `node:module` `registerHooks` — never by importing react-native.
   Dispositions in §6 Round 17.
+- Round 18 (2026-10-26 night) rules, paradigms 81–85: a lifetime is a token (fresh object per effect
+  setup; a boolean `alive` ref is broken for good by StrictMode's replay) and it travels with the work
+  to the last OS call (`still` through `reconcileAndSync` → `syncStateToOs` → `syncPlan`, re-read
+  after the OS reads, before the first write). Live-store registration/teardown live in one effect
+  and tear down by identity; `LiveStore.alive()` is bound to the hydration's queue and a retired
+  `apply` saves nothing. Paired OS ops (mind bell schedule/cancel) go through one queue + generation,
+  newest wins. The real `notifications.native.ts` and `replan.ts` are testable behind `registerHooks`
+  stubs (expo-*, react-native, AsyncStorage in memory; './notifications' from replan redirected to the
+  native file) — see `tests/round18.test.ts`. State fuzz is gating (`tests/stateFuzz.test.ts`,
+  `FUZZ_SEQUENCES=300` for the full run). Copy terms kept on purpose: "pace check" (water mode name),
+  "streak freeze"; the tester's copy audit is a repeatable lens. Dispositions in §6 Round 18.
 - Craft & learning presets carry honest evidence labels (read-before-bed Emerging; technical reading
   Moderate; write Moderate; build-with-AI Emerging = habit-formation evidence, not a productivity claim).
 - Open questions still unanswered by the user: private repo?, meaning of "Fable model", final app

@@ -42,7 +42,7 @@ export function NudgeCard({ nudge, suggestion, hasRotation, activeStartMin, acti
               {text}
             </Txt>
           </View>
-          <IconButton Glyph={UI.Gear} label="Nudge settings" onPress={onSettings} size={40} color={c.textSecondary} haptic={false} />
+          <IconButton Glyph={UI.Gear} label="Reminder settings" onPress={onSettings} size={40} color={c.textSecondary} haptic={false} />
         </Row>
       </Card>
     );
@@ -61,11 +61,11 @@ export function NudgeCard({ nudge, suggestion, hasRotation, activeStartMin, acti
             {suggestion ?? nudge.item.label}
           </Txt>
         </View>
-        <IconButton Glyph={UI.Gear} label="Nudge settings" onPress={onSettings} size={40} color={c.textSecondary} haptic={false} />
+        <IconButton Glyph={UI.Gear} label="Reminder settings" onPress={onSettings} size={40} color={c.textSecondary} haptic={false} />
       </Row>
       <View style={styles.actions}>
         <PillButton label="Done now" onPress={onDone} compact Leading={UI.Check} style={{ flex: 1 }} />
-        <PillButton label="Snooze 10" onPress={onSnooze} compact kind="ghost" />
+        <PillButton label="Snooze 10 min" onPress={onSnooze} compact kind="ghost" />
         <IconButton Glyph={UI.Shuffle} label="Swap for another snack" onPress={onSwap} size={40} color={c.text} />
       </View>
     </Card>

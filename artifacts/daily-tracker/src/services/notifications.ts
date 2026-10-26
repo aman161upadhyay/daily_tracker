@@ -79,7 +79,7 @@ export async function firedSinceLastSync(_nowMs: number): Promise<FiredRecord[]>
 }
 
 /** Make the OS schedule match the plan. Returns nudges that fired since the last sync. */
-export async function syncPlan(_plan: ScheduledNudge[], _nowMs: number): Promise<FiredRecord[]> {
+export async function syncPlan(_plan: ScheduledNudge[], _nowMs: number, _still?: () => boolean): Promise<FiredRecord[]> {
   return [];
 }
 

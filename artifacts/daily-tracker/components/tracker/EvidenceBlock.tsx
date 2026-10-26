@@ -47,7 +47,7 @@ export function EvidenceBlock({ preset }: { preset: Preset }) {
               haptic={false}
               onPress={() => Linking.openURL(src.url).catch(() => {})}
               accessibilityRole="link"
-              accessibilityLabel={`Open source: ${src.label}`}
+              accessibilityLabel={`Source: ${src.label}`}
               style={styles.source}
             >
               <UI.External size={14} color={c.greenBright} weight="bold" />

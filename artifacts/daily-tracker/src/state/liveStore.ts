@@ -30,6 +30,12 @@ export interface LiveStore {
   replaceSeq(): number;
   /** True while a replace is applied on screen but not yet in the database (see TrackerContextValue.replacePending). */
   replacePending(): boolean;
+  /**
+   * False once the provider behind this store is retired (unmounted, or reset by the error
+   * boundary): `apply` then saves nothing, and work that spans awaits — a headless re-plan that
+   * captured this store before the retirement — must stop short of the OS (see replanLive).
+   */
+  alive(): boolean;
 }
 
 let live: LiveStore | null = null;

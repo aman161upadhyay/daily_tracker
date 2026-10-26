@@ -169,6 +169,7 @@ describe('live store handoff', () => {
       committed: () => state,
       replaceSeq: () => 0,
       replacePending: () => false,
+      alive: () => true,
       apply: async (build) => {
         const actions = build(state);
         const next = applyAll(state, actions, reducer);

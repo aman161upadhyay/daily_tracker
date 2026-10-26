@@ -203,7 +203,8 @@ export function IconButton({
         justifyContent: 'center',
       }}
     >
-      <Glyph size={Math.round(size * 0.48)} color={filled ? c.onGreen : accent} weight="bold" />
+      {/* A disabled button keeps its place and fades: the bound is visible, not a dead tap. */}
+      <Glyph size={Math.round(size * 0.48)} color={filled ? c.onGreen : accent} weight="bold" style={disabled ? { opacity: 0.35 } : undefined} />
     </PressableScale>
   );
 }
@@ -283,7 +284,8 @@ export function Stepper({
   const bounds = parse ? `, ${format ? format(min) : min} to ${format ? format(max) : max}` : Number.isFinite(max) ? `, ${min} to ${max}` : `, at least ${min}`;
   return (
     <View style={styles.stepper} accessibilityLabel={label}>
-      <IconButton Glyph={UI.Minus} label={`Decrease ${label}`} onPress={() => onChange(down)} size={40} color={c.text} />
+      {/* At a bound the button is disabled rather than a tap that changes nothing (the bound shows). */}
+      <IconButton Glyph={UI.Minus} label={`Decrease ${label}`} onPress={() => onChange(down)} size={40} color={c.text} disabled={down === value} />
       {typed !== null ? (
         <TextInput
           value={typed}
@@ -309,7 +311,7 @@ export function Stepper({
           </Txt>
         </Pressable>
       )}
-      <IconButton Glyph={UI.Plus} label={`Increase ${label}`} onPress={() => onChange(up)} size={40} color={c.text} />
+      <IconButton Glyph={UI.Plus} label={`Increase ${label}`} onPress={() => onChange(up)} size={40} color={c.text} disabled={up === value} />
     </View>
   );
 }

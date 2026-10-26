@@ -11,6 +11,7 @@ import {
   clockMinutes,
   clockString,
   describePolicy,
+  distinctTimeCount,
   durationText,
   normalizeWeekdays,
   policyFromDraft,
@@ -96,6 +97,7 @@ export function ReminderPolicyForm({ draft: d, onChange, context, preview }: Rem
   const set = (patch: Partial<PolicyDraft>) => onChange({ ...d, ...patch });
   const modes = policyModesFor(context);
   const times = d.times.map((t) => t.hhmm);
+  const distinctTimes = distinctTimeCount(times);
   const setTime = (key: number, minute: number) => set({ times: d.times.map((t) => (t.key === key ? { ...t, hhmm: clockString(minute) } : t)) });
   // The last chosen day cannot be taken off: a schedule with no day is Off, which has its own mode.
   const toggleDay = (day: number) => set({ weekdays: d.weekdays.includes(day) ? (d.weekdays.length > 1 ? d.weekdays.filter((x) => x !== day) : d.weekdays) : [...d.weekdays, day].sort((a, b) => a - b) });
@@ -148,7 +150,7 @@ export function ReminderPolicyForm({ draft: d, onChange, context, preview }: Rem
           <View style={{ flex: 1 }}>
             <Txt role="body">{context.water ? 'Check every' : 'Every'}</Txt>
             <Txt role="footnote" tone="secondary">
-              {context.water ? 'Counted from your last drink, inside your active hours.' : 'Counted from your last log, inside your active hours.'}
+              {context.water ? 'The timer starts at your last drink and runs during your active hours.' : 'The timer starts at your last log and runs during your active hours.'}
             </Txt>
           </View>
           <Stepper value={d.intervalMin} onChange={(intervalMin) => set({ intervalMin })} step={15} min={POLICY_INTERVAL_MIN} max={POLICY_INTERVAL_MAX} format={durationText} label="interval" />
@@ -164,31 +166,31 @@ export function ReminderPolicyForm({ draft: d, onChange, context, preview }: Rem
       {(d.mode === 'FIXED' || d.mode === 'INTERVAL') && !context.water ? (
         <Row style={styles.row}>
           <View style={{ flex: 1 }}>
-            <Txt role="body">Only when behind</Txt>
+            <Txt role="body">Only when I’m behind</Txt>
             <Txt role="footnote" tone="secondary">
               {d.mode === 'FIXED' ? 'Skipped once 60% of today’s target is logged.' : 'Skipped while the day is on pace for its target.'}
             </Txt>
           </View>
-          <Switch value={d.onlyWhenBehind} onValueChange={(onlyWhenBehind) => set({ onlyWhenBehind })} trackColor={{ false: c.hairline, true: c.green }} thumbColor={c.text} accessibilityLabel="Only when behind" />
+          <Switch value={d.onlyWhenBehind} onValueChange={(onlyWhenBehind) => set({ onlyWhenBehind })} trackColor={{ false: c.hairline, true: c.green }} thumbColor={c.text} accessibilityLabel="Only when I’m behind" />
         </Row>
       ) : null}
 
       {d.mode !== 'NONE' && !context.water ? (
         <Row style={styles.row}>
           <View style={{ flex: 1 }}>
-            <Txt role="body">At most, a day</Txt>
+            <Txt role="body">Daily maximum</Txt>
             <Txt role="footnote" tone="secondary">
-              Within the overall daily cap in Settings → Reminders.
+              The most this habit reminds you in a day. The overall cap in Settings → Reminders still applies.
             </Txt>
           </View>
-          {/* Shows the value that will be saved: set times cannot ring more often than there are times. */}
-          <Stepper value={d.mode === 'FIXED' ? Math.min(d.maxPerDay, Math.max(1, d.times.length)) : d.maxPerDay} onChange={(maxPerDay) => set({ maxPerDay })} min={1} max={d.mode === 'FIXED' ? Math.max(1, d.times.length) : POLICY_MAX_PER_DAY} label="reminders a day" />
+          {/* Shows the value that will be saved (the preview's): set times cannot ring more often than there are distinct times. */}
+          <Stepper value={preview.maxPerDay >= 1 ? preview.maxPerDay : d.maxPerDay} onChange={(maxPerDay) => set({ maxPerDay })} min={1} max={d.mode === 'FIXED' ? Math.max(1, distinctTimes) : POLICY_MAX_PER_DAY} label="reminders a day" />
         </Row>
       ) : null}
 
       <Txt role="footnote" tone="tertiary" style={{ marginTop: 12 }}>
         {describePolicy(preview, context)}
-        {d.mode === 'FIXED' ? ' · Set times ring at their time, even outside your active hours; a day already done stays quiet.' : ''}
+        {d.mode === 'FIXED' ? ' · Set times ring even outside your active hours; once the day is done they stay quiet.' : ''}
       </Txt>
     </View>
   );

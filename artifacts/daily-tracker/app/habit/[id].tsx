@@ -272,15 +272,17 @@ export default function HabitDetailScreen() {
         <Row style={styles.stats}>
           <Stat label="Streak" value={`${view.streak}`} unit={plural(view.streak)} gold={view.streak >= 3} />
           <Stat label="Best" value={`${view.best}`} unit={plural(view.best)} />
-          <Stat label="Last 14 days" value={`${completed14}`} unit={`of ${last14.length}`} />
+          <Stat label="Days met" value={`${completed14}`} unit={`of last ${last14.length}`} />
         </Row>
         <Divider />
         <Row gap={8} style={{ marginTop: 10 }}>
           <UI.Snowflake size={16} color={c.violetSoft} weight="fill" />
           <Txt role="footnote" tone="secondary" style={{ flex: 1 }}>
-            {view.freezesLeftThisMonth === 0
-              ? `No streak freezes left this month (${view.rule.freezesPerMonth} a month).`
-              : `${view.freezesLeftThisMonth} of ${view.rule.freezesPerMonth} streak freezes left this month. A missed ${periodNoun} uses one instead of resetting.`}
+            {view.rule.freezesPerMonth === 0
+              ? `No streak freezes on this habit: a missed ${periodNoun} resets the streak.`
+              : view.freezesLeftThisMonth === 0
+                ? `All ${view.rule.freezesPerMonth} of this month’s streak freezes are used; the next missed ${periodNoun} resets the streak.`
+                : `${view.freezesLeftThisMonth} of ${view.rule.freezesPerMonth} streak freezes left this month. A missed ${periodNoun} uses one instead of resetting.`}
           </Txt>
         </Row>
       </Card>
@@ -336,10 +338,10 @@ export default function HabitDetailScreen() {
             {policyEditable
               ? view.policy && view.policy.kind !== 'NONE' && view.policy.enabled
                 ? isWater
-                  ? 'Pace checks arrive as a notification with a drink button and Snooze, inside your active hours and the daily cap (Settings → Reminders).'
+                  ? 'Each pace check is a notification with a drink button and Snooze. They come during your active hours, up to the daily cap (Settings → Reminders).'
                   : view.policy.kind === 'FIXED'
-                    ? 'Set times ring at their time; interval reminders stay inside your active hours. All count toward the daily cap (Settings → Reminders).'
-                    : 'Arrives as a notification with Done and Snooze buttons, inside your active hours and the daily cap (Settings → Reminders).'
+                    ? 'Set times ring at their time, even outside your active hours. They count toward the daily cap (Settings → Reminders).'
+                    : 'Each reminder is a notification with Done and Snooze. They come during your active hours, up to the daily cap (Settings → Reminders).'
                 : habit.snackType
                   ? paused
                     ? 'Paused: no notification, and the Today card leaves it out of the movement rotation until the switch is on.'

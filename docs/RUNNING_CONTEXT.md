@@ -5,7 +5,7 @@ first thing to read after `replit.md`. It answers: what exists, why it is the wa
 verified, what happened step by step, and what is still open. Append to the journal; never rewrite
 history.
 
-Last updated: 2026-10-26, autonomous session (council rounds 1–17 fixed; see journal and §6).
+Last updated: 2026-10-26, autonomous session (council rounds 1–18 fixed; see journal and §6).
 
 ---
 
@@ -15,10 +15,10 @@ Last updated: 2026-10-26, autonomous session (council rounds 1–17 fixed; see j
 |---|---|
 | App | Daily Tracker — private Android tracker: habits · water · movement snacks · meditation · opt-in cycle · home-screen widget · configurable nudges · Health Connect import · app lock · encrypted backups |
 | Code | `artifacts/daily-tracker/` — Expo SDK 57, React Native 0.86, TypeScript, Expo Router, expo-sqlite |
-| Version | `app.json` `version 0.21.0`, `versionCode 21`, tag `v0.21` (M6 complete + council rounds 1–17) |
+| Version | `app.json` `version 0.22.0`, `versionCode 22`, tag `v0.22` (M6 complete + council rounds 1–18) |
 | Repo | https://github.com/aman161upadhyay/daily_tracker.git, branch `main`, commits authored as Aman |
 | Milestones | M0 skeleton ✅ · M1 storage/streaks/onboarding ✅ · M2 nudges/notifications ✅ · M3 widget ✅ · M4 Health Connect/Body ✅ · M5 cycle ✅ · M6 theme/lock/backup/signing ✅ (`docs/IMPLEMENTATION_PLAN.md`) |
-| Verified here | type-check (three packages), 438 unit tests (incl. a 75-sequence randomised nudge simulation), Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks (incl. the Health Connect rationale activity), web walkthroughs by a browser-driving tester |
+| Verified here | type-check (three packages), 448 unit tests (incl. a 75-sequence randomised nudge simulation and a seeded state fuzz), Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks (incl. the Health Connect rationale activity), web walkthroughs by a browser-driving tester |
 | Never run yet | a real Android device. Everything native (widget taps, notification buttons with the app closed, Health Connect, app lock, Auto Backup, signed APK) is coded and reviewed but untested on hardware — `docs/DEVICE_CHECKLIST.md` lists the exact rows |
 | User's next step | `docs/GET_IT_ON_YOUR_PHONE.md` (plain-language build guide) |
 
@@ -501,6 +501,37 @@ contradicts one, write down why.
     fails the suite on any invariant breach, reporting the seed and the last steps (`tests/
     nudgeSim.test.ts`; `NUDGE_SIM_SEQUENCES=200` for the full run). **Why:** the test-audit lens
     found that mutants the simulator would have caught passed the suite.
+81. **A lifetime is a token, and it travels with the work to the last external boundary.** A
+    component or provider that can be retired while its asynchronous work is in flight (an
+    error-boundary reset, the dev-time effect replay, a retry after a failed load) gives that work
+    a token of the life that started it — a fresh object per effect setup, a queue per hydration —
+    and the work re-checks the token after every await, up to and including the call that changes
+    the OS (`still` in `reconcileAndSync` → `syncStateToOs` → `syncPlan`, read again after the OS
+    was read and before the first write). A boolean "alive" flag is not enough: the effect replay
+    leaves it false for good, and a check at the start of the work misses the awaits after it.
+    **Why:** LIFE18-2/5/6 — a retired scheduler's sync, queued behind its replacement's cancel-all,
+    set the old alarms back; the boolean fix broke every sync under StrictMode.
+82. **Registration and unregistration share one lifetime, and teardown is by identity.** Whatever
+    registers a live object in a module-level slot (the live store) keeps the instance it
+    registered and clears the slot only if it still holds that instance; a replacement that
+    registered in between is left alone. The registering effect and the clearing cleanup are the
+    same effect, never two. **Why:** LIFE18-1 — a provider whose first hydrated render threw stayed
+    registered as the writer, and widget taps were handed to a dead provider.
+83. **A live handle says whether its owner is alive, and a retired owner saves nothing.**
+    `LiveStore.alive()` is bound to the hydration's queue; `apply` on a retired provider returns
+    `persisted: false` without publishing, so headless callers fall back to their own path or keep
+    the press for a replay, and `replanLive` stops short of the OS. **Why:** LIFE18-7 — the replace
+    counter alone did not move when the provider went away.
+84. **Serialise the pair, and let the newest request win.** Two operations on one OS object
+    (schedule the bell / cancel the bell) go through one queue with a generation counter; an
+    operation superseded while it waited (or while its own first await ran) does nothing. **Why:**
+    LIFE18-3 — a cancel finished before the schedule it was meant to undo, and the discarded
+    session's bell rang.
+85. **Copy is audited by someone who did not write it, against the screen.** A browser-driving
+    tester reads every string in context and reports jargon, fragments, mixed units and
+    inconsistent names; the fixes keep the product's own terms (pace check, streak freeze) but
+    explain them once where they appear. **Why:** round 18's audit found "Snooze 10", "At most, a
+    day", "Flow", "front-load" and "Open source:" — all clear to the author, none to a reader.
 
 ### How council findings are judged
 - Accept when: evidence is concrete (file:line, reproducible), it violates a paradigm or a user constraint,
@@ -585,6 +616,9 @@ Dates are America/New_York. Commits are on `main`.
 | 2026-10-26 night | **Council round 17** — a diff review with probes over the round-16 result (two findings: the widget tap's second persist, the insights memo and the week start), a data / upgrade lens (clean: migrations 0–7 probed, the sleep-offset bridge shape, `expo install --check`) and a test-audit lens (mutation testing of the suite: six gaps, no implementation bugs; the throwaway simulator flagged as non-gating) — plus reminder set-up inside habit creation from the backlog | this commit |
 | 2026-10-26 night | **Round-17 fixes and reminders at creation:** the widget's headless path marks the tap saved after its first persist and draws it as saved whatever fails after (ADV16-01, paradigm 77); `cycleInsights` keys its memo on the week start too (ADV16-02, paradigm 78); the reminder form extracted from the habit page's sheet into `ReminderPolicyForm` and embedded in the New habit sheet, saved in the same `ADD_HABIT` as the habit (`HabitDraft.reminder`, `newHabitAction` in `commands.ts`, paradigm 79); the "At most, a day" stepper shows the value that will be saved; version 0.21.0 / versionCode 21 | this commit |
 | 2026-10-26 night | Verification: tsc clean, 438 tests (13 new in `tests/round17.test.ts`: the creation action with set times / an interval / Off / the rotation, the insights memo across a week-start switch, the widget tap under five failure injections through a transpile-and-inject harness, and the audit's six gaps — a failed replace / persist rolls back whole, the default PBKDF2 rounds, the snapshot stamp's size half, Sunday-first partial quotas, a start-only night edit, weekday names; 1 in `tests/nudgeSim.test.ts`: 75 randomised ten-day sequences, 0 breaches, paradigm 80), browser e2e of a habit created with a 7 PM Mon / Wed / Fri reminder and one with none | this commit, tag `v0.21` |
+| 2026-10-26 night | **Council round 18** — a diff review with probes over the round-17 result, a lifecycle lens (unmounts, resets, StrictMode, timers across awaits), a state fuzz lens (45,000 seeded transitions against the validator, the SQLite stores and every selector) and a copy audit by the browser-driving tester. Findings: ADV17-01 (the creation form's "At most, a day" showed an unsaveable 3), LIFE18-1…7 (a dead provider left registered; a retired scheduler re-scheduling an old plan after the permission await, after `prepare()`, and from a captured live store; the mind bell's schedule/cancel race; a boolean lifetime broken by StrictMode's effect replay; untracked foreground timers), no fuzz breaches, fifteen copy rows. | — |
+| 2026-10-26 night | **Round-18 fixes:** `LiveStore.alive()` bound to the hydration's queue, identity-based live-store teardown in both provider effects, `apply` on a retired provider saves nothing (paradigms 82–83); a per-effect lifetime token in `NudgeScheduler` and a `still` validity carried through `reconcileAndSync` → `syncStateToOs` → `syncPlan` to the first bookkeeping write (paradigm 81); the mind bell serialised with a generation (paradigm 84); `BodySync` with one coalesced, cancelled timer; `distinctTimeCount` bounding the "Daily maximum" stepper; the copy fixes (Snooze 10 min, Reminder settings, Daily maximum / Only when I'm behind, Days met, Empty / Partial legend, ml-only water evidence, Source: links, plain reminder footnotes, Set today's total, Daily target, the clear-day and calendar hints); every stepper disables its minus / plus at a bound instead of offering a tap that changes nothing; the fuzzer promoted into the suite (`tests/stateFuzz.test.ts`, `FUZZ_SEQUENCES`); version 0.22.0 / versionCode 22 | this commit |
+| 2026-10-26 night | Verification: tsc clean, 448 tests (9 new in `tests/round18.test.ts` — the real notification service loaded behind Node module hooks with a scripted OS: the bell race, a sync refused after the OS read with zero writes, a retired provider's re-plan stopped before the OS, the living one's ring scheduled — plus the one-test fuzz), the lifecycle lens re-ran its harness after each fix (all seven gone), browser e2e of the copy and of the stepper bound, `expo export --platform android` | this commit, tag `v0.22` |
 
 (Entries for each council round follow below as they happen.)
 
@@ -592,6 +626,32 @@ Dates are America/New_York. Commits are on `main`.
 
 Format per round: lens → findings (severity · title · disposition · commit). Dispositions: **fixed**,
 **rejected** (reason), **deferred** (needs user/phone).
+
+### Round 18 (2026-10-26 night)
+
+Four lenses over the round-17 result — a diff review with pure probes, a lifecycle lens (what happens to work in flight when its owner unmounts, is reset by the error boundary, or is replayed by StrictMode), a state fuzz lens, and a copy audit by the browser-driving tester.
+
+**Diff review**
+- ADV17-01 low · the creation form's "At most, a day" stepper showed the draft's 3 while `policyFromDraft` clamps a one-time schedule to 1; the stored reminder said 1, the form said 3 · **fixed** — the stepper shows the value that will be saved and its maximum is the number of distinct valid times (`distinctTimeCount`, shared with the builder); test.
+- Judged correct: the other memo dependency lists, the handler's failure paths after ADV16-01, the creation action's rule / policy, the round-17 tests.
+
+**Lifecycle**
+- LIFE18-1 med · the provider registered itself as the live store inside hydration but unregistered only from the separate ready-gated effect; a provider retired before that effect committed (its first hydrated render threw into the error boundary) stayed registered, and widget taps were handed to a dead provider · **fixed** — registration and teardown in the same effect, identity-based in both effects, `apply` on a disposed queue returns `persisted: false` without publishing; paradigms 82–83.
+- LIFE18-2 med · the scheduler's debounced callback continued after unmount: after `await getPermission()` it re-planned a frozen state over its replacement's cancel-all · **fixed** — `gone` checked after the await; a lifetime fence in `current()` and the fenced `apply`.
+- LIFE18-3 med · `scheduleMindEnd` awaited its cancel-before-schedule while `cancelMindEnd` ran independently; the cancel finished first and the discarded session's bell was set · **fixed** — one queue with a generation; paradigm 84; tests (the held cancel, both orders).
+- LIFE18-4 low · `BodySync` set an untracked timeout per foreground event with no alive guard · **fixed** — one coalesced timer, cancelled on cleanup.
+- LIFE18-5 med · (after the first fix) the fence sat before `prepare()`, another await; a scheduler retired during it still reached `syncPlan` · **fixed** — `still` carried through `reconcileAndSync` → `syncStateToOs` → `syncPlan`, re-read inside the serialised job after the OS reads and before the first write (zero writes verified); paradigm 81.
+- LIFE18-6 med · (after the first fix) the boolean `alive` ref was set false by StrictMode's effect replay and never true again — every sync refused for the life of the app in dev · **fixed** — a fresh token object per effect setup, captured by each sync; paradigm 81.
+- LIFE18-7 med · `replanLive` through a live store captured before the provider's teardown kept scheduling (the replace counter does not move on teardown) · **fixed** — `LiveStore.alive()` and `still = alive && replaceSeq unchanged`; test (the real service and re-plan module behind module hooks).
+- The lens's harness re-ran after each fix: all seven demonstrated failures gone; registry ownership, the hand-off window under the headless lock, the retry path (no storm) and `replanHeadless` (the lock owns its sequence) judged correct.
+
+**State fuzz**
+- No breaches in 300 sequences × 150 steps (45,000 transitions; two zones, DST and the 3 am boundary, clocks moved back, every command builder, exports and sample replaces) against the validator, export → parse, reference integrity, rule-version order, clear → restore, water undo, every selector (no non-finite number), SQLite persist → load and replace → load. Generator promoted into the suite (`tests/stateFuzz.test.ts`, 6 sequences by default, `FUZZ_SEQUENCES=300` for the full run; a mutated invariant verified to fail with seed and trace).
+
+**Copy audit** (fifteen rows; the five worth most all fixed)
+- "Snooze 10" → "Snooze 10 min"; "Nudge settings" → "Reminder settings"; "At most, a day" → "Daily maximum"; "Only when behind" → "Only when I'm behind"; the Library intro explains the evidence badges; "front-load" gone; "Open source:" → "Source:"; the water evidence in ml only; "Last 14 days 3 of 14" → "Days met 3 of last 14"; the heatmap legend Empty / Partial / Complete; streak-freeze lines rewritten (and a 0-freezes variant); the reminder footnotes and interval hints as sentences; "Set Drink water" → "Set today's total"; "Target a day" → "Daily target"; the clear-day confirmation and the calendar hint rewritten. Paradigm 85.
+- Kept, with reasons: "pace check" (the water mode's own name, explained where it appears), the short badge labels (the intro now gives the scale), the ⚙ icon.
+- From the re-check: the Stepper's minus / plus never disabled at a bound (a tap that changed nothing) · **fixed** — disabled and faded at the bound, everywhere the Stepper is used; the switch's accessible name matched its visible label; the Daily maximum hint rewritten as sentences. Browser e2e (390×844): all fifteen rows read as intended; a set-times reminder's maximum follows the distinct time rows (1 → 2 → 1) with the bound shown by the disabled button; the water sheet keeps no behind-switch and no maximum by design.
 
 ### Round 17 (2026-10-26 night)
 
@@ -1259,7 +1319,7 @@ Five lenses over the round-6 result, each a fresh read-only session with its own
 - PIPE10-03 — reconstruction of merged reminders scheduled by v0.12 (they are replaced on the first sync after the update).
 
 ### Device verification owed
-- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10, T1–T11, U1–U11, V1–V11, X1–X11, Y1–Y14, Z1–Z13, AA1–AA16, AB1–AB11, AC1–AC8, AD1–AD7, AE1–AE6, AF1–AF5, AG1–AG6, AH1–AH2 have never been run on hardware. First build on the laptop is the next real milestone.
+- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10, T1–T11, U1–U11, V1–V11, X1–X11, Y1–Y14, Z1–Z13, AA1–AA16, AB1–AB11, AC1–AC8, AD1–AD7, AE1–AE6, AF1–AF5, AG1–AG6, AH1–AH2, AI1–AI3 have never been run on hardware. First build on the laptop is the next real milestone.
 - Residual risk carried knowingly: two JavaScript runtimes writing SQLite at once (UPG6-03, row V11). If the device run shows a lost write there, the fix is a database revision compared inside the write transaction.
 - Rows added in round 7: X1–X5 (exact alarms and the offline re-plan — the two library defaults the platform lens read in the sources), X6 (sheets in a short window), X7–X9 (Today without the trio, cycle off / hidden), X10–X11 (long titles, the drink ceiling).
 - Rows added in round 8: Y1–Y3 (snapshot replacement, kept copies, journaled deletes), Y4–Y6 (speculative and birth-control reminders, estimated wording), Y7–Y10 (widget sizes, font scale, notice), Y11–Y14 (drink reconcile, one night across sources, late records and backfill, permission names).
@@ -1271,6 +1331,7 @@ Five lenses over the round-6 result, each a fresh read-only session with its own
 - Rows added in round 15: AF1 (a fresh Android 13 install shows "Allow notifications"; denied twice reads as blocked; switched off in the app's settings reads as blocked), AF2 (backup turned off under a failed save: no snapshot comes back within the hour), AF3 (Undo after Remove and after Clear day, the exact times back; a toast hidden by an erase), AF4 (the Steps card from a hand-logged Steps habit, then from Health Connect once it delivers), AF5 (a reminder edit on one habit does not stall Today; a Health Connect read does not re-plan).
 - Rows added in round 16: AG1 (Sunday-first weeks: counts, grids, the summary's day), AG2 (Undo under a sync), AG3 (the 25-hour night's slots and the rotation's turns), AG4 (the countdown across the fold), AG5 (nights across zones), AG6 (a widget tap under a slow background).
 - Rows added in round 17: AH1 (a habit created with a set-times reminder rings at that time on those days, with the app killed), AH2 (a widget tap whose re-plan fails — airplane mode plus a full disk is hard to stage; at least: the tap survives a kill right after it and never shows "could not be saved" once the tile moved).
+- Rows added in round 18: AI1 (a crash-and-recover with reminders off: no alarm comes back), AI2 (a meditation stopped within a second of starting: no bell rings), AI3 (the creation form's Daily maximum follows the time rows).
 - PLAT12-03 (deferred): after a reboot Android drops expired one-shot alarms before Expo's boot receiver runs; the next sync reads them as rung and the daily cap is spent a slot early. A fix needs a Kotlin boot receiver that records the boot instant for the JavaScript side; AC5 measures how often it bites.
 - Rows added in round 10: AA1–AA8 (occurrences, the journal under a lost save, a clock set back, yesterday's tap, exempt rings, missed mornings, night-owl hours, the background re-plan), AA9–AA16 (rest of today, the reminder editor on custom / preset / movement habits, ounces everywhere, Body extrema, freezes by cadence, confirmations).
 - Deferred from round 8: Health Connect change tokens (`getChanges`) as an optimisation over the rolling window; "sharpens after three" copy.

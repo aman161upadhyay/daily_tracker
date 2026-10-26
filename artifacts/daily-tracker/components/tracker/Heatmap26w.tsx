@@ -130,13 +130,13 @@ export function Heatmap26w({ values, today, createdDay }: Heatmap26wProps) {
       </View>
       <View style={styles.legend}>
         <Txt role="caption" tone="tertiary">
-          Dormant
+          Empty
         </Txt>
         {[0, 0.25, 0.5, 0.75, 1].map((v) => (
           <View key={v} style={{ width: 12, height: 12, borderRadius: 3, backgroundColor: withAlpha(adherenceColor(v), 0.7) }} />
         ))}
         <Txt role="caption" tone="tertiary">
-          Flow
+          Partial
         </Txt>
         <View style={{ width: 12, height: 12, borderRadius: 3, backgroundColor: withAlpha(adherenceColor(1), 0.7), alignItems: 'center', justifyContent: 'center', marginLeft: 6 }}>
           <View style={{ width: 4, height: 4, borderRadius: 99, backgroundColor: withAlpha(c.text, 0.55) }} />

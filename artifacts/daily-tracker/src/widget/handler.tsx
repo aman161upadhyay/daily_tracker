@@ -123,6 +123,7 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
         // and plans for itself; the deliveries folded here stay in the journal for it to fold.
         if (liveStore() || next === applied) return { state: applied, snapshot: true, nowMs: ctx.nowMs };
         await store.persist(applied, next);
+        loaded = next;
         // The deliveries folded above are on disk now; nothing needs to replay them.
         await acknowledgeDeliveries(delivered).catch((err) => console.warn('Delivery journal update failed', err));
         await markHeadlessWrite();

@@ -38,6 +38,14 @@ export function clockString(minutes: number): string {
   return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 }
 
+/**
+ * How many different clock times a draft's rows name (two rows at 8:00 are one ring): the most a
+ * set-times policy can ring in a day, which is what `policyFromDraft` clamps `maxPerDay` to.
+ */
+export function distinctTimeCount(times: readonly string[]): number {
+  return new Set(times.map(clockMinutes).filter((m): m is number => m !== null)).size;
+}
+
 /** "7:30 AM", "8:00 AM and 7:00 PM", "8:00 AM, 12:30 PM and 7:00 PM". */
 export function timesText(times: readonly string[]): string {
   const words = [...times]
@@ -150,6 +158,7 @@ export function policyFromDraft(
   ctx: Pick<PolicyContext, 'movement' | 'water'>,
 ): NudgePolicy {
   const times = [...new Set(draft.times.map(clockMinutes).filter((m): m is number => m !== null))].sort((a, b) => a - b).map(clockString);
+  // (times.length === distinctTimeCount(draft.times): the stepper in the form shares that bound.)
   const intervalMin = Math.min(POLICY_INTERVAL_MAX, Math.max(POLICY_INTERVAL_MIN, Math.round(draft.intervalMin)));
   const maxPerDay = Math.min(POLICY_MAX_PER_DAY, Math.max(1, Math.round(draft.maxPerDay)));
   const kind = draft.mode === 'NONE' ? 'NONE' : draft.mode === 'FIXED' ? 'FIXED' : ctx.movement ? 'ROTATION' : 'INTERVAL';

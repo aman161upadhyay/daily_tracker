@@ -63,7 +63,7 @@ export const PRESETS: Preset[] = [
     policy: { kind: 'INTERVAL', intervalMin: 90, onlyWhenBehind: true, maxPerDay: 8 },
     nudgeText: 'Every 90 min, only when behind pace',
     why:
-      'Adequate intake for adults is about 2.7 L (women) to 3.7 L (men) of total water a day, and roughly a fifth of that comes from food — so about 2 L of drinks is a sensible default, not a law.',
+      'Adequate intake for adults is about 2,700 ml (women) to 3,700 ml (men) of total water a day, and roughly a fifth of that comes from food — so about 2,000 ml of drinks is a sensible default, not a law.',
     caveat: 'The “8 × 8 glasses” rule has no scientific basis; benefits of drinking more show up mainly for kidney stones and a few specific situations.',
     evidence: 'Guidance',
     sources: [
@@ -89,7 +89,7 @@ export const PRESETS: Preset[] = [
     ruleText: 'A glass before each of 3 meals',
     policy: { kind: 'FIXED', times: ['08:00', '12:30', '19:00'], maxPerDay: 3 },
     nudgeText: 'At 8:00 AM, 12:30 PM and 7:00 PM',
-    why: 'A glass before eating is an easy way to front-load the day’s intake.',
+    why: 'A glass before each meal gets more of the day’s water in early, without having to think about it.',
     evidence: 'Guidance',
     sources: [
       {

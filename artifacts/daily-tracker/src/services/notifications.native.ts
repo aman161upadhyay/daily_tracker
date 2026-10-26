@@ -352,9 +352,18 @@ export function firedSinceLastSync(nowMs: number): Promise<FiredRecord[]> {
  * Make the OS schedule match the plan. Returns what the OS delivered and is still owed to the
  * state (journaled before the ledger forgets it), so the caller can record FIRED events. A
  * superseded call returns nothing: the newer sync reports it.
+ *
+ * `still` is the caller's own validity (its scheduler instance still mounted, no replace since the
+ * plan was conceived): read when the sync's turn comes and again after the OS was read, right
+ * before the first write, so a plan whose owner is gone never reaches the OS. Without it a
+ * retired scheduler's sync, queued behind its replacement's cancel-all, would set the old
+ * alarms back. Refused with SupersededError, which callers treat as "a newer sync owns this".
  */
-export function syncPlan(plan: ScheduledNudge[], nowMs: number): Promise<FiredRecord[]> {
-  return serialized(() => syncPlanNow(plan, nowMs), []);
+export function syncPlan(plan: ScheduledNudge[], nowMs: number, still: () => boolean = () => true): Promise<FiredRecord[]> {
+  return serialized(async () => {
+    if (!still()) throw new SupersededError();
+    return syncPlanNow(plan, nowMs, still);
+  }, []);
 }
 
 /** A plan entry as the ledger records it. */
@@ -380,9 +389,12 @@ async function cancelEach(ids: readonly string[]): Promise<Set<string>> {
   return failed;
 }
 
-async function syncPlanNow(plan: ScheduledNudge[], nowMs: number): Promise<FiredRecord[]> {
+async function syncPlanNow(plan: ScheduledNudge[], nowMs: number, still: () => boolean): Promise<FiredRecord[]> {
   const { bk, raw } = await readBookkeeping();
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  // Nothing is written yet: a sync whose owner went away during the reads leaves the deliveries
+  // in the ledger for the next sync to find.
+  if (!still()) throw new SupersededError();
   const pending = new Set(scheduled.map((r) => r.identifier));
   const { fired, overdueKept, live } = deliveries(bk, pending, nowMs);
   const owed = journalWith(bk.journal, fired, nowMs);
@@ -589,18 +601,36 @@ export async function pendingResponses(): Promise<NudgeResponse[]> {
     .map((p) => ({ payload: p.payload, action: p.action, key: p.key, receivedAt: p.receivedAt }));
 }
 
-export async function scheduleMindEnd(endAtMs: number, minutes: number, kind: MindKind): Promise<void> {
-  await Notifications.cancelScheduledNotificationAsync(MIND_END_ID).catch(() => {});
-  const payload = mindEndPayload(endAtMs, minutes, kind);
-  await Notifications.scheduleNotificationAsync({
-    identifier: MIND_END_ID,
-    content: { title: 'Session complete', body: `${minutes} minutes of ${kind === 'BREATHING' ? 'breathing' : 'meditation'}. Tap if it was not logged.`, sound: 'default', data: { ...payload } },
-    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: endAtMs, channelId: 'mind' },
+// The bell's schedule and cancel run one at a time, and the newest request wins: a cancel issued
+// while an earlier schedule was still awaiting its own cancel-before-schedule used to finish first,
+// and the discarded session's bell was then set after all (and its tap logged the session).
+let mindBellQueue: Promise<unknown> = Promise.resolve();
+let mindBellGen = 0;
+function mindBellOp(op: () => Promise<void>): Promise<void> {
+  const run = mindBellQueue.then(op, op);
+  mindBellQueue = run.catch(() => undefined);
+  return run;
+}
+
+export function scheduleMindEnd(endAtMs: number, minutes: number, kind: MindKind): Promise<void> {
+  const gen = ++mindBellGen;
+  return mindBellOp(async () => {
+    if (gen !== mindBellGen) return;
+    await Notifications.cancelScheduledNotificationAsync(MIND_END_ID).catch(() => {});
+    // A cancel (or a newer schedule) requested while that await ran supersedes this one.
+    if (gen !== mindBellGen) return;
+    const payload = mindEndPayload(endAtMs, minutes, kind);
+    await Notifications.scheduleNotificationAsync({
+      identifier: MIND_END_ID,
+      content: { title: 'Session complete', body: `${minutes} minutes of ${kind === 'BREATHING' ? 'breathing' : 'meditation'}. Tap if it was not logged.`, sound: 'default', data: { ...payload } },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: endAtMs, channelId: 'mind' },
+    });
   });
 }
 
-export async function cancelMindEnd(): Promise<void> {
-  await Notifications.cancelScheduledNotificationAsync(MIND_END_ID).catch(() => {});
+export function cancelMindEnd(): Promise<void> {
+  ++mindBellGen;
+  return mindBellOp(() => Notifications.cancelScheduledNotificationAsync(MIND_END_ID).catch(() => {}));
 }
 
 /** Every ~3 h the OS lets us re-plan so tomorrow's nudges exist even if the app stays closed. */

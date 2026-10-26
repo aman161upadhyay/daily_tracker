@@ -56,7 +56,7 @@ export function DayPickerSheet({ visible, onClose, habit, today, ratiosFor, firs
   return (
     <Sheet visible={visible} title={`Fix an older day · ${habit.name}`} onClose={onClose}>
       <Txt role="footnote" tone="secondary" style={{ marginBottom: 12 }}>
-        Tap a day to change what was logged. The 7-day strip covers the recent days; this reaches back to {formatDayShort(firstDay)}, when the habit was added.
+        Tap a day to change what was logged — any day back to {formatDayShort(firstDay)}, when the habit was added.
       </Txt>
       <Row style={styles.header}>
         <IconButton Glyph={UI.Back} label="Previous month" onPress={() => setMonth((m) => shiftMonth(m, -1))} size={36} color={month > firstMonth ? c.text : c.textTertiary} disabled={month <= firstMonth} />

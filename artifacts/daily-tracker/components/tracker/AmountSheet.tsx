@@ -92,7 +92,7 @@ export function AmountSheet({ visible, onClose, habit, mode = 'add', day, curren
   const parsed = prefilled ? current : toStored(parseDecimalInput(text) ?? NaN);
   const tooLarge = Number.isFinite(parsed) && parsed > maxAmount;
   const typedValid = text.trim().length > 0 && Number.isFinite(parsed) && parsed >= 0 && !tooLarge;
-  const title = mode === 'set' ? `Set ${habit.name}` : `Log ${habit.name}`;
+  const title = mode === 'set' ? (backfill ? 'Set the day’s total' : 'Set today’s total') : `Log ${habit.name}`;
   const subtitle = backfill ? formatDayLong(theDay) : 'Today';
 
   return (
@@ -111,7 +111,7 @@ export function AmountSheet({ visible, onClose, habit, mode = 'add', day, curren
             onPress={() =>
               // Clearing takes every record of that day with it (times and origins included), not
               // only the total: named and confirmed, like Remove in the Logged list.
-              confirmDestructive(`Clear ${backfill ? formatDayLong(theDay) : 'today'}?`, `Everything logged for ${habit.name} that day — ${label(current)} — comes off, each entry with its time.`, 'Clear day', () => {
+              confirmDestructive(`Clear ${backfill ? formatDayLong(theDay) : 'today'}?`, `Removes everything logged for ${habit.name} that day (${label(current)}), entry by entry. Undo is offered afterwards.`, 'Clear day', () => {
                 // The cleared records come back exactly on Undo (their times and origins with them).
                 const gone = actions.clearDay(habit, theDay);
                 onClose();

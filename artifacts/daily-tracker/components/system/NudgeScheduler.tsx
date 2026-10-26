@@ -96,13 +96,34 @@ export function NudgeScheduler() {
   // fold them into the new state. Fenced on the replace counter: a fold conceived before a
   // replace is refused after it, the re-plan is abandoned, and the one the replace triggers
   // starts over from the new state's (empty) record.
+  // Also fenced on this instance's life: a scheduler retired by an error-boundary reset keeps a
+  // frozen state, and a callback of its that was awaiting the permission (or its turn in the
+  // re-plan queue) would otherwise schedule that state's plan over whatever its replacement did —
+  // including the cancel-all of a reminders-off. The validity travels with the sync to the OS
+  // boundary (see syncPlan), so a retired instance never reaches it. A fresh token per effect
+  // life, not a boolean: the dev-time effect replay (setup → cleanup → setup) would leave a
+  // boolean false for good, and a sync still carries the token of the life that started it.
+  const life = useRef<object | null>(null);
+  useEffect(() => {
+    const token = {};
+    life.current = token;
+    return () => {
+      if (life.current === token) life.current = null;
+    };
+  }, []);
   const fencedReconcile = () => {
     const seq = replaceSeq();
+    const token = life.current;
+    const still = () => token !== null && life.current === token && replaceSeq() === seq;
     const fenced: typeof apply = (build) => {
-      if (replaceSeq() !== seq) return Promise.reject(new SupersededError());
+      if (!still()) return Promise.reject(new SupersededError());
       return apply(build);
     };
-    return reconcileAndSync(() => latest.current.state, fenced, ctx(latest.current.state));
+    const current = () => {
+      if (!still()) throw new SupersededError();
+      return latest.current.state;
+    };
+    return reconcileAndSync(current, fenced, ctx(latest.current.state), still);
   };
 
   // Re-plan whenever the plan changes (state or the minute), debounced. Also after the state was
@@ -132,6 +153,9 @@ export function NudgeScheduler() {
           return;
         }
         if ((await getPermission()) !== 'granted') return;
+        // The plan moved on (or this instance is gone) while the permission was read: the newer
+        // effect run syncs for it.
+        if (gone) return;
         await fencedReconcile();
       } catch (err) {
         // A superseded sync (the record moved under it) is tried again as well, quietly.

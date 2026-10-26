@@ -102,7 +102,7 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
   const isWater = habit?.presetId === 'water';
   const targetMin = isWater ? WATER_GOAL_MIN_ML : targetStep;
   const targetMax = isWater ? WATER_GOAL_MAX_ML : 100_000;
-  const perDay = d.cadence === 'DAILY' ? 'a day' : 'on each counted day';
+  const targetLabel = d.cadence === 'DAILY' ? 'Daily target' : 'Target on each day you do it';
   const canSave = d.name.trim().length > 0;
 
   const save = () => {
@@ -148,7 +148,7 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
         ) : null}
 
         {d.type !== 'YES_NO' ? (
-          <Field label={`Target ${perDay}`}>
+          <Field label={targetLabel}>
             {/* Wraps on narrow phones: the unit box and the stepper each keep their full width. */}
             <Row style={{ justifyContent: 'space-between', flexWrap: 'wrap', rowGap: 10 }}>
               {preset || d.type === 'TIMER' ? (
@@ -211,7 +211,7 @@ export function HabitEditorSheet({ visible, onClose, habit, rule, onCreated }: H
           ) : null}
           {editing ? (
             <Txt role="caption" tone="tertiary" style={{ marginTop: 8 }}>
-              {d.cadence === rule?.cadence ? 'Changes apply from today; past days keep the old rule.' : 'A new rhythm starts with the next period.'}
+              {d.cadence === rule?.cadence ? 'Changes start today; past days keep what they had.' : 'A new rhythm starts with the next period.'}
             </Txt>
           ) : null}
         </Field>

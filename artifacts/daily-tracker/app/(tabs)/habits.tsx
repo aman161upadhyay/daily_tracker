@@ -95,7 +95,7 @@ export default function HabitsScreen() {
 
       <SectionHeader title="Library" />
       <Txt role="footnote" tone="secondary" style={{ marginTop: -4, marginBottom: 4, paddingHorizontal: 4 }}>
-        Research-backed presets. Tap one to read why it is here before you add it.
+        Research-backed presets. The badge grades the evidence (Strong, Moderate, Emerging, or Guidance); tap one to read it before you add it.
       </Txt>
 
       {libraryGroups.map((g) => (

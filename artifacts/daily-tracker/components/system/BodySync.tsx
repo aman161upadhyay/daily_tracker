@@ -18,18 +18,31 @@ export function BodySync() {
 
   useEffect(() => {
     if (!shouldRun) return;
+    let alive = true;
+    // One pending read at a time: a foreground event while one is waiting restarts the wait rather
+    // than queueing a second; the cleanup cancels whichever is pending, so a retired instance (an
+    // error-boundary reset) never starts a read that would land in a dead provider and hold the
+    // shared in-flight slot against its replacement.
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const run = () => {
+      timer = null;
+      if (!alive) return;
       const h = latest.current;
       if (!h.enabled || !autoSyncDue()) return;
       h.syncNow().catch((err) => console.warn('Health Connect auto-sync failed', err));
     };
     // Give the provider a moment to reload anything a background task wrote while we slept.
-    const timer = setTimeout(run, 1500);
+    const later = () => {
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(run, 1500);
+    };
+    later();
     const sub = AppState.addEventListener('change', (s) => {
-      if (s === 'active') setTimeout(run, 1500);
+      if (s === 'active') later();
     });
     return () => {
-      clearTimeout(timer);
+      alive = false;
+      if (timer !== null) clearTimeout(timer);
       sub.remove();
     };
   }, [shouldRun]);

@@ -20,11 +20,15 @@ export function contextFor(state: TrackerState, nowMs = now(), zone = currentZon
   return { nowMs, zone, today: trackingDayOf(nowMs, zone, state.settings.dayBoundaryHour), newId };
 }
 
-/** Push the plan for `state` to the OS; returns the nudges that fired since the last sync. */
-export async function syncStateToOs(state: TrackerState, ctx: CommandContext): Promise<FiredRecord[]> {
+/**
+ * Push the plan for `state` to the OS; returns the nudges that fired since the last sync. `still`
+ * is the caller's validity (see syncPlan): checked after every await on the way to the OS.
+ */
+export async function syncStateToOs(state: TrackerState, ctx: CommandContext, still: () => boolean = () => true): Promise<FiredRecord[]> {
   const plan = state.settings.remindersEnabled ? nudgePlan(state, ctx.today, ctx.nowMs, ctx.zone) : [];
   await prepare(state.settings.tapSizeMl, state.settings.units);
-  return syncPlan(plan, ctx.nowMs);
+  if (!still()) throw new SupersededError();
+  return syncPlan(plan, ctx.nowMs, still);
 }
 
 /** What a re-plan found: the deliveries folded into the state, and whether that state is saved. */
@@ -49,8 +53,15 @@ let reconcileQueue: Promise<unknown> = Promise.resolve();
  * this does so itself when the folds confirmed the save, and otherwise leaves it to the caller,
  * which knows when the state it holds is on disk (see replanHeadless).
  */
-export function reconcileAndSync(current: () => TrackerState, apply: (build: (s: TrackerState) => Action[]) => Promise<unknown>, ctx: CommandContext): Promise<Reconciled> {
+export function reconcileAndSync(
+  current: () => TrackerState,
+  apply: (build: (s: TrackerState) => Action[]) => Promise<unknown>,
+  ctx: CommandContext,
+  /** The caller's validity, carried to the OS boundary: false once its owner is gone or the state was replaced. */
+  still: () => boolean = () => true,
+): Promise<Reconciled> {
   const job = async (): Promise<Reconciled> => {
+    if (!still()) throw new SupersededError();
     let persisted = true;
     // The live store's apply resolves to { persisted }; the headless in-memory fold resolves to nothing.
     const fold = async (build: (s: TrackerState) => Action[]) => {
@@ -59,7 +70,7 @@ export function reconcileAndSync(current: () => TrackerState, apply: (build: (s:
     };
     const delivered = await firedSinceLastSync(ctx.nowMs);
     if (delivered.length > 0) await fold((s) => firedActions(s, delivered, ctx));
-    const fired = await syncStateToOs(current(), ctx);
+    const fired = await syncStateToOs(current(), ctx, still);
     await fold((s) => [...firedActions(s, fired, ctx), { type: 'PRUNE_EVENTS', beforeMs: ctx.nowMs - 60 * 60_000 }]);
     const all = [...delivered, ...fired];
     if (persisted && all.length > 0) await acknowledgeDeliveries(all);
@@ -100,9 +111,12 @@ export async function replanLive(live: LiveStore, ctx: CommandContext): Promise<
   // A replace on screen that is not in the database yet: the record beside the state still
   // belongs to the old state. The app's own scheduler re-plans once the replace committed.
   if (live.replacePending()) return live.current();
-  // Fenced like the in-app scheduler: a fold conceived before a replace must not land after it.
+  // Fenced like the in-app scheduler: a fold conceived before a replace must not land after it,
+  // and neither must its plan reach the OS. Nor may the plan of a store whose provider was retired
+  // meanwhile (an error-boundary reset): its replacement owns the schedule now.
   const seq = live.replaceSeq();
-  await reconcileAndSync(() => live.current(), (build) => (live.replaceSeq() !== seq ? Promise.reject(new SupersededError()) : live.apply(build)), ctx);
+  const still = () => live.alive() && live.replaceSeq() === seq;
+  await reconcileAndSync(() => live.current(), (build) => (still() ? live.apply(build) : Promise.reject(new SupersededError())), ctx, still);
   return live.current();
 }
 

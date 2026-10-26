@@ -16,7 +16,7 @@ import { mindSessionExists, newHabitAction, ruleChangeActions, ruleInForce, targ
 import { reducer, type Action } from './reducer';
 import { buildEmptyState, buildSampleState, habitFromPreset } from './seed';
 import { bumpBodyEpoch } from './epochs';
-import { setLiveStore, type LiveStore } from './liveStore';
+import { liveStore, setLiveStore, type LiveStore } from './liveStore';
 import { SaveQueue } from './saveQueue';
 import { latestRule } from './selectors';
 import type { TrackerState } from './types';
@@ -214,12 +214,15 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
     });
   if (!queueRef.current) queueRef.current = newQueue();
   const committed = useCallback(() => queueRef.current.committed ?? pendingRef.current, []);
-  const liveStoreFor = (apply: LiveStore['apply']): LiveStore => ({
+  // Bound to the queue of the hydration that registers it, not to the ref: a later hydration of
+  // the same component (a retry after a failed load) has its own queue, and this store is dead.
+  const liveStoreFor = (apply: LiveStore['apply'], queue: SaveQueue): LiveStore => ({
     apply,
     current: () => pendingRef.current,
     committed,
     replaceSeq,
-    replacePending: () => queueRef.current.replacePending,
+    replacePending: () => queue.replacePending,
+    alive: () => !queue.disposed,
   });
   const [nowMs, setNowMs] = useState(() => now());
   // The phone's zone can change while the app is open (travel); refreshed with the clock.
@@ -283,6 +286,9 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   const apply = useCallback(
     async (build: (state: TrackerState) => Action[]): Promise<{ next: TrackerState; applied: boolean; persisted: boolean }> => {
       const base = pendingRef.current;
+      // A retired provider (unmounted, or reset by the error boundary) has no writer behind it:
+      // nothing is folded into its dead state, and the caller hears that nothing was saved.
+      if (queueRef.current.disposed) return { next: base, applied: false, persisted: false };
       let next = base;
       for (const a of build(base)) next = reducer(next, a);
       const applied = publish(next);
@@ -299,6 +305,12 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
     // is retired below and stays retired.
     if (queueRef.current.disposed) queueRef.current = newQueue();
     const queue = queueRef.current;
+    // Registered as the live writer the moment the store is hydrated, and taken down with this
+    // attempt: the ready-gated effect below re-registers once it commits, but a provider retired
+    // before that (its first hydrated render threw into the error boundary) must not stay
+    // registered — a widget tap would hand its command to a dead provider instead of writing
+    // to the database itself.
+    let registered: LiveStore | null = null;
     (async () => {
       try {
         // Under the headless writers' lock: a widget tap or notification button that is halfway
@@ -321,7 +333,8 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
           storeRef.current = store;
           dispatch({ type: 'HYDRATE', state: next });
           queue.attach(store, next, genRef.current);
-          setLiveStore(liveStoreFor(apply));
+          registered = liveStoreFor(apply, queue);
+          setLiveStore(registered);
         });
         if (!cancelled) setReady(true);
       } catch (err) {
@@ -336,6 +349,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
       storeRef.current = null;
       queue.dispose();
+      if (registered && liveStore() === registered) setLiveStore(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadAttempt]);
@@ -352,8 +366,12 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   // notification button that runs here goes through the reducer instead of racing our saves.
   useEffect(() => {
     if (!ready || !storeRef.current) return;
-    setLiveStore(liveStoreFor(apply));
-    return () => setLiveStore(null);
+    const mine = liveStoreFor(apply, queueRef.current);
+    setLiveStore(mine);
+    // Only this registration is taken down: a replacement provider may already be registered.
+    return () => {
+      if (liveStore() === mine) setLiveStore(null);
+    };
   }, [ready, apply]);
 
   // Clock: refresh every 30 s and whenever the app returns to the foreground.
