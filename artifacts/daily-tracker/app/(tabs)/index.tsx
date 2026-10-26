@@ -54,7 +54,8 @@ export default function TodayScreen() {
   // vitamins and steps is not shown "0 of 0 snacks" and an empty Mind card.
   const active = state.habits.filter((h) => !h.archived);
   const showWater = active.some((h) => h.presetId === 'water') || water.loggedMl > 0;
-  const showMovement = active.some((h) => h.snackType) || summary.snacksDone > 0;
+  // Sugar Shield is a snack habit, but a shield-only person has no movement target: the card would read "0 of 0 snacks".
+  const showMovement = active.some((h) => h.snackType && h.presetId !== 'sugar-shield') || summary.snacksDone > 0;
   const showMind = active.some((h) => h.mindKind) || summary.mindMinutes > 0;
 
   const beforeNoon = nowMin < 12 * 60;

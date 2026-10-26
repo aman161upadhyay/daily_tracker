@@ -7,6 +7,7 @@ import { IconTile, PillButton, Row } from '@/components/ui/primitives';
 import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import type { HealthConnectUi } from '@/hooks/useHealthConnect';
+import { BODY_RECORD_TYPES, listRecordTypes } from '@/src/domain/body/types';
 import { formatClock, formatDayShort } from '@/src/domain/time/format';
 import { calendarDayOf, minutesOfDay } from '@/src/domain/time/trackingDay';
 
@@ -140,6 +141,7 @@ export function ConnectionCard({ hc, nowMs, zone, sample, hasData }: Props) {
   }
 
   const types = hc.granted.length;
+  const missing = BODY_RECORD_TYPES.filter((t) => !hc.granted.includes(t));
   return (
     <Card>
       <Row gap={12} style={{ alignItems: 'flex-start' }}>
@@ -152,6 +154,14 @@ export function ConnectionCard({ hc, nowMs, zone, sample, hasData }: Props) {
           <Txt role="footnote" tone="tertiary" style={{ marginTop: 2 }}>
             {hc.background ? 'Also syncs in the background every few hours.' : 'Syncs whenever you open the app.'}
           </Txt>
+          <Txt role="footnote" tone="tertiary" style={{ marginTop: 6 }}>
+            {`Reading ${listRecordTypes(hc.granted)}.`}
+          </Txt>
+          {missing.length > 0 ? (
+            <Txt role="footnote" tone="secondary" style={{ marginTop: 2 }}>
+              {`Not allowed: ${listRecordTypes(missing)} — a metric that is off here stays empty, whatever the source app has. Change it under Permissions.`}
+            </Txt>
+          ) : null}
         </View>
       </Row>
       {hc.lastError ? (

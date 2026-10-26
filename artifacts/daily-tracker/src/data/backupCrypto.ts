@@ -4,6 +4,11 @@
  * (OpenSSL, Python's `cryptography`, WebCrypto — see docs/BUILD_ANDROID.md
  * "Backups"). Pure JavaScript (@noble) so the same code runs on Hermes, the
  * browser and Node's tests; the GCM tag is the last 16 bytes of `ciphertext`.
+ *
+ * Envelope 2 (current) authenticates the header too: the GCM additional data is
+ * `headerAad(file)` — so the iteration count, salt, IV and the "exported" date a
+ * person sees before typing the password cannot be edited without the file
+ * failing to open. Envelope 1 files (no AAD) still open.
  */
 import { gcm } from '@noble/ciphers/aes.js';
 import { bytesToUtf8, utf8ToBytes } from '@noble/ciphers/utils.js';
@@ -15,8 +20,8 @@ import { StorageError } from './store';
 export interface EncryptedBackup {
   app: 'daily-tracker';
   encrypted: true;
-  /** Envelope version, independent of the data version inside. */
-  envelope: 1;
+  /** Envelope version, independent of the data version inside. 2 = header authenticated as GCM AAD. */
+  envelope: 1 | 2;
   kdf: 'PBKDF2-SHA256';
   iterations: number;
   /** Base64, 16 bytes. */
@@ -52,30 +57,40 @@ export function encryptBackup(plaintext: string, password: string, options: Encr
   const iterations = options.iterations ?? PBKDF2_ITERATIONS;
   const salt = options.salt ?? secureRandomBytes(16);
   const iv = options.iv ?? secureRandomBytes(12);
-  const key = deriveKey(password, salt, iterations);
-  const ciphertext = gcm(key, iv).encrypt(utf8ToBytes(plaintext));
-  return {
+  const header: Omit<EncryptedBackup, 'ciphertext'> = {
     app: 'daily-tracker',
     encrypted: true,
-    envelope: 1,
+    envelope: 2,
     kdf: 'PBKDF2-SHA256',
     iterations,
     salt: toBase64(salt),
     cipher: 'AES-256-GCM',
     iv: toBase64(iv),
-    ciphertext: toBase64(ciphertext),
     exportedAt: (options.now ?? new Date()).toISOString(),
   };
+  const key = deriveKey(password, salt, iterations);
+  const ciphertext = gcm(key, iv, utf8ToBytes(headerAad(header))).encrypt(utf8ToBytes(plaintext));
+  return { ...header, ciphertext: toBase64(ciphertext) };
 }
 
-/** Throws StorageError('Wrong password…') when the tag does not verify (wrong password or a damaged file). */
+/**
+ * The header string envelope 2 authenticates (GCM additional data, UTF-8): the fields in a fixed
+ * order, '|'-separated, so another tool can rebuild it from the JSON. `exportedAt` travels as
+ * written (an absent one is the empty string).
+ */
+export function headerAad(file: Omit<EncryptedBackup, 'ciphertext'>): string {
+  return ['daily-tracker', String(file.envelope), file.kdf, String(file.iterations), file.salt, file.cipher, file.iv, file.exportedAt ?? ''].join('|');
+}
+
+/** Throws StorageError('Wrong password…') when the tag does not verify (wrong password, or a damaged / edited file). */
 export function decryptBackup(file: EncryptedBackup, password: string): string {
   const { salt, iv, ciphertext } = checkEnvelope(file);
   const key = deriveKey(password, salt, file.iterations);
+  const aad = file.envelope === 2 ? utf8ToBytes(headerAad(file)) : undefined;
   try {
-    return bytesToUtf8(gcm(key, iv).decrypt(ciphertext));
+    return bytesToUtf8(gcm(key, iv, aad).decrypt(ciphertext));
   } catch {
-    throw new StorageError('Wrong password, or the file is damaged.');
+    throw new StorageError(file.envelope === 2 ? 'Wrong password, or the file is damaged or was edited.' : 'Wrong password, or the file is damaged.');
   }
 }
 
@@ -86,7 +101,7 @@ export function isEncryptedBackup(raw: unknown): raw is EncryptedBackup {
   return (
     f.app === 'daily-tracker' &&
     f.encrypted === true &&
-    f.envelope === 1 &&
+    (f.envelope === 1 || f.envelope === 2) &&
     f.kdf === 'PBKDF2-SHA256' &&
     f.cipher === 'AES-256-GCM' &&
     typeof f.iterations === 'number' &&

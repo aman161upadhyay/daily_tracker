@@ -288,8 +288,12 @@ describe('insights', () => {
     log('2026-06-28', { headache: 3 }),
     log('2026-07-25', { headache: 3 }, 2),
     log('2026-07-26', { headache: 2 }),
+    // Every cycle carries at least three logged days: a cycle logged less often is unknown, not milder.
+    log('2026-08-09', {}, 3),
+    log('2026-08-21', { headache: 1 }),
     log('2026-08-22', { headache: 2 }, 3),
     log('2026-08-23', { headache: 2 }),
+    log('2026-09-18', { headache: 1 }),
     log('2026-09-19', { headache: 1 }, 4),
     log('2026-09-20', { headache: 1 }),
     log('2026-06-02', { cramps: 2 }),

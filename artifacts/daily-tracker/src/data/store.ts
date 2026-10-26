@@ -9,6 +9,7 @@
  */
 import { normalizeBody } from '@/src/domain/body/merge';
 import { DEFAULT_SETTINGS, type CycleDayLog, type Settings } from '@/src/domain/models';
+import { isCalendarDay } from '@/src/domain/time/trackingDay';
 import type { TrackerState } from '@/src/state/types';
 import { projectRecords, sanitizeCycleReminders, sanitizePeriodHistory, sanitizeSettings, validateRecords, ValidationError } from './validate';
 
@@ -74,6 +75,7 @@ export function parseState(raw: unknown): TrackerState {
   for (const key of lists) {
     if (!Array.isArray(s[key])) throw new StorageError(`Missing "${key}" list.`);
   }
+  rejectDamagedContainers(s);
   const state: TrackerState = {
     version: 1,
     habits: s.habits!,
@@ -100,6 +102,42 @@ export function parseState(raw: unknown): TrackerState {
   }
   // Only the known fields travel on: whatever else a file carries next to them stays in the file.
   return projectRecords(state);
+}
+
+/**
+ * Lists added after the first exports may be *absent* (an older file) — but a list that is present
+ * and not a list, or a period / day log without its day, is damage, and damage must stop an import
+ * before the lenient normalizers below quietly turn it into "nothing logged": the person would then
+ * replace everything they have with a file that lost its cycle or body history.
+ */
+function rejectDamagedContainers(s: Partial<TrackerState>): void {
+  const presentList = (value: unknown, name: string) => {
+    if (value !== undefined && value !== null && !Array.isArray(value)) throw new StorageError(`The file is damaged ("${name}" is not a list).`);
+  };
+  presentList(s.nudgeEvents, 'nudgeEvents');
+  presentList(s.events, 'events');
+  presentList(s.cycleLogs, 'cycleLogs');
+  if (Array.isArray(s.cycleLogs)) {
+    s.cycleLogs.forEach((item: unknown, i) => {
+      if (!item || typeof item !== 'object' || !isCalendarDay((item as Partial<CycleDayLog>).day)) throw new StorageError(`The file is damaged (cycleLogs[${i}] has no day).`);
+    });
+  }
+  if (s.body !== undefined && s.body !== null) {
+    if (typeof s.body !== 'object' || Array.isArray(s.body)) throw new StorageError('The file is damaged ("body" is not a record).');
+    for (const key of ['steps', 'sleep', 'heart', 'weight', 'workouts'] as const) presentList((s.body as unknown as Record<string, unknown>)[key], `body.${key}`);
+  }
+  const cycle = s.settings && typeof s.settings === 'object' ? (s.settings as Partial<TrackerState['settings']>).cycle : undefined;
+  if (cycle && typeof cycle === 'object') {
+    presentList(cycle.history, 'settings.cycle.history');
+    if (Array.isArray(cycle.history)) {
+      cycle.history.forEach((item: unknown, i) => {
+        const span = item as Partial<{ start: unknown; end: unknown }> | null;
+        if (!span || typeof span !== 'object' || !isCalendarDay(span.start)) throw new StorageError(`The file is damaged (settings.cycle.history[${i}] has no start day).`);
+        if (span.end !== undefined && (!isCalendarDay(span.end) || span.end < (span.start as string))) throw new StorageError(`The file is damaged (settings.cycle.history[${i}] ends before it starts).`);
+      });
+    }
+    presentList(cycle.reminders, 'settings.cycle.reminders');
+  }
 }
 
 /** Day logs from older files may lack the symptoms map. */

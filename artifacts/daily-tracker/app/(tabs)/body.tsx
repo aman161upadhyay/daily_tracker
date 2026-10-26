@@ -91,6 +91,8 @@ export default function BodyScreen() {
   }, [body, calendarToday, today, zone, days7, days14, days30]);
 
   const visible = BODY_METRICS.filter((m) => view.present[m] || (hc.connected && GRANT_FOR[m].some((t) => hc.granted.includes(t))));
+  // Connected, but a permission was left off: say so, instead of a metric that silently never appears.
+  const notAllowed = hc.connected ? BODY_METRICS.filter((m) => !view.present[m] && !GRANT_FOR[m].some((t) => hc.granted.includes(t))) : [];
   const open = (metric: BodyMetric) => router.push({ pathname: '/body/[metric]', params: { metric } });
 
   const subtitle = hc.connected ? 'Health Connect' : state.settings.sampleData && hasData ? 'Sample data' : 'From Health Connect';
@@ -247,6 +249,15 @@ export default function BodyScreen() {
         ) : (
           <EmptyMetric metric="workouts" />
         )
+      ) : null}
+
+      {notAllowed.length > 0 ? (
+        <Card>
+          <Txt role="footnote" tone="secondary">
+            {`${notAllowed.map((m) => METRIC_META[m].title).join(', ')}: not allowed in Health Connect permissions, so ${notAllowed.length === 1 ? 'it stays' : 'they stay'} empty here whatever the source app records.`}
+          </Txt>
+          <PillButton label="Permissions" kind="ghost" compact Leading={UI.Gear} onPress={() => void hc.openSettings()} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
+        </Card>
       ) : null}
 
       {visible.length > 0 ? (

@@ -17,7 +17,7 @@ import { SampleDataChip } from '@/components/tracker/SampleDataChip';
 import { useColors } from '@/hooks/useColors';
 import { withAlpha } from '@/src/domain/color/oklch';
 import { cycleAlerts, NOT_CONTRACEPTION, outlierSuggestions } from '@/src/domain/cycle/alerts';
-import { describeReminder } from '@/src/domain/cycle/reminders';
+import { describeReminder, isOvulationBased } from '@/src/domain/cycle/reminders';
 import { cycleLengths, todayOffer } from '@/src/domain/cycle/timeline';
 import type { CycleReminder, PeriodSpan } from '@/src/domain/models';
 import { formatClock, formatDayLong, formatDayShort } from '@/src/domain/time/format';
@@ -43,7 +43,7 @@ export default function CycleScreen() {
   const offer = todayOffer(cycle.history, cycle, calendarToday);
   const fires = cycleReminderFires(state, calendarToday);
   const insights = cycleInsights(state);
-  const alerts = useMemo(() => cycleAlerts(cycle.history), [cycle.history]);
+  const alerts = useMemo(() => cycleAlerts(cycle.history, calendarToday), [cycle.history, calendarToday]);
   const outliers = useMemo(() => outlierSuggestions(cycle.history), [cycle.history]);
   const loggedDays = useMemo(() => new Set(state.cycleLogs.map((l) => l.day)), [state.cycleLogs]);
   const logByDay = useMemo(() => new Map(state.cycleLogs.map((l) => [l.day, l])), [state.cycleLogs]);
@@ -120,7 +120,7 @@ export default function CycleScreen() {
           </View>
           {prediction.lowConfidence ? (
             <Txt role="footnote" tone="tertiary" style={{ marginTop: 8 }}>
-              {prediction.clamped ? 'A short cycle: ovulation is placed right after the period, so this is a rough guide.' : `Based on ${prediction.usableCycles} ${prediction.usableCycles === 1 ? 'cycle' : 'cycles'} and your typical length; it sharpens after three.`}
+              {prediction.clamped && !cycle.birthControl ? 'A short cycle: ovulation is placed right after the period, so this is a rough guide.' : `Based on ${prediction.usableCycles} ${prediction.usableCycles === 1 ? 'cycle' : 'cycles'} and your typical length; it sharpens after three.`}
             </Txt>
           ) : null}
           <Row gap={8} style={{ marginTop: 14 }}>
@@ -189,9 +189,17 @@ export default function CycleScreen() {
             {fires.map((f) => (
               <View key={f.reminder.id}>
                 <Divider />
-                <UpcomingRow color={c.gold} title={f.reminder.label} value={formatDayShort(f.day)} detail={`${formatClock(f.minute)} · ${describeReminder(f.reminder)}`} />
+                <UpcomingRow color={c.gold} title={f.reminder.label} value={formatDayShort(f.day)} detail={`${formatClock(f.minute)} · ${describeReminder(f.reminder)}${f.confirmed ? '' : ' · once the period is logged'}`} />
               </View>
             ))}
+            {cycle.birthControl && cycle.reminders.some((r) => r.enabled && isOvulationBased(r)) ? (
+              <>
+                <Divider />
+                <Txt role="footnote" tone="tertiary" style={{ paddingVertical: 12 }}>
+                  Reminders tied to the fertile window or the luteal phase pause while birth control is on.
+                </Txt>
+              </>
+            ) : null}
             {prediction.lateDays > 0 && cycle.reminders.some((r) => r.enabled) ? (
               <>
                 <Divider />

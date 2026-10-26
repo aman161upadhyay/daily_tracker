@@ -90,7 +90,7 @@ export default function HabitDetailScreen() {
   const todayText = weekly
     ? `${view.periodDone ?? 0} of ${view.periodQuota ?? view.rule.timesPerPeriod}`
     : habit.type === 'YES_NO'
-      ? view.todayRatio >= 1
+      ? view.doneToday
         ? 'Done'
         : 'Not yet'
       : formatNumber(view.todayValue);
@@ -198,7 +198,7 @@ export default function HabitDetailScreen() {
         ) : habit.type !== 'TIMER' ? (
           <Row gap={8} style={{ marginTop: 14 }}>
             {habit.type === 'YES_NO' ? (
-              <PillButton label={view.todayRatio >= 1 ? 'Undo today' : 'Mark done'} Leading={UI.Check} onPress={() => actions.toggleYesNo(habit)} style={{ flex: 1 }} kind={view.todayRatio >= 1 ? 'ghost' : 'primary'} />
+              <PillButton label={view.doneToday ? 'Undo today' : 'Mark done'} Leading={UI.Check} onPress={() => actions.toggleYesNo(habit)} style={{ flex: 1 }} kind={view.doneToday ? 'ghost' : 'primary'} />
             ) : (
               <>
                 <PillButton label={quickLabel} Leading={UI.Plus} onPress={quickAdd} style={{ flex: 1 }} />

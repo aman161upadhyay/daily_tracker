@@ -31,7 +31,8 @@ export function ReminderSheet({ reminder, birthControl, onClose, onSave, onDelet
   useEffect(() => setDraft(reminder), [reminder]);
   if (!reminder || !draft) return null;
   const isNew = reminder.id === '';
-  const phases = birthControl ? PHASES.filter((p) => p.value !== 'fertile') : PHASES;
+  // Hormonal birth control: nothing to count ovulation from, so only period-anchored phases are offered.
+  const phases = birthControl ? PHASES.filter((p) => p.value === 'period') : PHASES;
 
   return (
     <Sheet visible={!!reminder} title={isNew ? 'New cycle reminder' : 'Edit reminder'} onClose={onClose}>
@@ -56,12 +57,12 @@ export function ReminderSheet({ reminder, birthControl, onClose, onSave, onDelet
           { value: 'PHASE_START', label: 'Into a phase' },
         ]}
         value={draft.anchor}
-        onChange={(anchor) => setDraft({ ...draft, anchor, ...(anchor === 'PHASE_START' && !draft.phase ? { phase: 'luteal' as CyclePhaseKey } : {}) })}
+        onChange={(anchor) => setDraft({ ...draft, anchor, ...(anchor === 'PHASE_START' && !draft.phase ? { phase: (birthControl ? 'period' : 'luteal') as CyclePhaseKey } : {}) })}
       />
       {draft.anchor === 'PHASE_START' ? (
         <Row gap={8} style={{ flexWrap: 'wrap', marginTop: 10 }}>
           {phases.map((p) => (
-            <Chip key={p.value} label={p.label} color={c.cat.cycle} selected={(draft.phase ?? 'luteal') === p.value} onPress={() => setDraft({ ...draft, phase: p.value })} />
+            <Chip key={p.value} label={p.label} color={c.cat.cycle} selected={(draft.phase ?? (birthControl ? 'period' : 'luteal')) === p.value} onPress={() => setDraft({ ...draft, phase: p.value })} />
           ))}
         </Row>
       ) : null}

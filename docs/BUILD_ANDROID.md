@@ -174,8 +174,8 @@ the block survives every `--clean` prebuild.
 `versionCode` discipline: Android installs a same-signer build whose `versionCode` is equal **or**
 higher over the existing one and rejects only a lower one (`INSTALL_FAILED_VERSION_DOWNGRADE`).
 This project still raises `expo.android.versionCode` in `app.json` on every release (M3 shipped 3,
-M4 4, M5 5, M6 6, then one per council round: round 3 → 7, round 4 → 8, round 5 → 9, round 6 → 10, round 7 → 11)
-so that "which build is this phone on" has one answer; `version` follows the tag (`0.11.0` = `v0.11`).
+M4 4, M5 5, M6 6, then one per council round: round 3 → 7, round 4 → 8, round 5 → 9, round 6 → 10, round 7 → 11, round 8 → 12)
+so that "which build is this phone on" has one answer; `version` follows the tag (`0.12.0` = `v0.12`).
 `app.json` is the source of truth; when this paragraph and `app.json` disagree, `app.json` is right.
 
 Google Play is deliberately not part of this recipe; `./gradlew bundleRelease` produces the AAB if
@@ -193,23 +193,34 @@ Two independent mechanisms, both leaving the live SQLite database alone:
   recorded in a marker file outside the backup directory first and finished on the next start if
   the app died before the delete ran). After a factory reset or a new phone, Android restores that
   file, the database is empty, and onboarding opens with "Welcome back → Restore it / Start fresh".
-  A restored snapshot that this build cannot read (written by a newer app, or damaged) is never
-  overwritten: onboarding offers "Keep it for later / Delete it", the hourly writer moves it to
-  `snapshot.kept.json` (still inside the backed-up directory), and Settings → Your data offers
-  "Try to restore it" once the app has been updated. To rehearse without a reset:
+  The writer never overwrites `snapshot.json` in place: it writes the whole export to
+  `snapshot.next.json` first and then moves that over the old file (a complete `snapshot.next.json`
+  found on start outranks whatever `snapshot.json` holds — the app died between the two steps),
+  so a crash mid-write cannot leave a half file as the only copy. A restored snapshot that this
+  build cannot read (written by a newer app, or damaged) is never overwritten: onboarding offers
+  "Keep it for later / Delete it", the hourly writer moves it to `snapshot.kept.<ms>.json` (one
+  file per kept copy, still inside the backed-up directory; older builds used `snapshot.kept.json`),
+  and Settings → Your data offers "Try to restore it" once the app has been updated. To rehearse
+  without a reset:
   `adb shell bmgr backupnow com.amanupadhyay.dailytracker`, uninstall, reinstall, and
   `adb shell bmgr restore <token> com.amanupadhyay.dailytracker` (tokens from `adb shell bmgr list sets`;
   `adb shell bmgr enable true` and a Google account on the phone are prerequisites).
 - **Export with a password.** Settings → Your data → Export backup → type a password. The file is
   AES-256-GCM with a PBKDF2-SHA256 key (200,000 iterations, 16-byte salt, 12-byte IV, all written in
-  the file, tag appended to the ciphertext). It opens without this app, for example in Python:
+  the file, tag appended to the ciphertext). Files written since v0.12 carry `"envelope": 2`: the
+  header fields are authenticated as GCM additional data, so an edited iteration count, salt, IV
+  or export date fails to open instead of silently decrypting with the wrong key. Envelope 1 files
+  (no additional data) still open. Without this app, for example in Python:
   ```python
   import json, base64, hashlib, unicodedata
   from cryptography.hazmat.primitives.ciphers.aead import AESGCM   # pip install cryptography
   f = json.load(open('daily-tracker-2026-10-26-k3f9a2.json'))
   password = unicodedata.normalize('NFKC', 'your password')      # the app normalises the same way
   key = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), base64.b64decode(f['salt']), f['iterations'], 32)
-  print(AESGCM(key).decrypt(base64.b64decode(f['iv']), base64.b64decode(f['ciphertext']), None).decode())
+  aad = None
+  if f.get('envelope') == 2:                                      # header authenticated since v0.12
+      aad = '|'.join(['daily-tracker', str(f['envelope']), f['kdf'], str(f['iterations']), f['salt'], f['cipher'], f['iv'], f.get('exportedAt', '')]).encode('utf-8')
+  print(AESGCM(key).decrypt(base64.b64decode(f['iv']), base64.b64decode(f['ciphertext']), aad).decode())
   ```
   Passwords are NFKC-normalised before hashing (so a password typed with a full-width or decomposed
   character still opens the file); the recipe above does the same. There is no recovery for a

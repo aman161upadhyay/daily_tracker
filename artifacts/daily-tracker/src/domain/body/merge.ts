@@ -149,6 +149,7 @@ export function normalizeBody(raw: unknown): BodyState {
       ...(lastError !== undefined ? { lastError } : {}),
       granted: Array.isArray(sync.granted) ? sync.granted.filter((g): g is BodyRecordType => (BODY_RECORD_TYPES as readonly string[]).includes(g)) : [],
       background: sync.background === true,
+      ...(Array.isArray(sync.backfilled) ? { backfilled: sync.backfilled.filter((g): g is BodyRecordType => (BODY_RECORD_TYPES as readonly string[]).includes(g)) } : {}),
     },
   };
 }

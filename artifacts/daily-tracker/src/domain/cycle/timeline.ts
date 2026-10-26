@@ -163,8 +163,17 @@ function ovulationFor(nextStart: string, periodEnd: string, rules: CycleRules): 
   return { day: natural, clamped: false };
 }
 
+/**
+ * The history a prediction may stand on: starts up to today. A start logged on a future day (an
+ * import, a clock that was wrong) stays in the record — the calendar shows it so it can be
+ * removed — but nothing is counted from it.
+ */
+export function historyUpTo(history: readonly PeriodSpan[], today: string): PeriodSpan[] {
+  return normalizeHistory(history).filter((span) => span.start <= today);
+}
+
 export function predictCycle(history: readonly PeriodSpan[], rules: CycleRules, today: string): CyclePrediction | null {
-  const h = normalizeHistory(history);
+  const h = historyUpTo(history, today);
   const last = h[h.length - 1];
   if (!last) return null;
   const lengths = usableLengths(h);
@@ -196,8 +205,14 @@ export function predictCycle(history: readonly PeriodSpan[], rules: CycleRules, 
 
 export interface CycleDayInfo {
   phase: CyclePhase;
-  /** True when the phase comes from a prediction rather than logged data. */
+  /** True when the phase comes from a prediction (the projected cycle) rather than logged starts. */
   predicted: boolean;
+  /**
+   * True for every phase that is calculated rather than observed: only logged bleeding is known.
+   * A past cycle's "fertile" day is counted back from the next logged start — an estimate, even
+   * though nothing about it is predicted.
+   */
+  estimated: boolean;
   /** 1-based day of the (logged or projected) cycle. */
   cycleDay: number;
   /** 1-based day within the period, for period days. */
@@ -231,13 +246,16 @@ interface CycleWindow {
 }
 
 export function buildTimeline(history: readonly PeriodSpan[], rules: CycleRules, today: string): CycleTimeline {
-  const h = normalizeHistory(history);
+  // Windows and predictions count from starts up to today; a future-dated start is only ever
+  // "a period logged on that day" (periodContaining), never an anchor.
+  const all = normalizeHistory(history);
+  const h = historyUpTo(all, today);
   const prediction = predictCycle(h, rules, today);
   const periodDays = Math.max(1, rules.periodDays);
 
   const periodContaining = (date: string): PeriodSpan | undefined => {
-    for (let i = h.length - 1; i >= 0; i--) {
-      const span = h[i]!;
+    for (let i = all.length - 1; i >= 0; i--) {
+      const span = all[i]!;
       if (span.start > date) continue;
       if (date <= periodEndOf(span, rules, today)) return span;
       return undefined;
@@ -280,16 +298,16 @@ export function buildTimeline(history: readonly PeriodSpan[], rules: CycleRules,
   const infoOn = (date: string): CycleDayInfo | null => {
     const logged = periodContaining(date);
     if (logged) {
-      return { phase: 'menstrual', predicted: false, cycleDay: dayDiff(logged.start, date) + 1, periodDay: dayDiff(logged.start, date) + 1, isOvulation: false, late: false };
+      return { phase: 'menstrual', predicted: false, estimated: false, cycleDay: dayDiff(logged.start, date) + 1, periodDay: dayDiff(logged.start, date) + 1, isOvulation: false, late: false };
     }
     const w = windowFor(date);
     if (!w) return null;
     const day = dayDiff(w.start, date) + 1;
     const late = !!prediction && prediction.lateDays > 0 && w.start === prediction.lastStart && date >= prediction.nextStart && date <= today;
     if (w.predicted && w.start !== prediction?.lastStart && date >= w.start && date <= w.periodEnd) {
-      return { phase: 'menstrual', predicted: true, cycleDay: day, periodDay: day, isOvulation: false, late: false };
+      return { phase: 'menstrual', predicted: true, estimated: true, cycleDay: day, periodDay: day, isOvulation: false, late: false };
     }
-    if (late) return { phase: 'late-luteal', predicted: true, cycleDay: day, isOvulation: false, late: true };
+    if (late) return { phase: 'late-luteal', predicted: true, estimated: true, cycleDay: day, isOvulation: false, late: true };
     const ov = ovulationFor(w.nextStart, w.periodEnd, rules);
     const fertileStart = addDays(ov.day, -FERTILE_DAYS_BEFORE_OVULATION);
     const lateLutealStart = addDays(w.nextStart, -LATE_LUTEAL_DAYS);
@@ -298,7 +316,7 @@ export function buildTimeline(history: readonly PeriodSpan[], rules: CycleRules,
     else if (date >= fertileStart && date <= ov.day) phase = 'fertile';
     else if (date > ov.day) phase = 'luteal';
     else phase = 'follicular';
-    return { phase, predicted: w.predicted || date > today, cycleDay: day, isOvulation: date === ov.day, late: false };
+    return { phase, predicted: w.predicted || date > today, estimated: true, cycleDay: day, isOvulation: date === ov.day, late: false };
   };
 
   const projectedPeriods = (fromDay: string, toDay: string): ProjectedPeriod[] => {
@@ -316,7 +334,7 @@ export function buildTimeline(history: readonly PeriodSpan[], rules: CycleRules,
     return out;
   };
 
-  return { history: h, prediction, periodContaining, infoOn, projectedPeriods };
+  return { history: all, prediction, periodContaining, infoOn, projectedPeriods };
 }
 
 /** Birth-control mode hides the fertile window: those days read as follicular. */

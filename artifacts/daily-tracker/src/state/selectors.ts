@@ -16,7 +16,7 @@ import { SHIELD_EVENT_HABIT_ID, SNACK_LABELS } from '@/src/domain/models';
 import { habitSymptomCorrelations, symptomPatterns, type CompletedCycle, type Correlation, type HabitPerCycle, type SymptomPattern } from '@/src/domain/cycle/insights';
 import { upcomingReminders, type ReminderFire } from '@/src/domain/cycle/reminders';
 import { buildTimeline, cycleLengths, isPeriodOpen, type CycleTimeline } from '@/src/domain/cycle/timeline';
-import { nextNudge, type NextNudge, type RotationItem } from '@/src/domain/nudges/nextNudge';
+import { nextNudge, nextRotationItem, type NextNudge, type RotationItem } from '@/src/domain/nudges/nextNudge';
 import { planNudges, type PlanHabit, type PlanInput, type ScheduledNudge } from '@/src/domain/nudges/planner';
 import { addDays, calendarDayOf, dayDiff, lastNDays, minutesOfDay } from '@/src/domain/time/trackingDay';
 import { waterStatus, type WaterStatus } from '@/src/domain/water/pace';
@@ -175,7 +175,15 @@ export interface HabitView {
   policy?: NudgePolicy;
   todayValue: number;
   target: number;
+  /**
+   * Progress of the thing the row is about: today's target for daily habits, the period's quota
+   * ("2 of 4 this week") for weekly and monthly ones. Rings, bars and "done" chips read this.
+   */
   todayRatio: number;
+  /** Today's own log against today's per-day target — what the checkbox, "Undo today" and the planner mean by "done today". */
+  doneToday: boolean;
+  /** Today's own log as a ratio of today's per-day target, whatever the cadence. */
+  dayRatio: number;
   adherence: number;
   stage: AdherenceStage;
   /** Streak in periods (days, weeks or months depending on the cadence). */
@@ -242,6 +250,8 @@ function buildHabitView(state: TrackerState, habit: Habit, today: string): Habit
     todayValue: todayRatio.value,
     target: rule.target,
     todayRatio: weekly ? todayRatio.ratio : ratioOf(todayRatio.value, rule.target),
+    doneToday: todayRatio.value >= rule.target,
+    dayRatio: ratioOf(todayRatio.value, rule.target),
     adherence,
     stage: adherenceStage(adherence),
     streak: streaks.streak,
@@ -280,12 +290,21 @@ export function todaySummary(state: TrackerState, today: string, nowMs: number, 
   const loggedMl = state.water.reduce((acc, w) => (w.day === today ? acc + w.ml : acc), 0);
   const water = waterStatus(loggedMl, s.waterGoalMl, nowMin, s.activeStartMin, s.activeEndMin, s.tapSizeMl);
 
+  // Today's movement ask: each habit's per-day target — a "3 climbs, 3 days a week" habit asks for
+  // 3 climbs on a day it is done, not one — counted only while its week or month still needs days.
   const movementHabits = activeHabits(state).filter((h) => h.snackType && !isSugarShield(h));
   let snacksTarget = 0;
   for (const h of movementHabits) {
     const rule = ruleFor(state, h.id, today);
     if (!rule) continue;
-    snacksTarget += rule.cadence === 'DAILY' ? rule.target : Math.ceil(rule.timesPerPeriod / 7);
+    if (rule.cadence === 'DAILY') {
+      snacksTarget += rule.target;
+      continue;
+    }
+    const view = habitView(state, h, today);
+    const periodMet = (view.periodDone ?? 0) >= (view.periodQuota ?? 0);
+    // Once the quota is met, only a day actually started still counts towards the ring.
+    if (!periodMet || view.todayValue > 0) snacksTarget += rule.target;
   }
   const snacksDone = state.snacks.filter((x) => x.day === today && x.trigger !== 'SUGAR_SHIELD').length;
 
@@ -317,6 +336,16 @@ export function rotationItems(state: TrackerState): RotationItem[] {
       return !p || (p.enabled && (p.kind === 'ROTATION' || p.kind === 'INTERVAL'));
     })
     .map((h) => ({ habitId: h.id, snackType: h.snackType as SnackType, label: h.name }));
+}
+
+/** The snack habit the rotation suggests next (what a tap on the automatic movement tile logs). */
+export function rotationHabit(state: TrackerState, today: string): Habit | undefined {
+  const items = rotationItems(state);
+  const completed = state.snacks.filter((x) => x.day === today && x.trigger !== 'SUGAR_SHIELD').length;
+  const swap = state.nudgeSwap?.day === today ? state.nudgeSwap.offset : 0;
+  const item = nextRotationItem(items, completed + swap);
+  const id = item?.habitId;
+  return id ? state.habits.find((h) => h.id === id && !h.archived) : undefined;
 }
 
 export function liveNudge(state: TrackerState, today: string, nowMs: number, zone: string): NextNudge | null {
@@ -392,6 +421,11 @@ export interface Highlight {
   habitId?: string;
 }
 
+/** The period a streak counts: days, weeks or months. */
+export function streakUnit(cadence: Cadence): 'day' | 'week' | 'month' {
+  return cadence === 'DAILY' ? 'day' : cadence === 'WEEKLY' ? 'week' : 'month';
+}
+
 export function highlights(state: TrackerState, today: string): Highlight[] {
   const out: Highlight[] = [];
   const habits = activeHabits(state);
@@ -400,10 +434,11 @@ export function highlights(state: TrackerState, today: string): Highlight[] {
   // Best current streak.
   const streaky = [...views].filter((v) => v.streak >= 3).sort((a, b) => b.streak - a.streak)[0];
   if (streaky) {
+    const unit = streakUnit(streaky.rule.cadence);
     out.push({
       id: 'streak',
-      title: `${streaky.habit.name}: ${streaky.streak}-day streak`,
-      body: streaky.streak >= streaky.best ? 'That is your best run so far.' : `Best so far: ${streaky.best} days.`,
+      title: `${streaky.habit.name}: ${streaky.streak}-${unit} streak`,
+      body: streaky.streak >= streaky.best ? 'That is your best run so far.' : `Best so far: ${streaky.best} ${unit}s.`,
       category: streaky.habit.category,
       series: streaky.ratios14.slice(-7).map((r) => r.ratio),
       habitId: streaky.habit.id,
@@ -433,13 +468,15 @@ export function highlights(state: TrackerState, today: string): Highlight[] {
     });
   }
 
-  // Habit with the biggest adherence climb over the last week.
+  // Habit with the biggest adherence climb over the last week. Both weeks must have been lived
+  // with the habit: a habit created five days ago has no "last week" to have climbed from.
   const climber = views
     .map((v) => {
-      const first = v.ratios14.slice(0, 7);
-      const last = v.ratios14.slice(7);
-      const a = first.length ? first.reduce((x, r) => x + r.ratio, 0) / first.length : 0;
-      const b = last.length ? last.reduce((x, r) => x + r.ratio, 0) / last.length : 0;
+      const first = v.ratios14.slice(0, 7).filter((r) => r.day >= v.habit.createdDay);
+      const last = v.ratios14.slice(7).filter((r) => r.day >= v.habit.createdDay);
+      if (first.length < 4 || last.length < 4) return { v, delta: 0 };
+      const a = first.reduce((x, r) => x + r.ratio, 0) / first.length;
+      const b = last.reduce((x, r) => x + r.ratio, 0) / last.length;
       return { v, delta: b - a };
     })
     .filter((x) => x.delta >= 0.15)
@@ -514,9 +551,9 @@ function planHabitOf(state: TrackerState, view: HabitView, today: string): PlanH
     name: habit.name,
     policy,
     snackType: habit.snackType,
-    doneToday: view.todayRatio >= 1,
+    doneToday: view.doneToday,
     donePeriod,
-    todayRatio: view.todayRatio,
+    todayRatio: view.dayRatio,
     lastLogMs: lastLogMsToday(state, habit, today),
     movement: isMovement(habit),
   });
@@ -534,17 +571,24 @@ export function weekSummaryText(state: TrackerState, today: string): { title: st
   const days = lastNDays(today, 7);
   let hit = 0;
   let total = 0;
-  let best: { name: string; streak: number } | null = null;
+  let best: { name: string; streak: number; unit: string } | null = null;
   for (const h of habits) {
-    const ratios = habitRatios(state, h, days).filter((r) => r.day >= h.createdDay);
-    total += ratios.length;
-    hit += ratios.filter((r) => r.ratio >= 1).length;
     const v = habitView(state, h, today);
-    if (v.streak > 0 && (!best || v.streak > best.streak)) best = { name: h.name, streak: v.streak };
+    if (v.rule.cadence === 'DAILY') {
+      const ratios = habitRatios(state, h, days).filter((r) => r.day >= h.createdDay);
+      total += ratios.length;
+      hit += ratios.filter((r) => r.ratio >= 1).length;
+    } else {
+      // A weekly or monthly habit is "3 of 4 this week", not seven daily misses.
+      const quota = v.periodQuota ?? v.rule.timesPerPeriod;
+      total += quota;
+      hit += Math.min(quota, v.periodDone ?? 0);
+    }
+    if (v.streak > 0 && (!best || v.streak > best.streak)) best = { name: h.name, streak: v.streak, unit: streakUnit(v.rule.cadence) };
   }
   const pct = total > 0 ? Math.round((hit / total) * 100) : 0;
-  const streakLine = best ? ` · longest streak: ${best.name} (${best.streak})` : '';
-  return { title: 'Your week', body: total > 0 ? `${hit} of ${total} daily targets hit (${pct}%)${streakLine}.` : 'Add a habit or two and next week has a story.' };
+  const streakLine = best ? ` · longest streak: ${best.name} (${best.streak} ${best.unit}${best.streak === 1 ? '' : 's'})` : '';
+  return { title: 'Your week', body: total > 0 ? `${hit} of ${total} targets hit (${pct}%)${streakLine}.` : 'Add a habit or two and next week has a story.' };
 }
 
 // ── Cycle ──────────────────────────────────────────────────────────────────
@@ -576,7 +620,7 @@ export function cycleExpectedDay(state: TrackerState, calendarToday: string): st
 export function cycleReminderFires(state: TrackerState, calendarToday: string): ReminderFire[] {
   const s = state.settings;
   if (!s.cycleEnabled) return [];
-  return upcomingReminders(s.cycle.reminders, cycleTimeline(state, calendarToday).prediction, calendarToday);
+  return upcomingReminders(s.cycle.reminders, cycleTimeline(state, calendarToday).prediction, calendarToday, { birthControl: s.cycle.birthControl });
 }
 
 /** Completed cycles (a start followed by another), oldest first, excluded ones left out. */
@@ -682,7 +726,9 @@ export function planInputFor(state: TrackerState, today: string, nowMs: number, 
   const calendarToday = calendarTodayOf(nowMs, zone);
   const expected = cycleExpectedDay(state, calendarToday);
   if (expected) input.cycleExpectedDay = expected;
-  const fires = cycleReminderFires(state, calendarToday);
+  // Only confirmed fires reach the scheduler: a day counted from a period that is not logged yet
+  // is shown on the Cycle tab, never submitted to the OS.
+  const fires = cycleReminderFires(state, calendarToday).filter((f) => f.confirmed);
   if (fires.length > 0) input.cycleReminders = fires.map((f) => ({ id: f.reminder.id, day: f.day, minute: f.minute, label: f.reminder.label }));
   if (s.cycle.discreet) input.cycleDiscreet = true;
   return input;

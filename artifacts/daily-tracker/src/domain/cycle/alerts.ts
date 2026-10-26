@@ -14,7 +14,7 @@ export const VARIABLE_SPREAD_DAYS = 7;
 export const LONG_PERIOD_DAYS = 8;
 export const OUTLIER_DISTANCE_DAYS = 7;
 
-export type CycleAlertKind = 'short-cycle' | 'long-cycle' | 'variable' | 'long-period';
+export type CycleAlertKind = 'short-cycle' | 'long-cycle' | 'variable' | 'long-period' | 'future-start';
 
 export interface CycleAlert {
   kind: CycleAlertKind;
@@ -37,11 +37,23 @@ function median(values: readonly number[]): number {
   return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
-/** Alerts about the most recent completed cycles and the latest closed period. */
-export function cycleAlerts(history: readonly PeriodSpan[]): CycleAlert[] {
+/**
+ * Alerts about the most recent completed cycles and the latest closed period. With `today`, a
+ * period logged on a day that has not come yet is called out: predictions ignore it, and it is
+ * almost always a slip (an import, a phone whose clock was wrong).
+ */
+export function cycleAlerts(history: readonly PeriodSpan[], today?: string): CycleAlert[] {
   const h = normalizeHistory(history);
   const cycles = cycleLengths(h).filter((c) => !c.excluded);
   const out: CycleAlert[] = [];
+  const future = today ? h.filter((span) => span.start > today) : [];
+  if (future.length > 0) {
+    out.push({
+      kind: 'future-start',
+      title: 'A period logged in the future',
+      body: `A period is logged as starting on ${future[0]!.start}${future.length > 1 ? ` (and ${future.length - 1} more after it)` : ''}, a day that has not come yet. Predictions leave it out; open that day on the calendar to remove or move it.`,
+    });
+  }
   const latest = cycles[cycles.length - 1];
   if (latest) {
     if (latest.length < SHORT_CYCLE_DAYS) {

@@ -14,16 +14,26 @@ import { applyAll, widgetTapActions } from '@/src/state/commands';
 import { liveStore, type LiveStore } from '@/src/state/liveStore';
 import { reducer } from '@/src/state/reducer';
 import type { TrackerState } from '@/src/state/types';
-import { WIDGET_NAME, widgetModel, type WidgetModel } from './model';
+import { WIDGET_NAME, widgetModel, type WidgetModel, type WidgetTile } from './model';
+
+type TileKind = WidgetTile['kind'];
+
+function tileKindOf(raw: unknown): TileKind {
+  return raw === 'water' || raw === 'rotation' ? raw : 'habit';
+}
 import { CLICK_LOG, TrackerWidget } from './TrackerWidget';
 
 const EMPTY: WidgetModel = { day: '', tiles: [] };
 
-function modelOf(state: TrackerState | null): WidgetModel {
-  if (!state) return EMPTY;
+function modelOf(state: TrackerState | null, notice?: string): WidgetModel {
+  if (!state) return notice ? { ...EMPTY, notice } : EMPTY;
   const ctx = contextFor(state);
-  return widgetModel(state, ctx.today, ctx.nowMs, ctx.zone);
+  const model = widgetModel(state, ctx.today, ctx.nowMs, ctx.zone);
+  return notice ? { ...model, notice } : model;
 }
+
+const TAP_FAILED = 'That tap could not be saved. Open Daily Tracker and log it there.';
+const LOAD_FAILED = 'Could not read your data. Open Daily Tracker.';
 
 /** Redraw every placed widget (all sizes) from one model. */
 export async function drawAllWidgets(model: WidgetModel): Promise<void> {
@@ -38,8 +48,8 @@ export async function drawAllWidgets(model: WidgetModel): Promise<void> {
  * through it instead of racing its saves. The re-plan and the snapshot are awaited here rather
  * than left to the app's debounced timers: Android may freeze the app as soon as the task ends.
  */
-async function tapThroughApp(live: LiveStore, habitId: string, tap: boolean): Promise<TrackerState> {
-  const { applied } = await live.apply((current) => (tap ? widgetTapActions(current, habitId, contextFor(current)) : []));
+async function tapThroughApp(live: LiveStore, habitId: string, kind: TileKind, tap: boolean): Promise<TrackerState> {
+  const { applied } = await live.apply((current) => (tap ? widgetTapActions(current, habitId, contextFor(current), kind) : []));
   if (!applied) return live.current();
   const ctx = contextFor(live.current());
   try {
@@ -56,12 +66,17 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
 
   const tap = props.widgetAction === 'WIDGET_CLICK' && props.clickAction === CLICK_LOG;
   const habitId = typeof props.clickActionData?.habitId === 'string' ? props.clickActionData.habitId : '';
+  const kind = tileKindOf(props.clickActionData?.kind);
 
   let state: TrackerState | null = null;
+  // What was read before anything failed: a tap that could not be saved still redraws real numbers.
+  let loaded: TrackerState | null = null;
+  let notice: string | undefined;
   try {
     const live = liveStore();
     if (live) {
-      state = await tapThroughApp(live, habitId, tap);
+      loaded = live.current();
+      state = await tapThroughApp(live, habitId, kind, tap);
     } else {
       // One load → apply → persist at a time: a notification button pressed at the same moment runs
       // on this runtime too, and must see this tap before computing its own.
@@ -69,12 +84,13 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
       const written = await withHeadlessLock(async (): Promise<Written> => {
         const store = await createStore();
         const current = await store.load();
+        loaded = current;
         if (!current || !tap) return { state: current, snapshot: false };
         // The app came alive while we were loading: it is the writer now.
         const alive = liveStore();
         if (alive) return { live: alive };
         const ctx = contextFor(current);
-        const actions = widgetTapActions(current, habitId, ctx);
+        const actions = widgetTapActions(current, habitId, ctx, kind);
         if (actions.length === 0) return { state: current, snapshot: false };
         const applied = applyAll(current, actions, reducer);
         let next = applied;
@@ -91,7 +107,7 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
         return { state: next, snapshot: true, nowMs: ctx.nowMs };
       });
       if ('live' in written) {
-        state = await tapThroughApp(written.live, habitId, tap);
+        state = await tapThroughApp(written.live, habitId, kind, tap);
       } else {
         state = written.state;
         // Outside the lock (the snapshot queue must never hold up the next headless write) but awaited:
@@ -103,9 +119,12 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
     }
   } catch (err) {
     console.error('Widget task failed', err);
+    // Not "choose habits": the person did nothing wrong, and a tap they made may not be saved.
+    state = loaded;
+    notice = tap ? TAP_FAILED : LOAD_FAILED;
   }
 
-  const model = modelOf(state);
+  const model = modelOf(state, notice);
   const { width, height } = props.widgetInfo;
   props.renderWidget(<TrackerWidget model={model} width={width} height={height} />);
   if (props.widgetAction === 'WIDGET_CLICK') {

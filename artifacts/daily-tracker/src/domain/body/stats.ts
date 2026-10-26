@@ -10,19 +10,70 @@ export type BodyMetric = 'steps' | 'sleep' | 'heart' | 'weight' | 'workouts';
 
 export const BODY_METRICS: BodyMetric[] = ['steps', 'sleep', 'heart', 'weight', 'workouts'];
 
-/** Workouts worth counting: visible, not a walk (walks are movement snacks' territory), at least 10 minutes. */
+/** Share of the shorter session that the two have in common (0 when they do not overlap). */
+function overlapShare(a: { startAt: number; endAt: number }, b: { startAt: number; endAt: number }): number {
+  const overlap = Math.min(a.endAt, b.endAt) - Math.max(a.startAt, b.startAt);
+  const shorter = Math.min(a.endAt - a.startAt, b.endAt - b.startAt);
+  return overlap > 0 && shorter > 0 ? overlap / shorter : 0;
+}
+
+/** Two sessions are the same night / the same workout when they share most of the shorter one. */
+export const SAME_SESSION_SHARE = 0.5;
+
+/**
+ * One row per real session. A phone and a watch (or two apps) each hand Health Connect their own
+ * copy of the same night or the same workout; the record ids differ, so the mirrors hold both. The
+ * copies are kept (each may be deleted upstream on its own) but counted once: of the sessions that
+ * overlap by more than half, the richest one — `prefer` — stands for all of them.
+ */
+export function distinctSessions<T extends { startAt: number; endAt: number }>(sessions: readonly T[], sameKind: (a: T, b: T) => boolean, prefer: (a: T, b: T) => T): T[] {
+  const sorted = [...sessions].sort((a, b) => a.startAt - b.startAt || a.endAt - b.endAt);
+  const out: T[] = [];
+  for (const s of sorted) {
+    let merged = false;
+    for (let i = 0; i < out.length; i++) {
+      const kept = out[i]!;
+      if (sameKind(kept, s) && overlapShare(kept, s) > SAME_SESSION_SHARE) {
+        out[i] = prefer(kept, s);
+        merged = true;
+        break;
+      }
+    }
+    if (!merged) out.push(s);
+  }
+  return out;
+}
+
+const richerNight = (a: SleepNight, b: SleepNight): SleepNight => {
+  const stages = (n: SleepNight) => (n.deepMin !== undefined || n.remMin !== undefined || n.lightMin !== undefined ? 1 : 0);
+  return stages(b) > stages(a) || (stages(b) === stages(a) && b.minutes > a.minutes) ? b : a;
+};
+
+/** Sleep sessions with the other sources' copies of the same night folded away. */
+export function distinctSleep(sessions: readonly SleepNight[]): SleepNight[] {
+  return distinctSessions(sessions, () => true, richerNight);
+}
+
+const richerWorkout = (a: Workout, b: Workout): Workout => (b.minutes > a.minutes || (b.minutes === a.minutes && !!b.title && !a.title) ? b : a);
+
+/** Workouts with the other sources' copies of the same session folded away (a generic "Workout" matches any type). */
+export function distinctWorkouts(workouts: readonly Workout[]): Workout[] {
+  return distinctSessions(workouts, (a, b) => a.type === b.type || a.type === 0 || b.type === 0, richerWorkout);
+}
+
+/** Workouts worth counting: visible, not a walk (walks are movement snacks' territory), at least 10 minutes, one per real session. */
 export function countedWorkouts(body: BodyState): Workout[] {
-  return body.workouts.filter((w) => !w.hidden && !isWalk(w.type) && w.minutes >= 10);
+  return distinctWorkouts(body.workouts.filter((w) => !w.hidden && !isWalk(w.type) && w.minutes >= 10));
 }
 
 export function stepsByDay(body: BodyState): Map<string, number> {
   return new Map(body.steps.map((s) => [s.day, s.steps]));
 }
 
-/** Minutes asleep per wake-up day (several sessions on one day add up: a night plus a nap). */
+/** Minutes asleep per wake-up day (several sessions on one day add up: a night plus a nap — not two copies of the night). */
 export function sleepByDay(body: BodyState): Map<string, number> {
   const m = new Map<string, number>();
-  for (const s of body.sleep) m.set(s.day, (m.get(s.day) ?? 0) + s.minutes);
+  for (const s of distinctSleep(body.sleep)) m.set(s.day, (m.get(s.day) ?? 0) + s.minutes);
   return m;
 }
 
@@ -64,7 +115,7 @@ export function averageOf(values: number[]): number | undefined {
 /** The main sleep session that ended on `day` (the longest one), if any. */
 export function nightEndingOn(body: BodyState, day: string): SleepNight | undefined {
   let best: SleepNight | undefined;
-  for (const s of body.sleep) if (s.day === day && (!best || s.minutes > best.minutes)) best = s;
+  for (const s of distinctSleep(body.sleep)) if (s.day === day && (!best || s.minutes > best.minutes)) best = s;
   return best;
 }
 

@@ -26,14 +26,15 @@ export interface HabitRowProps {
 export function HabitRow({ view, onPress, onIncrement, onToggle, onTimer, nudgeText, last }: HabitRowProps) {
   const c = useColors();
   const { habit, rule, todayValue, target, adherence, streak, periodDone, periodQuota, periodLabel } = view;
-  const done = view.todayRatio >= 1;
+  // The checkbox is about today: a weekly habit done today is checked even while its week still needs days.
+  const done = view.doneToday;
   const flow = adherence >= FLOW_THRESHOLD;
   const fillColor = adherenceColor(adherence);
   const catColor = c.cat[habit.category];
 
   const weekly = rule.cadence !== 'DAILY';
   const progressText = weekly
-    ? `${periodDone ?? 0} of ${periodQuota ?? rule.timesPerPeriod} ${periodLabel ?? 'this period'}`
+    ? `${periodDone ?? 0} of ${periodQuota ?? rule.timesPerPeriod} ${periodLabel ?? 'this period'}${done ? ' · done today' : ''}`
     : habit.type === 'YES_NO'
       ? done
         ? 'Done today'

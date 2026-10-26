@@ -5,11 +5,12 @@
  * never evaluate it.
  */
 import React from 'react';
+import { PixelRatio } from 'react-native';
 import { FlexWidget, OverlapWidget, SvgWidget, TextWidget } from 'react-native-android-widget';
 import type { HexColor } from 'react-native-android-widget';
 import colors from '@/constants/colors';
-import { TILE_GAP, WIDGET_PADDING, widgetLayout, type WidgetLayout } from './layout';
-import type { WidgetModel, WidgetTile } from './model';
+import { TILE_GAP, fitValueSize, widgetLayout, type WidgetLayout } from './layout';
+import { widgetDayLabel, type WidgetModel, type WidgetTile } from './model';
 import { ringSvg } from './ring';
 
 /** Tap on a ring: log the habit's natural unit (handled in the headless task). */
@@ -27,6 +28,8 @@ export interface TrackerWidgetProps {
   model: WidgetModel;
   width: number;
   height: number;
+  /** The system font scale; read from the device when not given (tests pass one). */
+  fontScale?: number;
 }
 
 /** What TalkBack reads for the ring: the progress, then what a tap does. */
@@ -44,18 +47,20 @@ function Ring({ tile, layout }: { tile: WidgetTile; layout: WidgetLayout }) {
     <OverlapWidget
       style={{ width: size, height: size }}
       clickAction={CLICK_LOG}
-      clickActionData={{ habitId: tile.habitId }}
+      clickActionData={{ habitId: tile.habitId, kind: tile.kind }}
       accessibilityLabel={ringLabel(tile)}
     >
       <SvgWidget svg={ringSvg({ size, ratio: tile.ratio, color: tile.color })} style={{ width: size, height: size }} />
       <FlexWidget style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+        {/* The ring is dp, so its value is too: a font-scaled "750 ml" would spill out of a 48 dp ring. TalkBack reads the full value from the label. */}
         <TextWidget
           text={tile.value}
           maxLines={1}
           truncate="END"
+          allowFontScaling={false}
           style={{
             width: inner,
-            fontSize: layout.valueSize,
+            fontSize: fitValueSize(tile.value, inner, layout.valueSize),
             fontFamily: FONT_BOLD,
             color: hex(tile.done ? tile.color : C.text),
             textAlign: 'center',
@@ -69,7 +74,14 @@ function Ring({ tile, layout }: { tile: WidgetTile; layout: WidgetLayout }) {
 function Labels({ tile, layout, align }: { tile: WidgetTile; layout: WidgetLayout; align: 'center' | 'left' }) {
   return (
     <FlexWidget
-      style={{ flexDirection: 'column', alignItems: align === 'center' ? 'center' : 'flex-start', width: 'match_parent' }}
+      style={{
+        flexDirection: 'column',
+        alignItems: align === 'center' ? 'center' : 'flex-start',
+        justifyContent: 'center',
+        width: 'match_parent',
+        // A tap target of its own (opens the habit), so never shorter than Android's 48 dp.
+        height: layout.mode === 'stacked' ? layout.labelBlock : 'match_parent',
+      }}
       clickAction="OPEN_URI"
       clickActionData={{ uri: HABIT_URI(tile.habitId) }}
       accessibilityLabel={`${tile.name}, ${tile.value} ${tile.caption}. Opens the habit.`}
@@ -78,7 +90,7 @@ function Labels({ tile, layout, align }: { tile: WidgetTile; layout: WidgetLayou
         text={tile.name}
         maxLines={1}
         truncate="END"
-        style={{ fontSize: layout.nameSize, fontFamily: FONT_SEMI, color: hex(C.text), textAlign: align, marginTop: align === 'center' ? 6 : 0 }}
+        style={{ fontSize: layout.nameSize, fontFamily: FONT_SEMI, color: hex(C.text), textAlign: align }}
       />
       <TextWidget
         text={tile.caption}
@@ -95,7 +107,7 @@ function Tile({ tile, layout }: { tile: WidgetTile; layout: WidgetLayout }) {
     return (
       <FlexWidget style={{ flex: 1, flexDirection: 'row', alignItems: 'center', height: 'match_parent' }}>
         <Ring tile={tile} layout={layout} />
-        <FlexWidget style={{ flex: 1, flexDirection: 'column', marginLeft: 8 }}>
+        <FlexWidget style={{ flex: 1, flexDirection: 'column', marginLeft: 8, height: 'match_parent' }}>
           <Labels tile={tile} layout={layout} align="left" />
         </FlexWidget>
       </FlexWidget>
@@ -109,7 +121,7 @@ function Tile({ tile, layout }: { tile: WidgetTile; layout: WidgetLayout }) {
   );
 }
 
-function Frame({ children, width, height }: { children: React.ReactNode; width: number; height: number }) {
+function Frame({ children, width, height, padding }: { children: React.ReactNode; width: number; height: number; padding: number }) {
   return (
     <FlexWidget
       clickAction="OPEN_APP"
@@ -119,7 +131,7 @@ function Frame({ children, width, height }: { children: React.ReactNode; width: 
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: WIDGET_PADDING,
+        padding,
         backgroundColor: hex(C.surface),
         borderRadius: Math.min(24, Math.round(Math.min(width, height) * 0.18)),
         borderWidth: 1,
@@ -132,24 +144,54 @@ function Frame({ children, width, height }: { children: React.ReactNode; width: 
   );
 }
 
-export function TrackerWidget({ model, width, height }: TrackerWidgetProps) {
-  const layout = widgetLayout(width, height, model.tiles.length);
+function Message({ text, width, height, padding }: { text: string; width: number; height: number; padding: number }) {
+  return (
+    <Frame width={width} height={height} padding={padding}>
+      <TextWidget text={text} maxLines={3} style={{ fontSize: 12, fontFamily: FONT_SEMI, color: hex(C.textSecondary), textAlign: 'center' }} />
+    </Frame>
+  );
+}
+
+export function TrackerWidget({ model, width, height, fontScale }: TrackerWidgetProps) {
+  const scale = fontScale ?? PixelRatio.getFontScale();
+  const layout = widgetLayout(width, height, model.tiles.length, scale);
   if (layout.shown === 0) {
+    return <Message text={model.notice ?? 'Open Daily Tracker to choose habits for this widget'} width={width} height={height} padding={layout.padding} />;
+  }
+  // A one-row widget has no line to spare: a notice replaces the tiles until the next redraw.
+  if (model.notice && !layout.showDay) return <Message text={model.notice} width={width} height={height} padding={layout.padding} />;
+  const dayLabel = widgetDayLabel(model.day);
+  const tiles = model.tiles.slice(0, layout.shown).map((tile) => <Tile key={tile.habitId} tile={tile} layout={layout} />);
+  if (!layout.showDay) {
     return (
-      <Frame width={width} height={height}>
-        <TextWidget
-          text="Open Daily Tracker to choose habits for this widget"
-          maxLines={3}
-          style={{ fontSize: 12, fontFamily: FONT_SEMI, color: hex(C.textSecondary), textAlign: 'center' }}
-        />
+      <Frame width={width} height={height} padding={layout.padding}>
+        {tiles}
       </Frame>
     );
   }
+  // The day (and any notice) sit in a thin line above the tiles; the tiles keep their tap sizes.
+  const line = model.notice ? `${dayLabel} · ${model.notice}` : dayLabel;
   return (
-    <Frame width={width} height={height}>
-      {model.tiles.slice(0, layout.shown).map((tile) => (
-        <Tile key={tile.habitId} tile={tile} layout={layout} />
-      ))}
-    </Frame>
+    <FlexWidget
+      clickAction="OPEN_APP"
+      style={{
+        width: 'match_parent',
+        height: 'match_parent',
+        flexDirection: 'column',
+        padding: layout.padding,
+        backgroundColor: hex(C.surface),
+        borderRadius: Math.min(24, Math.round(Math.min(width, height) * 0.18)),
+        borderWidth: 1,
+        borderColor: 'rgba(201, 168, 76, 0.45)',
+      }}
+    >
+      <TextWidget
+        text={line}
+        maxLines={1}
+        truncate="END"
+        style={{ fontSize: 10, fontFamily: FONT_SEMI, color: hex(model.notice ? C.gold : C.textTertiary), textAlign: 'left', width: 'match_parent', marginBottom: 2 }}
+      />
+      <FlexWidget style={{ flex: 1, width: 'match_parent', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flexGap: TILE_GAP }}>{tiles}</FlexWidget>
+    </FlexWidget>
   );
 }

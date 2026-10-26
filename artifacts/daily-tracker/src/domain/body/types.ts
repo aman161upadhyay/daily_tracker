@@ -111,6 +111,11 @@ export interface BodySync {
   granted: BodyRecordType[];
   /** Whether background reads were granted. */
   background: boolean;
+  /**
+   * Record types whose first, 30-day read has completed. A type granted later (Weight, weeks after
+   * Steps) gets the same initial history instead of only the days since the last sync.
+   */
+  backfilled?: BodyRecordType[];
 }
 
 export interface BodyState {
@@ -134,3 +139,21 @@ export const EMPTY_BODY: BodyState = {
 /** Record types we ask Health Connect for (the manifest declares the matching permissions). */
 export const BODY_RECORD_TYPES = ['Steps', 'SleepSession', 'ExerciseSession', 'HeartRate', 'RestingHeartRate', 'Weight', 'Hydration'] as const;
 export type BodyRecordType = (typeof BODY_RECORD_TYPES)[number];
+
+/** Plain names for the permission list ("Not allowed: sleep, water"). */
+export const BODY_RECORD_LABELS: Record<BodyRecordType, string> = {
+  Steps: 'steps',
+  SleepSession: 'sleep',
+  ExerciseSession: 'workouts',
+  HeartRate: 'heart rate',
+  RestingHeartRate: 'resting heart rate',
+  Weight: 'weight',
+  Hydration: 'water',
+};
+
+/** "steps, sleep and water" */
+export function listRecordTypes(types: readonly BodyRecordType[]): string {
+  const names = types.map((t) => BODY_RECORD_LABELS[t]);
+  if (names.length <= 1) return names.join('');
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}

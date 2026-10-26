@@ -173,8 +173,13 @@ TaskManager.defineTask(BACKGROUND_REPLAN_TASK, async () => {
       return { next, ctx, changed: true };
     });
     if (written?.changed) await afterHeadlessWrite(written.next, written.ctx);
-    // Even without a change, a stale snapshot gets refreshed here: widget-only use never foregrounds the app.
-    else if (written) await maybeSnapshot(() => (liveStore() ? null : written.next), written.ctx.nowMs).catch((err) => console.warn('Snapshot in background re-plan failed', err));
+    else if (written) {
+      // Even without a change the widget is redrawn — the tracking day may have turned over with
+      // nothing to write, and yesterday's tiles would stay up — and a stale snapshot refreshed:
+      // widget-only use never foregrounds the app.
+      await refreshWidgets(written.next, written.ctx.today, written.ctx.nowMs, written.ctx.zone).catch((err) => console.warn('Widget refresh failed', err));
+      await maybeSnapshot(() => (liveStore() ? null : written.next), written.ctx.nowMs).catch((err) => console.warn('Snapshot in background re-plan failed', err));
+    }
     return BackgroundTask.BackgroundTaskResult.Success;
   } catch (err) {
     console.error('Background re-plan failed', err);

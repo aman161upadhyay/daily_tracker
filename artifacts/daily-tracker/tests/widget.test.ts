@@ -6,8 +6,8 @@ import { applyAll, widgetTapActions, type CommandContext } from '../src/state/co
 import { reducer } from '../src/state/reducer';
 import { buildEmptyState, buildSampleState } from '../src/state/seed';
 import { activeHabits, todaySummary } from '../src/state/selectors';
-import { widgetLayout } from '../src/widget/layout';
-import { WIDGET_MAX_TILES, rotationHabit, shortVolume, widgetHabits, widgetModel, widgetModelKey } from '../src/widget/model';
+import { MIN_TOUCH, fitValueSize, labelBlockHeight, widgetLayout } from '../src/widget/layout';
+import { WIDGET_MAX_TILES, compactValue, rotationHabit, shortVolume, widgetDayLabel, widgetHabits, widgetModel, widgetModelKey } from '../src/widget/model';
 import { ringSvg } from '../src/widget/ring';
 
 const ZONE = 'America/New_York';
@@ -147,11 +147,50 @@ describe('widget layout and ring', () => {
     const row = widgetLayout(300, 70, 3);
     assert.equal(row.mode, 'inline');
     assert.equal(row.shown, 3);
-    assert.ok(row.ring >= 36 && row.ring <= 46, `ring ${row.ring}`);
+    assert.equal(row.ring, MIN_TOUCH, 'a ring is a tap target: never under 48 dp');
+    assert.equal(row.padding, 6, 'a short widget gives up padding before the ring');
 
     assert.equal(widgetLayout(300, 150, 1).shown, 1);
     assert.equal(widgetLayout(300, 150, 0).shown, 0);
     assert.equal(widgetLayout(200, 150, 3).shown, 2);
+  });
+
+  it('budgets the label block for the font scale and keeps two 48 dp targets per tile', () => {
+    const normal = widgetLayout(200, 150, 1);
+    const large = widgetLayout(200, 150, 1, 1.3);
+    const largest = widgetLayout(200, 150, 1, 2);
+    assert.ok(normal.labelBlock >= MIN_TOUCH && large.labelBlock >= MIN_TOUCH);
+    // At 1.3× the 48 dp touch minimum still covers the labels; at 2× they need more, taken from the ring.
+    assert.ok(largest.labelBlock > normal.labelBlock, 'scaled labels get more room');
+    assert.ok(largest.ring < normal.ring);
+    for (const l of [normal, large, largest]) {
+      assert.ok(l.ring + l.labelBlock + 2 * l.padding <= 150, `ring ${l.ring} + labels ${l.labelBlock} must fit 150 dp`);
+      assert.ok(l.ring >= MIN_TOUCH);
+    }
+    assert.equal(labelBlockHeight(12, 10, 1), MIN_TOUCH);
+    assert.ok(labelBlockHeight(14, 12, 2) > MIN_TOUCH);
+    // Too short for a ring above a label block, even at 1×: side by side instead.
+    assert.equal(widgetLayout(110, 100, 1).mode, 'inline');
+    assert.equal(widgetLayout(110, 72, 1).ring, MIN_TOUCH);
+    // The smallest declared size (110×72) still fits a 48 dp ring with its padding.
+    assert.ok(MIN_TOUCH + 2 * widgetLayout(110, 72, 1).padding <= 72);
+    // Day label only where it does not shrink the ring under 72 dp: not on a tight 150 dp 4×2, yes on a roomier one.
+    assert.equal(widgetLayout(300, 150, 3).showDay, false);
+    assert.equal(widgetLayout(300, 150, 3).ring, 78);
+    assert.equal(widgetLayout(300, 180, 3).showDay, true);
+    assert.ok(widgetLayout(300, 180, 3).ring >= 72);
+    assert.equal(widgetLayout(300, 70, 3).showDay, false);
+  });
+
+  it('shrinks a long value to fit its ring instead of truncating it', () => {
+    assert.equal(fitValueSize('6', 40, 20), 20);
+    assert.ok(fitValueSize('12,500', 30, 20) < 20);
+    assert.ok(fitValueSize('12,500', 30, 20) >= 9);
+    assert.equal(compactValue(12500), '12.5k');
+    assert.equal(compactValue(20000), '20k');
+    assert.equal(compactValue(9999), '9,999');
+    assert.equal(widgetDayLabel('2026-10-26'), 'Mon 26');
+    assert.equal(widgetDayLabel(''), '');
   });
 
   it('draws a track and an arc proportional to the ratio, starting at 12 o’clock', () => {

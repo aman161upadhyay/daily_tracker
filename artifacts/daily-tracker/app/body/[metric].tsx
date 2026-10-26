@@ -10,7 +10,7 @@ import { Screen } from '@/components/ui/Screen';
 import { Txt } from '@/components/ui/Txt';
 import { useColors } from '@/hooks/useColors';
 import { isWalk } from '@/src/domain/body/exerciseTypes';
-import { bedtimeSpreadMin, formatSleep, nightEndingOn, originName } from '@/src/domain/body/stats';
+import { bedtimeSpreadMin, distinctWorkouts, formatSleep, nightEndingOn, originName } from '@/src/domain/body/stats';
 import { formatClock, formatDayLong, formatNumber } from '@/src/domain/time/format';
 import { lastNDays, minutesOfDay } from '@/src/domain/time/trackingDay';
 import { useTracker } from '@/src/state/TrackerProvider';
@@ -49,7 +49,8 @@ export default function BodyMetricScreen() {
   const bedSpread = metric === 'sleep' ? bedtimeSpreadMin(body, calendarToday, zone) : undefined;
 
   const workouts = useMemo(() => (metric === 'workouts' ? [...body.workouts].sort((a, b) => b.startAt - a.startAt) : []), [body, metric]);
-  const shownWorkouts = workouts.filter((w) => !w.hidden);
+  // Two sources' copies of one session show as one row (hiding it hides the copy that stands for them).
+  const shownWorkouts = useMemo(() => distinctWorkouts(workouts.filter((w) => !w.hidden)).sort((a, b) => b.startAt - a.startAt), [workouts]);
   const hiddenWorkouts = workouts.filter((w) => w.hidden);
 
   const weights = useMemo(() => (metric === 'weight' ? [...body.weight].sort((a, b) => b.at - a.at).slice(0, 14) : []), [body, metric]);

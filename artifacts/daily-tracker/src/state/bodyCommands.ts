@@ -107,13 +107,22 @@ export function autoTickActions(state: TrackerState, batch: BodyBatch, ctx: Comm
     const byExternal = new Map(batch.hydration.map((h) => [h.id, h]));
     const seen = new Set<string>();
     const manual = state.water.filter((w) => w.source === 'MANUAL' || w.source === 'AUTO_WIDGET');
+    const sameDrink = (at: number, ml: number) => manual.some((w) => Math.abs(w.at - at) <= SAME_DRINK_WINDOW_MS && Math.abs(w.ml - ml) <= 10);
     for (const w of state.water) {
       if (!w.externalId) continue;
       const upstream = byExternal.get(w.externalId);
       if (upstream) {
         seen.add(w.externalId);
+        if (w.source !== 'AUTO_HC') continue;
+        // The person logged the same drink here after it had been imported (a glass tapped a minute
+        // after the other app's entry): theirs is the record, the imported copy goes — the same
+        // rule a new import is held to below, applied to the ones already in.
+        if (sameDrink(w.at, w.ml) || sameDrink(upstream.at, Math.round(upstream.ml))) {
+          actions.push({ type: 'REMOVE_LOG', log: 'water', id: w.id });
+          continue;
+        }
         // Edited in the other app: same record, new amount or time.
-        if (w.source === 'AUTO_HC' && (Math.round(upstream.ml) !== w.ml || upstream.at !== w.at)) {
+        if (Math.round(upstream.ml) !== w.ml || upstream.at !== w.at) {
           actions.push({ type: 'REMOVE_LOG', log: 'water', id: w.id });
           actions.push({
             type: 'ADD_WATER',
@@ -128,8 +137,7 @@ export function autoTickActions(state: TrackerState, batch: BodyBatch, ctx: Comm
     for (const h of batch.hydration) {
       if (h.ml <= 0 || seen.has(h.id)) continue;
       seen.add(h.id);
-      const duplicate = manual.some((w) => Math.abs(w.at - h.at) <= SAME_DRINK_WINDOW_MS && Math.abs(w.ml - h.ml) <= 10);
-      if (duplicate) continue;
+      if (sameDrink(h.at, h.ml)) continue;
       const entry: WaterEntry = {
         id: ctx.newId(),
         at: h.at,

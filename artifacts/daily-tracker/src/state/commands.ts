@@ -10,7 +10,7 @@ import type { NudgeActionKind } from '@/src/domain/nudges/planner';
 import { SNOOZE_MINUTES } from '@/src/domain/nudges/planner';
 import { addDays, isCalendarDay, isInstantMs, trackingDayOf, weekStartOf } from '@/src/domain/time/trackingDay';
 import type { Action } from './reducer';
-import { habitView, latestRule, ruleFor } from './selectors';
+import { habitView, latestRule, rotationHabit, ruleFor } from './selectors';
 import type { TrackerState } from './types';
 
 export interface CommandContext {
@@ -181,9 +181,12 @@ export function completeFromNudge(
 /**
  * A tap on a widget tile: the same natural unit as a notification "Done", recorded as a widget
  * write. An unknown or archived habit (stale widget after a change in the app) logs nothing.
+ * The automatic movement tile promises "the snack that is up next", so it is resolved here, from
+ * the state being written — not from the habit the (possibly stale) drawing happened to show: two
+ * quick taps, or a tap right after a snack in the app, log two different snacks.
  */
-export function widgetTapActions(state: TrackerState, habitId: string, ctx: CommandContext): Action[] {
-  const habit = state.habits.find((h) => h.id === habitId && !h.archived);
+export function widgetTapActions(state: TrackerState, habitId: string, ctx: CommandContext, kind: 'water' | 'rotation' | 'habit' = 'habit'): Action[] {
+  const habit = kind === 'rotation' ? rotationHabit(state, ctx.today) : state.habits.find((h) => h.id === habitId && !h.archived);
   if (!habit) return [];
   return completeFromNudge(state, habit, ctx, 'AUTO_WIDGET', 'WIDGET');
 }

@@ -16,7 +16,7 @@ import { withAlpha } from '@/src/domain/color/oklch';
 import { DEFAULT_SETTINGS, type Units } from '@/src/domain/models';
 import { formatClock, formatVolume, parseClockInput, parseVolumeInput } from '@/src/domain/time/format';
 import { CATEGORY_LABELS, CATEGORY_ORDER, PRESETS } from '@/src/library/presets';
-import { deleteSnapshot, readSnapshot, setAsideSnapshot } from '@/src/services/backup';
+import { cancelCleanup, deleteSnapshot, markCleanupPending, readSnapshot, setAsideSnapshot } from '@/src/services/backup';
 import { afterSnapshots } from '@/src/services/snapshotSync';
 import { NOTIFICATIONS_SUPPORTED, getPermission, requestPermission, type PermissionState } from '@/src/services/notifications';
 import { useTracker } from '@/src/state/TrackerProvider';
@@ -80,8 +80,10 @@ export default function OnboardingScreen() {
     };
   }, []);
 
+  // A "Start fresh" whose delete failed left a pending-cleanup marker; restoring that data withdraws it.
   const restoreSnapshot = () => {
     if (!restore) return;
+    cancelCleanup().catch((err) => console.warn('[backup] cleanup marker', err));
     actions.importState(restore.state);
     router.replace('/');
   };
@@ -91,12 +93,15 @@ export default function OnboardingScreen() {
 
   // "Start fresh" is a decision about that data: the old snapshot goes, so it cannot be offered
   // again (or restored onto yet another phone) once this person said no to it. It is the only copy,
-  // so the question is asked twice, and the card leaves only once the delete went through.
+  // so the question is asked twice, and the card leaves only once the delete went through. The
+  // intent is written to disk first: an app killed before the delete ran finishes it on the next
+  // start instead of offering the rejected copy again.
   const startFresh = () => {
     const run = () => {
       setSnapshotBusy(true);
       setSnapshotError(null);
-      afterSnapshots(deleteSnapshot)
+      markCleanupPending('all')
+        .then(() => afterSnapshots(deleteSnapshot))
         .then(() => {
           setRestore(null);
           setUnreadable(null);

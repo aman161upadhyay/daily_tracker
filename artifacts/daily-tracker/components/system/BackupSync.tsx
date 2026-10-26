@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { AppState, Platform } from 'react-native';
-import { cleanupPending, deleteSnapshot, markCleanupPending } from '@/src/services/backup';
+import { cleanupPending, deleteKeptSnapshots, deleteSnapshot, markCleanupPending } from '@/src/services/backup';
 import { afterSnapshots, maybeSnapshot } from '@/src/services/snapshotSync';
 import { purgeTransferCache } from '@/src/services/transferCache';
 import { useTracker } from '@/src/state/TrackerProvider';
@@ -51,7 +51,8 @@ export function BackupSync() {
     };
     cleanupPending()
       .then((pending) => {
-        if (pending) enqueue(deleteSnapshot);
+        if (pending === 'all') enqueue(deleteSnapshot);
+        else if (pending === 'kept') enqueue(deleteKeptSnapshots);
       })
       .catch((err) => console.warn('[backup]', err));
     run();

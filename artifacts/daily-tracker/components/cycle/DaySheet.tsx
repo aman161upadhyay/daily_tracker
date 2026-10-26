@@ -49,7 +49,10 @@ export function DaySheet({ day, today, timeline, birthControl, log, onClose, onS
   const period = timeline.periodContaining(day);
   const future = day > today;
   const phaseLabel = info ? PHASE_LABELS[displayPhase(info.phase, birthControl)] : undefined;
-  const subtitle = [phaseLabel ? `${phaseLabel}${info?.predicted ? ' (predicted)' : ''}` : null, info ? `cycle day ${info.cycleDay}` : null].filter(Boolean).join(' · ');
+  // Only logged bleeding is known: a projected phase says so, and a past cycle's fertile or luteal
+  // day — counted back from the next logged start — is an estimate, not a record of ovulation.
+  const qualifier = info?.predicted ? ' (predicted)' : info?.estimated ? ' (estimated)' : '';
+  const subtitle = [phaseLabel ? `${phaseLabel}${qualifier}` : null, info ? `cycle day ${info.cycleDay}` : null].filter(Boolean).join(' · ');
 
   const saveDraft = () => {
     const changed = JSON.stringify(draft) !== JSON.stringify(log ?? EMPTY(day));

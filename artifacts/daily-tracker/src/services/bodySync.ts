@@ -3,27 +3,40 @@
  * Used by the app (on foreground, "Sync now", right after connecting) and by
  * the 3-hourly background task when background reads were granted.
  *
- * Window rule: the first sync reads 30 days; later syncs re-read from the day
- * before the last sync (data arrives late: a watch syncs hours after the
- * night, Samsung Health rewrites yesterday's step total) up to today, capped
- * at 14 days.
+ * Window rule: the first sync reads 30 days; later syncs re-read a rolling
+ * week — from the day before the last sync, but never less than the last
+ * seven days (data arrives late: a watch syncs hours after the night, a
+ * workout logged two days after the fact, Samsung Health rewrites yesterday's
+ * step total) — up to today, capped at 14 days. A record type granted later
+ * than the others gets its own 30-day first read.
  */
 import { autoTickActions } from '@/src/state/bodyCommands';
 import type { CommandContext } from '@/src/state/commands';
 import type { Action } from '@/src/state/reducer';
 import type { TrackerState } from '@/src/state/types';
+import type { BodyRecordType } from '@/src/domain/body/types';
 import { addDays, calendarDayOf } from '@/src/domain/time/trackingDay';
 import { currentAccess, readBatch } from './healthConnect';
 
 export const FIRST_SYNC_DAYS = 30;
 export const MAX_RESYNC_DAYS = 14;
+/** Every sync re-reads at least this many days: late records land where they belong. */
+export const ROLLING_DAYS = 7;
 
-export function syncWindow(state: TrackerState, ctx: CommandContext): { fromDay: string; toDay: string } {
+/** Granted types that never had their first, 30-day read. */
+export function pendingBackfill(state: TrackerState, granted: readonly BodyRecordType[]): BodyRecordType[] {
+  const done = new Set(state.body.sync.backfilled ?? (state.body.sync.lastSyncAt === undefined ? [] : state.body.sync.granted));
+  return granted.filter((g) => !done.has(g));
+}
+
+export function syncWindow(state: TrackerState, ctx: CommandContext, granted: readonly BodyRecordType[] = state.body.sync.granted): { fromDay: string; toDay: string } {
   const toDay = calendarDayOf(ctx.nowMs, ctx.zone);
   const last = state.body.sync.lastSyncAt;
-  if (last === undefined) return { fromDay: addDays(toDay, -(FIRST_SYNC_DAYS - 1)), toDay };
+  if (last === undefined || pendingBackfill(state, granted).length > 0) return { fromDay: addDays(toDay, -(FIRST_SYNC_DAYS - 1)), toDay };
   const lastDay = calendarDayOf(last, ctx.zone);
-  const wanted = addDays(lastDay < toDay ? lastDay : toDay, -1);
+  const sinceLast = addDays(lastDay < toDay ? lastDay : toDay, -1);
+  const rolling = addDays(toDay, -(ROLLING_DAYS - 1));
+  const wanted = sinceLast < rolling ? sinceLast : rolling;
   const floor = addDays(toDay, -(MAX_RESYNC_DAYS - 1));
   return { fromDay: wanted < floor ? floor : wanted, toDay };
 }
@@ -70,7 +83,7 @@ async function readAndBuild(source: TrackerState | (() => TrackerState), ctx: Co
     return { actions, build: () => actions, error, imported: 0 };
   }
   const before = typeof source === 'function' ? source() : source;
-  const window = syncWindow(before, ctx);
+  const window = syncWindow(before, ctx, access.granted);
   const { batch, errors } = await readBatch({ ...window, zone: ctx.zone, boundaryHour: before.settings.dayBoundaryHour }, access.granted);
   // A complete read may also remove what Health Connect no longer has (see BodyBatch.window).
   if (errors.length === 0) batch.window = window;
@@ -86,8 +99,14 @@ async function readAndBuild(source: TrackerState | (() => TrackerState), ctx: Co
         background: access.background,
         lastError: error,
         // A partly failed read keeps the old watermark so the missed days are read again next time;
-        // a watermark never moves backwards.
-        ...(error ? {} : { lastSyncAt: Math.max(ctx.nowMs, state.body.sync.lastSyncAt ?? 0) }),
+        // a watermark never moves backwards. The types this complete read covered have had their
+        // first history read (an existing install without the record counts what it had as done).
+        ...(error
+          ? {}
+          : {
+              lastSyncAt: Math.max(ctx.nowMs, state.body.sync.lastSyncAt ?? 0),
+              backfilled: [...new Set([...(state.body.sync.backfilled ?? (state.body.sync.lastSyncAt === undefined ? [] : state.body.sync.granted)), ...access.granted])],
+            }),
       },
     },
   ];

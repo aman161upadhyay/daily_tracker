@@ -196,6 +196,25 @@ cycle (phases, calendar, day sheet, insights) was verified in the web preview an
 | X10 | Long habit name in a notification | Name a habit 70 characters, give it a fixed time | The notification title is cut with "…" at about 40 characters; the body is intact |
 | X11 | Quick Log ceiling | Today → + → water → type 50000 | The field refuses it (hint shows the 20,000 ml / 676 oz ceiling); 20000 is accepted |
 
+## Y — Council round 8 follow-ups (2026-10-26)
+
+| # | Scenario | Steps | Expect |
+|---|---|---|---|
+| Y1 | Snapshot write interrupted | With habits logged, `adb shell run-as com.amanupadhyay.dailytracker ls -la files/backup` while the app is in use; then force-stop the app the moment it goes to the background (the snapshot is written on leaving) | Only `snapshot.json` remains after the next start; if a `snapshot.next.json` was left behind it is adopted (same bytes become `snapshot.json`), never a half file as the only copy |
+| Y2 | Two unreadable snapshots | Repeat V5 twice (two different `"version": 99` files, an hour apart) | Two `snapshot.kept.<number>.json` files sit next to a fresh `snapshot.json`; Settings → Your data lists "Try to restore it" and "Forget it" for each; forgetting one leaves the other |
+| Y3 | "Delete it" interrupted | V5 → tap **Delete it** and force-stop within the same second | After the next start the unreadable file is gone and onboarding no longer offers it (`backup-cleanup.pending` is cleared); a failed delete (make the file read-only with `run-as … chmod 444`) keeps the card and shows the failure |
+| Y4 | Period-day reminder before the period is logged | Cycle on; add a reminder "Period · day 3"; look at Reminders on the Cycle tab after the last logged period's third day has passed | The reminder shows its next day with "once the period is logged" and no notification is scheduled for it (`adb shell dumpsys notification --noredact | grep cycle:r` shows none); logging the period start schedules it for start + 2 |
+| Y5 | Birth control pauses ovulation rules | Settings → Day & cycle → Hormonal birth control on | Fertile / luteal reminders disappear from the upcoming list with a footnote; the reminder sheet offers only Period phase; the ovulation marker is gone from the calendar |
+| Y6 | Estimated wording | Open any day between two logged periods in the cycle calendar | The sheet says the phase "(estimated)"; a day inside a logged period does not; TalkBack reads the same |
+| Y7 | Smallest widget | Add the widget and resize it to the smallest size the launcher allows | It is at least 72 dp tall; one tile's ring is at least 48 dp; a size with no room for tiles shows a one-line notice instead of clipped rings |
+| Y8 | Widget at 200 % font | Settings → Display → Font size largest; look at the widget | The ring numerals stay the same size (dp), the names and captions grow until the ring would shrink under 72 dp, then the day line goes first; nothing clips |
+| Y9 | Widget day line | Default widget size at normal font | A "Today · <date>" line under the tiles; at the smallest size it is gone |
+| Y10 | Widget storage failure | `adb shell run-as … chmod 000 files/SQLite` (or fill the storage), then tap a widget tile | The widget shows "Couldn't log — open the app" on the last good tiles, not the "choose habits" screen; restoring permissions and tapping again logs |
+| Y11 | Drink in two apps | Log 250 ml in Samsung Health at 10:00; let Daily Tracker sync; then tap +250 ml in Daily Tracker at 10:02; sync again (Body → Sync now) | Today shows 250 ml, not 500; the water log keeps the manual entry; a 500 ml tap or one 10 minutes later stays a second drink |
+| Y12 | One night, two sources | A night recorded by the phone and by a watch app (both write to Health Connect) | Body → Sleep shows one night (the copy with stages if either has them), not the sum; Workouts: a session recorded by the watch and by Strava shows as one row; hiding it reveals the other copy |
+| Y13 | Late workout and a later grant | Sync; then add a workout dated two days ago in another app; sync again. Then allow Weight in Health Connect permissions (previously off) and sync | The workout appears for its own day; the weight history for the last 30 days appears, not only since the last sync |
+| Y14 | A permission left off | Connect with Sleep denied | The connection card says "Reading …" and "Not allowed: sleep …" with a Permissions button; the Body tab names Sleep as kept empty by the permission, not "Nothing in Health Connect yet" |
+
 ## Recording results
 
-Add a dated line under the milestone in `docs/IMPLEMENTATION_PLAN.md` ("Device run YYYY-MM-DD, Pixel 7 / Android 15: N1–N17, X1–X11 pass except …") and open follow-ups for anything that failed.
+Add a dated line under the milestone in `docs/IMPLEMENTATION_PLAN.md` ("Device run YYYY-MM-DD, Pixel 7 / Android 15: N1–N17, Y1–Y14 pass except …") and open follow-ups for anything that failed.

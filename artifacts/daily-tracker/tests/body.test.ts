@@ -12,7 +12,7 @@ import { bedtimeSpreadMin, bucketWeekly, formatSleep, lastNight, latestWeight, o
 import { EMPTY_BODY, type BodyBatch, type Workout } from '../src/domain/body/types';
 import { addDays, instantOf } from '../src/domain/time/trackingDay';
 import { PRESET_BY_ID } from '../src/library/presets';
-import { syncWindow } from '../src/services/bodySync';
+import { pendingBackfill, syncWindow } from '../src/services/bodySync';
 import { autoTickActions, ticksStrength } from '../src/state/bodyCommands';
 import { applyAll, type CommandContext } from '../src/state/commands';
 import { reducer } from '../src/state/reducer';
@@ -177,18 +177,26 @@ describe('auto-ticks from a Health Connect read', () => {
 });
 
 describe('sync window', () => {
-  it('reads 30 days the first time, then from the day before the last sync, capped at 14', () => {
+  it('reads 30 days the first time, then a rolling week (or since the day before the last sync), capped at 14', () => {
     const state = withHabits();
     assert.deepEqual(syncWindow(state, ctx), { fromDay: addDays(TODAY, -29), toDay: TODAY });
 
-    const recent = reducer(state, { type: 'BODY_SYNC', patch: { lastSyncAt: instantOf(addDays(TODAY, -2), 20 * 60, ZONE) } });
-    assert.deepEqual(syncWindow(recent, ctx), { fromDay: addDays(TODAY, -3), toDay: TODAY });
+    const recent = reducer(state, { type: 'BODY_SYNC', patch: { lastSyncAt: instantOf(addDays(TODAY, -2), 20 * 60, ZONE), granted: ['Steps'], backfilled: ['Steps'] } });
+    assert.deepEqual(syncWindow(recent, ctx), { fromDay: addDays(TODAY, -6), toDay: TODAY }, 'a workout that reaches Health Connect two days late still lands');
 
-    const today = reducer(state, { type: 'BODY_SYNC', patch: { lastSyncAt: NOW - 60_000 } });
-    assert.deepEqual(syncWindow(today, ctx), { fromDay: addDays(TODAY, -1), toDay: TODAY });
+    const today = reducer(state, { type: 'BODY_SYNC', patch: { lastSyncAt: NOW - 60_000, granted: ['Steps'], backfilled: ['Steps'] } });
+    assert.deepEqual(syncWindow(today, ctx), { fromDay: addDays(TODAY, -6), toDay: TODAY });
 
-    const stale = reducer(state, { type: 'BODY_SYNC', patch: { lastSyncAt: instantOf(addDays(TODAY, -60), 20 * 60, ZONE) } });
+    const stale = reducer(state, { type: 'BODY_SYNC', patch: { lastSyncAt: instantOf(addDays(TODAY, -60), 20 * 60, ZONE), granted: ['Steps'], backfilled: ['Steps'] } });
     assert.deepEqual(syncWindow(stale, ctx), { fromDay: addDays(TODAY, -13), toDay: TODAY });
+
+    // A type granted later gets its own 30-day first read; an install from before the record existed counts what it had as done.
+    assert.deepEqual(pendingBackfill(today, ['Steps', 'Weight']), ['Weight']);
+    assert.deepEqual(syncWindow(today, ctx, ['Steps', 'Weight']), { fromDay: addDays(TODAY, -29), toDay: TODAY });
+    const legacy = reducer(state, { type: 'BODY_SYNC', patch: { lastSyncAt: NOW - 60_000, granted: ['Steps', 'SleepSession'] } });
+    assert.deepEqual(pendingBackfill(legacy, ['Steps', 'SleepSession']), []);
+    assert.deepEqual(pendingBackfill(legacy, ['Steps', 'SleepSession', 'Hydration']), ['Hydration']);
+    assert.deepEqual(syncWindow(legacy, ctx, ['Steps', 'SleepSession']), { fromDay: addDays(TODAY, -6), toDay: TODAY });
   });
 
   it('BODY_SYNC drops cleared fields instead of storing undefined', () => {

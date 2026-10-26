@@ -98,7 +98,7 @@ export function CycleCalendar({ month, today, timeline, birthControl, loggedDays
           const isSelected = day === selected;
           const future = day > today;
           const { day: num } = parseDay(day);
-          const a11y = [`${day}`, phase ? PHASE_LABELS[phase] : '', info?.predicted ? 'predicted' : '', loggedDays.has(day) ? 'has a log' : ''].filter(Boolean).join(', ');
+          const a11y = [`${day}`, phase ? PHASE_LABELS[phase] : '', info?.predicted ? 'predicted' : info?.estimated ? 'estimated' : '', loggedDays.has(day) ? 'has a log' : ''].filter(Boolean).join(', ');
           return (
             <PressableScale key={day} haptic={false} onPress={() => onSelect(day)} accessibilityRole="button" accessibilityLabel={a11y} accessibilityState={{ selected: isSelected }} style={styles.cell}>
               <View

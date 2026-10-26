@@ -15,10 +15,10 @@ Last updated: 2026-10-26, autonomous session (council rounds 1–6 fixed; see jo
 |---|---|
 | App | Daily Tracker — private Android tracker: habits · water · movement snacks · meditation · opt-in cycle · home-screen widget · configurable nudges · Health Connect import · app lock · encrypted backups |
 | Code | `artifacts/daily-tracker/` — Expo SDK 57, React Native 0.86, TypeScript, Expo Router, expo-sqlite |
-| Version | `app.json` `version 0.11.0`, `versionCode 11`, tag `v0.11` (M6 complete + council rounds 1–7) |
+| Version | `app.json` `version 0.12.0`, `versionCode 12`, tag `v0.12` (M6 complete + council rounds 1–8) |
 | Repo | https://github.com/aman161upadhyay/daily_tracker.git, branch `main`, commits authored as Aman |
 | Milestones | M0 skeleton ✅ · M1 storage/streaks/onboarding ✅ · M2 nudges/notifications ✅ · M3 widget ✅ · M4 Health Connect/Body ✅ · M5 cycle ✅ · M6 theme/lock/backup/signing ✅ (`docs/IMPLEMENTATION_PLAN.md`) |
-| Verified here | type-check (three packages), 285 unit tests, Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks (incl. the Health Connect rationale activity), web walkthroughs by a browser-driving tester |
+| Verified here | type-check (three packages), 304 unit tests, Android Metro bundle, Hermes bytecode compile, `expo export` release bundle, `expo prebuild` manifest/gradle checks (incl. the Health Connect rationale activity), web walkthroughs by a browser-driving tester |
 | Never run yet | a real Android device. Everything native (widget taps, notification buttons with the app closed, Health Connect, app lock, Auto Backup, signed APK) is coded and reviewed but untested on hardware — `docs/DEVICE_CHECKLIST.md` lists the exact rows |
 | User's next step | `docs/GET_IT_ON_YOUR_PHONE.md` (plain-language build guide) |
 
@@ -195,6 +195,43 @@ contradicts one, write down why.
     leave. **Why:** the rationale is what Health Connect shows people before they grant access; an
     absolute claim there that the same screen's own promises contradict is the kind of thing a
     reviewer — or a friend — notices first.
+31. **A file is replaced only by a complete file; a copy set aside is never overwritten.** The
+    snapshot writer writes `snapshot.next.json` in full, then moves it over `snapshot.json`; a
+    complete `next` found on start outranks the old file. Unreadable snapshots are kept one file
+    each (`snapshot.kept.<ms>.json`) and the cleanup marker names its target. **Why:** the
+    installed expo-file-system `move({ overwrite })` deletes the destination before the rename, so
+    a crash in between left nothing; and a second unreadable snapshot used to erase the first one
+    kept. Both are the person's only copy of something.
+32. **A reminder day that depends on a period not yet logged is shown, never submitted to the
+    OS.** `ReminderFire.confirmed` is false for "day N of the period" rules once the logged period's
+    day has passed; the Cycle tab shows the speculative day with "once the period is logged" and
+    the planner schedules only confirmed fires. Under hormonal birth control the fertile and
+    luteal rules pause (there is no ovulation to count from) and the sheet offers only period
+    rules. **Why:** a reminder that rings on a predicted day while the period is late is the
+    promise "paused while late" broken from the lock screen, where it cannot be explained.
+33. **Phases between periods are estimates and say so; "predicted" is a calendar style, not a
+    truth claim.** `CycleDayInfo.estimated` drives the wording ("(estimated)" in the day sheet and
+    the calendar's accessibility label); `predicted` keeps styling the days past today. A start
+    logged on a future day is kept in the record (so it can be removed) but anchors nothing, and
+    the Cycle tab flags it. Symptom correlations compare the mean severity per logged day, not the
+    sum — and skip a cycle with fewer than three logged days. **Why:** the sum called a
+    well-logged mild cycle the worst one, and a retrospective ovulation looked like a measurement.
+34. **Two sources reporting one night or one workout are one session; a drink logged by hand is
+    the record of that drink.** Health Connect mirrors keep every record (each can be deleted
+    upstream on its own) but the Body tab counts overlapping sessions (> half of the shorter one)
+    once, the richest copy standing for the rest; a manual or widget drink within five minutes
+    and ten millilitres of an imported one evicts the import on the next sync. Every sync re-reads
+    a rolling week, and a record type granted later gets its own 30-day first read. **Why:** a
+    phone plus a watch gave 15-hour nights, a glass tapped a minute after the other app's entry
+    counted twice for ever, and a workout that reached Health Connect two days late never landed.
+35. **A widget value is drawn in dp; its labels scale with a budget; a failure is a notice, not an
+    empty configuration.** The ring value ignores the font scale (a ring is a fixed shape), labels
+    scale until their block would push the ring under 72 dp, then the day line goes before the
+    ring shrinks; a load or tap failure draws a notice on the last good model instead of "choose
+    habits". The automatic rotation tap resolves the next snack from the state being written, not
+    from the habit the drawing showed. **Why:** at 2× font scale the old layout clipped "1,850",
+    the 60 dp compact widget drew a 36 dp target, and a storage error was indistinguishable from a
+    fresh install.
 
 ### How council findings are judged
 - Accept when: evidence is concrete (file:line, reproducible), it violates a paradigm or a user constraint,
@@ -248,12 +285,62 @@ Dates are America/New_York. Commits are on `main`.
 | 2026-10-26 evening | **Round-7 fixes:** pnpm patch on `expo-background-task` (background work needs no network); `modules/exact-alarms` + `exactAlarmsAllowed()` / `openExactAlarmSettings()` (per-app intent via expo-intent-launcher), Reminders card status line and button, capability folded into the ledger signature, bell re-armed on foreground; Sheet bounded to the window height; `isInstantMs` / `isCalendarDay` on every imported timestamp and day, `projectRecords` strips unknown fields on import, `parsePayload` bounds `mind.startAt`, `isOwnTrigger` ignores a response whose trigger is not our date trigger (forged push responses); BODY_SYNC errors from the background job reach the card; NudgeScheduler derives its command context from the newest state and one captured instant; the mind screen cancels only a bell it set and reports a bell it could not set; BackupCard's "try to restore" waits for the write to commit before forgetting the kept copy; onboarding offers any snapshot with user data and confirms before deleting one; Quick Log shares `MAX_WATER_LOG_ML` (20,000 ml) with the command boundary; one volume parser everywhere (comma is thousands only when grouping three digits); ounces to one decimal across Today, notifications and the widget; merged notifications keep both habit names; long names cut at 40 characters in titles; `snackCountsFor` shared by selectors and reducer; dead exports removed; Today hides the Water / Movement / Mind cards for habits the person does not have, the Cycle card has its own "Show on Today" switch, `/cycle` with tracking off shows a turn-on card; "How it works" on every Health Connect card; widget card says how to add the widget; privacy copy corrected (paradigm 30); version 0.11.0 / versionCode 11 | this commit |
 | 2026-10-26 evening | Verification: tsc clean, 285 tests (15 new: 13 in `tests/round7.test.ts`, two planner tests for merged names and long titles), `expo export --platform android` → 5.9 MB Hermes bytecode (the local module's JS import resolves), web preview renders; `modules/exact-alarms` Kotlin is **not** compile-verified here (no Android SDK) — `docs/BUILD_ANDROID.md` gives the escape hatch | this commit |
 
+| 2026-10-26 night | **Council round 8** — six lenses, each a persona walk or a scripted probe rather than a code read alone (a 14-day habit journey with three personas, the widget under font scale and launcher sizes with a layout probe, Health Connect dedupe and permission coverage, the cycle model under birth control and bad data, backup atomicity against the installed expo-file-system sources, a browser e2e over the round-7 flows). Theme: the data layer had grown correct for the single-source case and nowhere else — two copies of a night, a drink in two apps, a second unreadable snapshot, two weeks of a weekly habit — and the install's own library did not do what the code assumed (`move` deletes before it renames). Triage in §6 | — |
+| 2026-10-26 night | **Round-8 fixes:** snapshot replaced through a complete `snapshot.next.json` (recovered on start), kept copies one file each with a target-aware cleanup marker, onboarding and the kept-copy card delete through the same journaled path and show a failed delete; encrypted export envelope 2 (header as GCM AAD; envelope 1 still opens); damaged containers (`cycleLogs`, `events`, `body.*` present but not lists; a day log without a day) rejected instead of normalised away; cycle reminders carry `confirmed`, birth control pauses fertile/luteal rules and the sheet offers only period rules, "once the period is logged" suffix, `CycleDayInfo.estimated` with "(estimated)" wording, `historyUpTo` keeps future-dated starts out of predictions with a `future-start` alert, symptom burden as mean severity with a three-logged-days floor; `HabitView.doneToday` / `dayRatio` for the checkbox, Mark done and the planner, Today's movement target = the per-day target while the period quota is unmet, climber needs four observed days in both weeks, `streakUnit()` in highlights and the week summary, the week summary counts sessions against the quota, Sugar Shield alone no longer opens a Movement card; widget layout takes the font scale (ring value unscaled, labels budgeted, 48 dp touch floor, 72 dp minimum height, day line only while the ring stays ≥ 72 dp), `notice` state for load/tap failures on the last good model, rotation tap resolves from the newest state, headless runs refresh the widget even when nothing changed; Health Connect: a manual/widget drink within 5 min / 10 ml evicts its imported copy on the next sync, overlapping sleep and workout sessions counted once (`distinctSleep` / `distinctWorkouts`, the list page shows one row), rolling 7-day re-read with a 30-day backfill per newly granted type (`sync.backfilled`), the connection card names what is read and what is not allowed, the Body tab says which metrics a missing permission keeps empty; paradigms 31–35; checklist Y1–Y14; version 0.12.0 / versionCode 12 | this commit |
+| 2026-10-26 night | Verification: tsc clean, 304 tests (15 new in `tests/round8.test.ts`, plus updated widget / body / cycle / backupCrypto suites), `expo export --platform android` → 5.9 MB Hermes bytecode; browser e2e over the round-7 flows (Today without the trio, cycle guard and Today switch, Quick Log ceiling, Body card) all passed with no console errors | this commit |
+
 (Entries for each council round follow below as they happen.)
 
 ## 6. Council log
 
 Format per round: lens → findings (severity · title · disposition · commit). Dispositions: **fixed**,
 **rejected** (reason), **deferred** (needs user/phone).
+
+### Round 8 (2026-10-26 night)
+
+Six lenses over the round-7 result. Each ran a scenario rather than a read: persona journeys through the selectors (`/tmp/dt-round8-personas.ts`), a widget layout probe at launcher sizes and font scales, a Health Connect review against the installed 4.1.3 sources, a cycle script (`/tmp/cycle-round8.ts`), the backup lens reading expo-file-system's Kotlin, and a browser e2e. Ids are theirs.
+
+**Backup / data-safety lens** (read `expo-file-system` 19.x `FileSystemFile.move`)
+- BAK8-01 high · `tmp.move(destination, { overwrite: true })` deletes the destination and then renames: a kill between the two left no snapshot at all · **fixed** — the writer writes `snapshot.next.json` in full and moves it over `snapshot.json`; a complete `next` found on start is adopted first (`recoverPendingSnapshot`); paradigm 31; checklist Y1.
+- BAK8-02 high · a second unreadable snapshot moved onto the single `snapshot.kept.json` with overwrite, erasing the first one kept · **fixed** — `snapshot.kept.<mtime>.json`, a suffix when the stamp collides, every kept file offered / forgotten together; the legacy name still recognised; checklist Y2.
+- BAK8-03 med · `parseState` normalised before it validated: `cycleLogs: [{note:'important'}]` became `[]`, a non-list `body.sleep` became empty, silently · **fixed** — `rejectDamagedContainers()` refuses a present container that is not a list / a day log without a day, naming the field; absent containers still read as empty; test.
+- BAK8-04 med · onboarding's "Delete it" and the kept-copy card deleted without the durable cleanup marker and hid their cards before the delete ran · **fixed** — both go through `markCleanupPending(target)` → delete → clear; the card stays until the delete succeeds and a failure is shown; checklist Y3.
+- BAK8-05 low · the export's `exportedAt` (shown before decrypting) and the KDF parameters were unauthenticated · **fixed** — envelope 2 binds the header as GCM additional data (`headerAad`); envelope 1 files still open; Python recipe updated; tests.
+- Checked and clean: cipher suite, CSPRNG use, backup rules (only `files/backup/`), export filenames carry no name, import is replace-not-merge with a rejected higher data version.
+
+**Cycle lens** (script over `buildTimeline`, `nextFireDay`, `cycleInsights`)
+- CYC8-01 med · birth-control mode still scheduled the fertile / luteal rules and the sheet still offered luteal · **fixed** — `ReminderContext.birthControl` pauses ovulation-based rules in `nextFire`; the sheet offers only period rules; footnote on the Cycle tab; test.
+- CYC8-02 med · a "day N of the period" reminder counted from the predicted start was submitted to the OS and rang while the period was late · **fixed** — `ReminderFire.confirmed`; the planner schedules only confirmed fires; the tab shows the speculative day with "once the period is logged"; paradigm 32; test; checklist Y4.
+- CYC8-03 med · an inferred ovulation between two logged starts read as known (`predicted=false` dropped the "(predicted)" suffix) · **fixed** — `CycleDayInfo.estimated` for wording, `predicted` kept for styling; day sheet and calendar a11y label say "(estimated)"; paradigm 33; test.
+- CYC8-04 med · symptom burden summed severities, so four cycles with 4/3/2/1 logged days and identical ratings read as "milder with the habit" · **fixed** — mean severity per logged day, NaN (skipped) under `MIN_LOGGED_DAYS_PER_CYCLE = 3`; test fixture extended; test.
+- CYC8-05 med · one future-dated start (an import, a wrong clock) anchored every prediction · **fixed** — `historyUpTo(history, today)` for predictions and windows, `periodContaining` keeps showing the logged day, `cycleAlerts(history, today)` adds `future-start`; test.
+- Checked and clean: ovulation clamp with low-confidence copy, five-day start spacing, future starts refused by the logging API, end-before-start prevented in the day sheet, NOT_CONTRACEPTION present. "Sharpens after three" wording · **deferred** (low; copy).
+
+**Journey lens** (three personas over 14 days through the selectors)
+- JRN8-01 med · a weekly habit done earlier in the week showed as done today (checkbox, "Mark done", planner skipped it) · **fixed** — `HabitView.doneToday` / `dayRatio`; row, detail screen, planner and Today use them ("· done today" suffix for weekly); test.
+- JRN8-02 med · the week summary scored a three-session week as 14 % (daily ratios of a weekly habit) · **fixed** — sessions against the quota for non-daily habits; test.
+- JRN8-03 med · Today's movement target replaced a non-daily habit's per-day target with `ceil(timesPerPeriod / 7)` (Stair sprint promised 3 a day) · **fixed** — the per-day target while the period quota is unmet.
+- JRN8-04 med · the "warming up" highlight averaged fourteen ratios including days before the habit existed, inventing a bad last week · **fixed** — both weeks need four observed days from the creation day.
+- JRN8-05 low · weekly streaks labelled "days" · **fixed** — `streakUnit()` shared by highlights and the week summary.
+- JRN8-06 low · a Sugar-Shield-only setup opened an empty Movement card · **fixed** — `showMovement` excludes the shield.
+- Checked and clean: 03:00 tracking boundary across the DST night, Library preset copy.
+
+**Widget lens** (layout probe at 110×60 … 320×200 dp, font scale 1.0–2.0)
+- WID8-01 med · an unchanged headless run did not redraw yesterday's widget (the day line and ratios were stale until the next change) · **fixed** — `nudgeTasks.native` refreshes widgets on the unchanged branch too.
+- WID8-02 med · the layout had no font-scale input and a fixed 38 dp label block: at 2× the value and captions clipped or overran the ring · **fixed** — `widgetLayout(…, fontScale)`, `labelBlockHeight`, `fitValueSize`, ring value drawn unscaled (`allowFontScaling` off), labels budgeted; paradigm 35; probe re-run at every size; checklist Y8–Y9.
+- WID8-03 med · the declared 110×60 compact widget made a 36 dp ring the tap target · **fixed** — `MIN_TOUCH = 48`, `minHeight` 72 dp (launchers resize existing widgets), the day line drops before the ring shrinks under 72 dp; a one-row widget shows a notice instead of tiles; checklist Y7.
+- WID8-04 med · the automatic rotation tap sent the rendered habit id, so a stale drawing logged the wrong snack · **fixed** — click data carries `kind`; `widgetTapActions(…, 'rotation')` resolves the next snack from the newest state; test.
+- WID8-05 med · a storage failure in the handler rendered "choose habits" (the empty-config screen) · **fixed** — `WidgetModel.notice` (TAP_FAILED / LOAD_FAILED) drawn on the last good model; checklist Y10.
+- Checked and clean: SQLite open waits for migrations; live-store / lock handoff. `index.js` import order · **rejected** (registration runs at entry evaluation before any render; no failure demonstrated).
+
+**Health Connect lens** (against react-native-health-connect 4.1.3)
+- HC8-01 med · a drink logged by hand after its import double-counted for ever (the sync marked the external id seen before comparing with manual rows) · **fixed** — an imported row with a manual / widget twin within 5 min and 10 ml is removed on the next sync and not re-imported; paradigm 34; tests; checklist Y11.
+- HC8-02 med · two sources' copies of one night or one workout were summed (8 h phone + 7 h 40 watch = a 15 h night) · **fixed** — `distinctSessions` (> half of the shorter overlapping; richest copy stands: stages, then minutes; a generic "Workout" matches any type) under `sleepByDay`, `nightEndingOn`, `countedWorkouts`, and the workouts list; hiding the representative reveals the other; tests; checklist Y12.
+- HC8-03 med · after a successful sync the next read started yesterday: a workout that reached Health Connect two days late, or the history of a type granted later, never landed · **fixed** — rolling 7-day window (still capped at 14), `sync.backfilled` per type with a 30-day first read for a newly granted type (existing installs count their current grants as done); tests; checklist Y13.
+- HC8-04 low · "N of 7" never said which types; a denied Sleep read as "Nothing in Health Connect yet" · **fixed** — the card lists what is read and what is not allowed (with Permissions), the Body tab names the metrics a missing permission keeps empty; checklist Y14.
+- Checked and clean: rationale covers all seven types, background access and the backup disclosure. `getChanges` (change tokens) · **deferred** — the rolling window answers the late-data case; change tokens are an optimisation for a later round.
+
+**Browser e2e (round-7 build):** Today without the trio, cycle guard and the Today switch, the Quick Log ceiling, the Body card and its explanation page — all passed, no console errors.
 
 ### Round 1 (2026-10-26 night)
 
@@ -591,7 +678,9 @@ Five lenses over the round-6 result, each a fresh read-only session with its own
 - Steps and cycle tiles in the widget; sleep-stages chart; write-back of water/mind sessions to Health Connect (v2).
 
 ### Device verification owed
-- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10, T1–T11, U1–U11, V1–V11, X1–X11 have never been run on hardware. First build on the laptop is the next real milestone.
+- `docs/DEVICE_CHECKLIST.md` rows N1–N17, W1–W8, H1–H9, C1–C4, L1–L10, R1–R12, S1–S10, T1–T11, U1–U11, V1–V11, X1–X11, Y1–Y14 have never been run on hardware. First build on the laptop is the next real milestone.
 - Residual risk carried knowingly: two JavaScript runtimes writing SQLite at once (UPG6-03, row V11). If the device run shows a lost write there, the fix is a database revision compared inside the write transaction.
 - Rows added in round 7: X1–X5 (exact alarms and the offline re-plan — the two library defaults the platform lens read in the sources), X6 (sheets in a short window), X7–X9 (Today without the trio, cycle off / hidden), X10–X11 (long titles, the drink ceiling).
+- Rows added in round 8: Y1–Y3 (snapshot replacement, kept copies, journaled deletes), Y4–Y6 (speculative and birth-control reminders, estimated wording), Y7–Y10 (widget sizes, font scale, notice), Y11–Y14 (drink reconcile, one night across sources, late records and backfill, permission names).
+- Deferred from round 8: Health Connect change tokens (`getChanges`) as an optimisation over the rolling window; "sharpens after three" copy.
 - Not compile-verified here: `modules/exact-alarms/` (Kotlin) — the first laptop build either compiles it or deletes the folder (the app degrades to "exact timing unknown").

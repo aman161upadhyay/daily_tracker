@@ -9,7 +9,7 @@ import { TYPE } from '@/constants/typography';
 import { useColors } from '@/hooks/useColors';
 import { MIN_PASSWORD_LENGTH, type EncryptedBackup } from '@/src/data/backupCrypto';
 import { describeImport, exportState, inspectExport, pickImport, unlockExport } from '@/src/data/transfer';
-import { deleteKeptSnapshot, readKeptSnapshot, type Snapshot } from '@/src/services/backup';
+import { deleteKeptSnapshots, markCleanupPending, readKeptSnapshots, type Snapshot } from '@/src/services/backup';
 import type { TrackerState } from '@/src/state/types';
 import { useTracker } from '@/src/state/TrackerProvider';
 
@@ -30,15 +30,15 @@ export function BackupCard({ confirm }: { confirm: Confirm }) {
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [locked, setLocked] = useState<EncryptedBackup | null>(null);
-  /** A phone-backup snapshot an older build could not read, kept for this one to try. */
-  const [kept, setKept] = useState<Snapshot | null>(null);
+  /** Phone-backup snapshots an older build could not read, kept for this one to try (newest first). */
+  const [kept, setKept] = useState<Snapshot[]>([]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
     let alive = true;
-    readKeptSnapshot()
-      .then((snap) => {
-        if (alive) setKept(snap);
+    readKeptSnapshots()
+      .then((snaps) => {
+        if (alive) setKept(snaps);
       })
       .catch((err) => console.warn('[backup] kept snapshot', err));
     return () => {
@@ -46,9 +46,18 @@ export function BackupCard({ confirm }: { confirm: Confirm }) {
     };
   }, []);
 
+  // The intent is recorded first and the card changes only once the delete went through: a copy
+  // that is still on disk must not vanish from the screen, and a kill mid-way finishes on start.
   const forgetKept = () => {
-    setKept(null);
-    deleteKeptSnapshot().catch((err) => console.warn('[backup] kept snapshot', err));
+    setBusy(true);
+    markCleanupPending('kept')
+      .then(() => deleteKeptSnapshots())
+      .then(() => setKept([]))
+      .catch((err) => {
+        console.warn('[backup] kept snapshot', err);
+        setTransfer({ tone: 'error', text: `The set-aside copy could not be removed just now: ${message(err)}` });
+      })
+      .finally(() => setBusy(false));
   };
 
   const runExport = async (password: string | undefined) => {
@@ -87,17 +96,23 @@ export function BackupCard({ confirm }: { confirm: Confirm }) {
     });
   };
 
-  // The kept copy, now that the app may be new enough to read it. Still unreadable → it stays kept.
+  // The kept copies, now that the app may be new enough to read one: the newest readable copy is
+  // offered. Still unreadable → they stay kept.
   const restoreKept = () => {
-    if (!kept) return;
+    if (kept.length === 0) return;
     setTransfer(null);
-    try {
-      const inspected = inspectExport(kept.text);
-      if (inspected.kind === 'encrypted') setLocked(inspected.file);
-      else offerImport(inspected.state, forgetKept);
-    } catch (err) {
-      setTransfer({ tone: 'error', text: `Still can't open it: ${message(err)}` });
+    let lastError: unknown = null;
+    for (const snap of kept) {
+      try {
+        const inspected = inspectExport(snap.text);
+        if (inspected.kind === 'encrypted') setLocked(inspected.file);
+        else offerImport(inspected.state, forgetKept);
+        return;
+      } catch (err) {
+        lastError = err;
+      }
     }
+    setTransfer({ tone: 'error', text: `Still can't open ${kept.length > 1 ? 'any of them' : 'it'}: ${message(lastError)}` });
   };
 
   const doImport = async () => {
@@ -147,14 +162,16 @@ export function BackupCard({ confirm }: { confirm: Confirm }) {
             </View>
             <Switch value={s.cloudBackup} onValueChange={(cloudBackup) => actions.updateSettings({ cloudBackup })} trackColor={{ false: c.hairline, true: c.green }} thumbColor={c.text} accessibilityLabel="Android phone backup" />
           </Row>
-          {kept ? (
+          {kept.length > 0 ? (
             <View style={{ marginTop: 12 }}>
               <Txt role="footnote" tone="secondary">
-                {`A phone backup${kept.writtenAt ? ` from ${new Date(kept.writtenAt).toLocaleDateString()}` : ''} that an earlier version of this app could not open is kept on this phone.`}
+                {kept.length === 1
+                  ? `A phone backup${kept[0].writtenAt ? ` from ${new Date(kept[0].writtenAt).toLocaleDateString()}` : ''} that an earlier version of this app could not open is kept on this phone.`
+                  : `${kept.length} phone backups that earlier versions of this app could not open are kept on this phone${kept[0].writtenAt ? ` (newest from ${new Date(kept[0].writtenAt).toLocaleDateString()})` : ''}.`}
               </Txt>
               <Row gap={8} style={{ marginTop: 8, flexWrap: 'wrap' }}>
-                <PillButton label="Try to restore it" kind="ghost" Leading={UI.Upload} onPress={restoreKept} disabled={busy} />
-                <PillButton label="Delete it" kind="ghost" onPress={() => confirm('Delete the kept backup?', 'The copy an earlier version could not open is removed from this phone for good.', 'Delete', forgetKept)} />
+                <PillButton label={kept.length === 1 ? 'Try to restore it' : 'Try to restore the newest'} kind="ghost" Leading={UI.Upload} onPress={restoreKept} disabled={busy} />
+                <PillButton label={kept.length === 1 ? 'Delete it' : 'Delete them'} kind="ghost" disabled={busy} onPress={() => confirm(kept.length === 1 ? 'Delete the kept backup?' : 'Delete the kept backups?', `${kept.length === 1 ? 'The copy' : 'Every copy'} an earlier version could not open is removed from this phone for good.`, 'Delete', forgetKept)} />
               </Row>
             </View>
           ) : null}
@@ -271,7 +288,7 @@ function UnlockSheet({ file, onClose, onUnlocked }: { file: EncryptedBackup | nu
   return (
     <Sheet visible={!!file} title="Backup is password-protected" onClose={close}>
       <Txt role="footnote" tone="secondary" style={{ marginBottom: 12 }}>
-        {file ? `${typeof file.exportedAt === 'string' && file.exportedAt.length >= 10 ? `Exported ${file.exportedAt.slice(0, 10)}. ` : ''}Enter the password it was saved with.` : ''}
+        {file ? `${typeof file.exportedAt === 'string' && file.exportedAt.length >= 10 ? `The file says it was exported ${file.exportedAt.slice(0, 10)}. ` : ''}Enter the password it was saved with.` : ''}
       </Txt>
       <PasswordField value={password} onChange={setPassword} placeholder="Password" onSubmit={unlock} />
       {error ? (

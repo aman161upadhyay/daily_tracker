@@ -12,6 +12,9 @@ export interface Snapshot {
   writtenAt: number | null;
 }
 
+/** What a recorded cleanup must remove: everything in the backup directories, or only the kept copies. */
+export type CleanupTarget = 'all' | 'kept';
+
 export async function readSnapshot(): Promise<Snapshot | null> {
   return null;
 }
@@ -30,17 +33,20 @@ export async function setAsideSnapshot(): Promise<boolean> {
   return false;
 }
 
-/** The snapshot set aside earlier, if any. */
-export async function readKeptSnapshot(): Promise<Snapshot | null> {
+/** The snapshots set aside earlier, newest first. */
+export async function readKeptSnapshots(): Promise<Snapshot[]> {
+  return [];
+}
+
+export async function deleteKeptSnapshots(): Promise<void> {}
+
+/** Records that the snapshot (or only the kept copies) must go until the delete has succeeded. */
+export async function markCleanupPending(_target: CleanupTarget = 'all'): Promise<void> {}
+
+/** The cleanup a previous run recorded but never finished (the app died before the delete ran), or null. */
+export async function cleanupPending(): Promise<CleanupTarget | null> {
   return null;
 }
 
-export async function deleteKeptSnapshot(): Promise<void> {}
-
-/** Records that the snapshot must go (erase, backup turned off) until `deleteSnapshot` has succeeded. */
-export async function markCleanupPending(): Promise<void> {}
-
-/** Whether a recorded cleanup never completed (the app died before the delete ran). */
-export async function cleanupPending(): Promise<boolean> {
-  return false;
-}
+/** Withdraws a recorded cleanup (the person restored the data it was about to remove). */
+export async function cancelCleanup(): Promise<void> {}

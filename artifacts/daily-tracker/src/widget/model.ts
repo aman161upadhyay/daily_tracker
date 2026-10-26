@@ -7,9 +7,11 @@
 import colors from '@/constants/colors';
 import type { Habit } from '@/src/domain/models';
 import { SNACK_LABELS } from '@/src/domain/models';
-import { nextRotationItem } from '@/src/domain/nudges/nextNudge';
 import { formatNumber, formatOneDecimal, mlToOz } from '@/src/domain/time/format';
-import { activeHabits, habitView, rotationItems, todaySummary, waterHabit } from '@/src/state/selectors';
+import { activeHabits, habitView, rotationHabit, todaySummary, waterHabit } from '@/src/state/selectors';
+import { parseDay, weekdayOf } from '@/src/domain/time/trackingDay';
+
+export { rotationHabit } from '@/src/state/selectors';
 import type { TrackerState } from '@/src/state/types';
 
 /** Name registered in app.json; the OS identifies the widget by it. */
@@ -35,6 +37,25 @@ export interface WidgetTile {
 export interface WidgetModel {
   day: string;
   tiles: WidgetTile[];
+  /** Something went wrong on the way here (storage failed): shown instead of pretending nothing is set up. */
+  notice?: string;
+}
+
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+/** "Mon 26": the tracking day the tiles describe, so a redraw the OS delayed cannot pass yesterday off as today. */
+export function widgetDayLabel(day: string): string {
+  if (!day) return '';
+  return `${WEEKDAYS[weekdayOf(day)]} ${parseDay(day).day}`;
+}
+
+/** Ring values stay short: "12,500" steps become "12.5k" (the caption still carries the unit). */
+export function compactValue(n: number): string {
+  if (Math.abs(n) >= 10000) {
+    const k = Math.round(n / 100) / 10;
+    return `${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}k`;
+  }
+  return formatNumber(n);
 }
 
 function clamp01(n: number): number {
@@ -52,16 +73,6 @@ export function shortVolume(ml: number, units: 'ml' | 'oz'): string {
     return `${litres % 1 === 0 ? litres.toFixed(0) : litres.toFixed(1)} L`;
   }
   return `${formatNumber(ml)} ml`;
-}
-
-/** The snack habit the rotation suggests next (what a tap on the automatic movement tile logs). */
-export function rotationHabit(state: TrackerState, today: string): Habit | undefined {
-  const items = rotationItems(state);
-  const completed = state.snacks.filter((x) => x.day === today && x.trigger !== 'SUGAR_SHIELD').length;
-  const swap = state.nudgeSwap?.day === today ? state.nudgeSwap.offset : 0;
-  const item = nextRotationItem(items, completed + swap);
-  const id = item?.habitId;
-  return id ? state.habits.find((h) => h.id === id && !h.archived) : undefined;
 }
 
 /**
@@ -99,7 +110,7 @@ function habitTile(state: TrackerState, habit: Habit, today: string): WidgetTile
     return { ...base, value: doneToday ? '✓' : '–', caption };
   }
   const unit = habit.snackType ? SNACK_LABELS[habit.snackType].unit : habit.unit;
-  const value = doneToday && habit.type !== 'TIMER' && !habit.snackType ? '✓' : formatNumber(view.todayValue);
+  const value = doneToday && habit.type !== 'TIMER' && !habit.snackType ? '✓' : compactValue(view.todayValue);
   const caption = weekly
     ? `${view.periodDone ?? 0} of ${view.periodQuota ?? view.rule.timesPerPeriod} days`
     : habit.snackType
@@ -144,5 +155,5 @@ export function widgetModel(state: TrackerState, today: string, nowMs: number, z
 
 /** Stable key: when it changes, the widget needs a redraw. */
 export function widgetModelKey(model: WidgetModel): string {
-  return `${model.day}|${model.tiles.map((t) => `${t.habitId}:${t.name}:${t.value}:${t.caption}:${t.ratio.toFixed(3)}`).join('|')}`;
+  return `${model.day}|${model.notice ?? ''}|${model.tiles.map((t) => `${t.habitId}:${t.name}:${t.value}:${t.caption}:${t.ratio.toFixed(3)}`).join('|')}`;
 }

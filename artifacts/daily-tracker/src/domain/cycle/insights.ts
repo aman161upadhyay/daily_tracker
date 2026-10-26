@@ -20,6 +20,8 @@ export const MIN_CORRELATION_CYCLES = 4;
 export const MIN_CORRELATION_RHO = 0.5;
 /** A symptom must recur in this many cycles before its correlation is reported. */
 export const MIN_SYMPTOM_CYCLES = 3;
+/** A cycle's symptom intensity counts only when it has this many logged days — days never opened are unknown, not symptom-free. */
+export const MIN_LOGGED_DAYS_PER_CYCLE = 3;
 export const MOOD_KEY = 'mood';
 
 export interface CompletedCycle {
@@ -156,14 +158,22 @@ export interface Correlation {
   n: number;
 }
 
-/** Symptom burden per cycle (sum of severities) and mean mood per cycle (NaN when never logged). */
+/**
+ * Symptom intensity per cycle — mean severity over the days that were logged in that cycle (a
+ * logged day without the symptom counts as 0; a day never opened counts as nothing) — and mean
+ * mood per cycle. NaN where a cycle has fewer than `MIN_LOGGED_DAYS_PER_CYCLE` logged days (or no
+ * mood). Summing severities instead would make a cycle that was merely logged more often look
+ * worse, and the sentence built from it would call it "milder" or "worse" cramps.
+ */
 export function symptomBurden(logs: readonly CycleDayLog[], cycles: readonly CompletedCycle[]): Map<string, number[]> {
   const out = new Map<string, number[]>();
+  const loggedDays = cycles.map(() => 0);
   const moodSum = cycles.map(() => 0);
   const moodN = cycles.map(() => 0);
   for (const log of logs) {
     const i = cycleOf(log.day, cycles);
     if (i < 0) continue;
+    loggedDays[i]! += 1;
     for (const [k, sev] of Object.entries(log.symptoms)) {
       if (!out.has(k)) out.set(k, cycles.map(() => 0));
       out.get(k)![i]! += sev;
@@ -173,6 +183,7 @@ export function symptomBurden(logs: readonly CycleDayLog[], cycles: readonly Com
       moodN[i]! += 1;
     }
   }
+  for (const [k, sums] of out) out.set(k, sums.map((sum, i) => (loggedDays[i]! >= MIN_LOGGED_DAYS_PER_CYCLE ? sum / loggedDays[i]! : NaN)));
   if (moodN.some((n) => n > 0)) out.set(MOOD_KEY, moodSum.map((s, i) => (moodN[i]! > 0 ? s / moodN[i]! : NaN)));
   return out;
 }

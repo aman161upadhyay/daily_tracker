@@ -178,8 +178,12 @@ Do these once, in the app and in the phone's Settings:
    also Settings → Battery → Background usage limits → make sure Daily Tracker is not in
    "Sleeping apps"). Otherwise the phone may silence reminders after a few days.
 4. **Widget.** Long-press an empty part of your home screen → *Widgets* → find *Daily Tracker* →
-   drag it onto the screen. Resize it by long-pressing it. Choose which habits it shows in the
-   app: Settings → *Widget*. Tapping a ring logs that habit; tapping a name opens it.
+   drag it onto the screen. Resize it by long-pressing it (it needs about two rows of height; at
+   its smallest it shows one line of text instead of rings). Choose which habits it shows in the
+   app: Settings → *Widget*. Tapping a ring logs that habit; tapping a name opens it. Under the
+   tiles it shows the day it is counting for, which matters after midnight: a drink at 1 am still
+   belongs to "yesterday" until 3 am. If it ever says "Couldn't log — open the app", open the app
+   once; the next tap works again.
 5. **Health Connect** (steps, sleep, workouts, heart rate, weight, drinks from Samsung Health,
    Google Fit, Garmin, Fitbit, etc.):
    - Make sure your fitness app writes to Health Connect: Samsung Health → Settings → *Health
@@ -302,6 +306,9 @@ replaced computer. Do this once, before the first APK you hand out.
 | The app opens with "Unable to load script" | You installed the debug build | Run the build again with `--variant release`. |
 | Reminders arrive late or not at all | Exact alarms or battery settings | Part 3 steps 2–3. |
 | Widget says "Open Daily Tracker to choose habits…" or looks empty | The app has not run since install, or no habits yet | Open the app once (finish onboarding); the widget redraws within a minute. |
+| Widget says "Couldn't log — open the app" | The phone refused the write (storage full, or the app's data is being restored) | Open the app once — if it opens normally, tap the widget again. If the app shows a red banner, free some storage. |
+| Body shows one night / one workout where two apps recorded it | By design | Two sources' copies of the same night or workout count once (the one with sleep stages wins). Hide a workout to see the other copy. |
+| A drink logged in both apps counts once | By design | A glass logged here within five minutes of the same amount in the other app is treated as the same drink; the import leaves on the next sync. |
 | Body tab says Health Connect is not available | Health Connect missing on this phone | Android 9–13: install *Health Connect* from the Play Store; Android 8 is too old for imports. |
 | Play Protect blocks the install on a friend's phone | Google's scanner has never seen this APK (it is not from the Play Store) | *Scan app* if offered, then *More details* → *Install anyway*. The unknown-source prompt is a different, ordinary step: *Settings* → allow for the app they opened the file with. |
 | Build fails with something else | — | Copy the last 30 lines of the terminal into the Replit chat; the agent reads them. |
